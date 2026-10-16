@@ -1,0 +1,52 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="BatchAgentRunner icon">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#8B5CF6"/>
+      <stop offset="55%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#4F46E5"/>
+    </linearGradient>
+    <linearGradient id="gloss" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="45%" stop-color="#FFFFFF" stop-opacity="0"/>
+    </linearGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#67E8F9"/>
+      <stop offset="100%" stop-color="#22D3EE"/>
+    </linearGradient>
+    <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
+      <feGaussianBlur stdDeviation="14" result="b"/>
+      <feMerge>
+        <feMergeNode in="b"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    <clipPath id="tile">
+      <rect x="32" y="32" width="960" height="960" rx="200" ry="200"/>
+    </clipPath>
+  </defs>
+
+  <!-- tile -->
+  <rect x="32" y="32" width="960" height="960" rx="200" ry="200" fill="url(#bg)"/>
+  <g clip-path="url(#tile)">
+    <rect x="32" y="32" width="960" height="620" fill="url(#gloss)"/>
+  </g>
+  <rect x="32" y="32" width="960" height="960" rx="200" ry="200" fill="none"
+        stroke="#FFFFFF" stroke-opacity="0.14" stroke-width="2"/>
+
+  <!-- scheduler / runner ring (open at top) -->
+  <path d="M 372.6 226.2 A 318 318 0 1 1 651.4 226.2"
+        fill="none" stroke="#FFFFFF" stroke-opacity="0.92"
+        stroke-width="44" stroke-linecap="round"/>
+
+  <!-- batch task queue -->
+  <rect x="322" y="394" width="380" height="56" rx="28" fill="#FFFFFF" fill-opacity="0.96"/>
+  <rect x="322" y="574" width="380" height="56" rx="28" fill="#FFFFFF" fill-opacity="0.96"/>
+  <!-- active (running) task -->
+  <rect x="322" y="484" width="380" height="56" rx="28"
+        fill="url(#accent)" filter="url(#glow)"/>
+
+  <!-- AI agent spark that kicks off the scheduled run -->
+  <path d="M512 166 L527.6 210.4 L572 226 L527.6 241.6 L512 286
+           L496.4 241.6 L452 226 L496.4 210.4 Z"
+        fill="url(#accent)" filter="url(#glow)"/>
+</svg>

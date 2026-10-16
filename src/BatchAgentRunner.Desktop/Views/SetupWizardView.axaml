@@ -1,0 +1,116 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:BatchAgentRunner.Desktop.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="560"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             x:Class="BatchAgentRunner.Desktop.Views.SetupWizardView">
+
+    <Design.DataContext>
+        <vm:SetupWizardViewModel />
+    </Design.DataContext>
+
+    <Grid RowDefinitions="Auto,*,Auto" Margin="12">
+
+        <!-- 顶部：标题 + 步骤进度条 -->
+        <Border Grid.Row="0" Padding="12,10" CornerRadius="6" Background="#F2F6FF" BorderBrush="#C9DBFF" BorderThickness="1">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding StepTitle}" FontSize="16" FontWeight="SemiBold" VerticalAlignment="Center" />
+                <TextBlock Grid.Column="1" Text="{Binding StepIndicator}" Margin="12,0" VerticalAlignment="Center" Opacity="0.7" />
+                <Button Grid.Column="2" Content="重新开始" Command="{Binding RestartCommand}"
+                        ToolTip.Tip="回到第一步重新配置（不改动已保存的配置）" />
+            </Grid>
+        </Border>
+
+        <!-- 中部：各步骤内容 -->
+        <ScrollViewer Grid.Row="1" Margin="0,10,0,10">
+            <StackPanel Spacing="10" MaxWidth="960" HorizontalAlignment="Stretch">
+
+                <!-- ============ 步骤 0：选择执行工具 ============ -->
+                <StackPanel IsVisible="{Binding IsStep0}" Spacing="10">
+                    <Border Padding="10" CornerRadius="6" Background="#FFF8E6" BorderBrush="#F0DFA8" BorderThickness="1">
+                        <TextBlock FontSize="12" TextWrapping="Wrap" Foreground="#6B5A1E"
+                                   Text="本向导只需 2 步：选执行工具 → 检测 CLI（含登录）。&#10;账号、模型、任务文件、工作空间等其余配置请到左侧「配置」页设置。" />
+                    </Border>
+                    <TextBlock Text="用哪个工具来执行任务？" FontWeight="SemiBold" />
+                    <RadioButton GroupName="AgentKind" IsChecked="{Binding AgentIsWorkBuddy}">
+                        <StackPanel Margin="4">
+                            <TextBlock FontWeight="SemiBold" Text="WorkBuddy（推荐）" />
+                            <TextBlock FontSize="12" Opacity="0.8" TextWrapping="Wrap"
+                                       Text="调 WorkBuddy CLI 执行任务。2026-10-15 实测：WorkBuddy 品牌与 CodeBuddy 共用同一个 codebuddy 命令。" />
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton GroupName="AgentKind" IsChecked="{Binding AgentIsCodeBuddy}">
+                        <StackPanel Margin="4">
+                            <TextBlock FontWeight="SemiBold" Text="CodeBuddy" />
+                            <TextBlock FontSize="12" Opacity="0.8" TextWrapping="Wrap"
+                                       Text="调 CodeBuddy CLI 执行任务，参数模板略有不同（-p 方式）。与 WorkBuddy 二选一即可。" />
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton GroupName="AgentKind" IsChecked="{Binding AgentIsMock}">
+                        <StackPanel Margin="4">
+                            <TextBlock FontWeight="SemiBold" Text="Mock（仿真，不调任何 CLI）" />
+                            <TextBlock FontSize="12" Opacity="0.8" TextWrapping="Wrap"
+                                       Text="不安装任何 CLI 也能跑：用于先验证调度逻辑（降级、时段跳过、冷却等待、兜底、危险操作拦截）。不会执行真实任务。" />
+                        </StackPanel>
+                    </RadioButton>
+                </StackPanel>
+
+                <!-- ============ 步骤 1：检测 CLI ============ -->
+                <StackPanel IsVisible="{Binding IsStep1}" Spacing="10">
+                    <Border Padding="10" CornerRadius="6" Background="#F2F6FF" BorderBrush="#C9DBFF" BorderThickness="1">
+                        <StackPanel Spacing="4">
+                            <TextBlock FontSize="12" TextWrapping="Wrap" Foreground="#33415C"
+                                       Text="第一步：安装 CLI（若已安装可跳过）。在任意终端执行：" />
+                            <TextBox FontSize="12" IsReadOnly="True" FontFamily="Consolas"
+                                     Text="npm install -g @tencent-ai/codebuddy-code" />
+                            <TextBlock FontSize="12" TextWrapping="Wrap" Foreground="#33415C"
+                                       Text="第二步：登录账号。点下面按钮（或自己在终端运行 codebuddy），按提示选择登录方式（微信 / 手机号 / 邮箱）完成登录——账号凭据由 CLI 自己保存，本工具不存任何密码。" />
+                        </StackPanel>
+                    </Border>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="打开终端登录（推荐）" Command="{Binding OpenLoginTerminalCommand}"
+                                ToolTip.Tip="新开一个终端窗口运行 codebuddy，按提示完成登录。登录一次后 CLI 自己记住凭据。" />
+                        <ProgressBar IsIndeterminate="True" Width="80" VerticalAlignment="Center"
+                                     IsVisible="{Binding CliCheckRunning}" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding LoginHint}" FontSize="12" TextWrapping="Wrap" Foreground="#1E6B2E"
+                               IsVisible="{Binding HasLoginHint}" />
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="检测 CLI（运行 codebuddy --version）"
+                                Command="{Binding DetectCliCommand}"
+                                IsEnabled="{Binding !CliCheckRunning}" />
+                        <ProgressBar IsIndeterminate="True" Width="80" VerticalAlignment="Center"
+                                     IsVisible="{Binding CliCheckRunning}" />
+                    </StackPanel>
+                    <TextBox Text="{Binding CliCheckResult}" IsReadOnly="True" MinHeight="70" MaxHeight="160"
+                             TextWrapping="Wrap" AcceptsReturn="True"
+                             PlaceholderText="点击上方「检测 CLI」按钮，检测结果会显示在这里" />
+                    <TextBox Text="{Binding CliPath}"
+                             PlaceholderText="CLI 路径（一般留空；装了多版本时才填绝对路径）"
+                             ToolTip.Tip="留空 = 在系统 PATH 中按 codebuddy 查找。填了绝对路径则检测与执行都用它。" />
+                    <Border Padding="10" CornerRadius="6" Background="#EFFAF0" BorderBrush="#BFE3C4" BorderThickness="1"
+                            IsVisible="{Binding CompletedMessage}">
+                        <TextBlock FontSize="12" TextWrapping="Wrap" Foreground="#1E6B2E" Text="{Binding CompletedMessage}" />
+                    </Border>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- 底部：错误提示 + 上一步/下一步/保存 -->
+        <Border Grid.Row="2" Padding="0,10,0,0" BorderThickness="0,1,0,0" BorderBrush="#EEEEEE">
+            <Grid ColumnDefinitions="*,Auto,Auto,Auto">
+                <TextBlock Grid.Column="0" Text="{Binding StepError}" Foreground="#D13438" TextWrapping="Wrap"
+                           VerticalAlignment="Center" Margin="0,0,12,0" />
+                <Button Grid.Column="1" Content="← 上一步" Command="{Binding BackCommand}"
+                        IsVisible="{Binding !IsFirstStep}" VerticalAlignment="Center" />
+                <Button Grid.Column="2" Content="下一步 →" Command="{Binding NextCommand}" Margin="8,0,0,0"
+                        IsVisible="{Binding !IsLastStep}" VerticalAlignment="Center" />
+                <Button Grid.Column="3" Content="保存配置并重建引擎" Command="{Binding SaveCommand}" Margin="8,0,0,0"
+                        IsVisible="{Binding IsLastStep}" VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+
+    </Grid>
+</UserControl>

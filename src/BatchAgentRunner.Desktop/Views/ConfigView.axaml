@@ -1,0 +1,449 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:BatchAgentRunner.Desktop.ViewModels"
+             xmlns:models="using:BatchAgentRunner.Desktop.Models"
+             xmlns:domain="using:BatchAgentRunner.Core.Domain"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="760"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             x:Class="BatchAgentRunner.Desktop.Views.ConfigView">
+
+    <Design.DataContext>
+        <vm:ConfigViewModel />
+    </Design.DataContext>
+
+    <Grid RowDefinitions="Auto,*,Auto">
+        <!-- 顶部说明入口 -->
+        <Border Grid.Row="0" Padding="10" CornerRadius="6" Background="{DynamicResource PrimarySoftBrush}" BorderBrush="{DynamicResource PrimaryBrush}" BorderThickness="1" Margin="12,12,12,0">
+            <TextBlock FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"
+                       Text="每一项口径/取值范围/常见坑见 docs\CONFIG-配置项说明.md；全字段带注释模板见 samples\config.example.json。把鼠标停在字段上可看简要说明。模型名优先点「拉取可用模型」后从下拉选择，避免手输错误。" />
+        </Border>
+
+        <!-- 中部：分页标签 -->
+        <TabControl Grid.Row="1" Margin="12,8,12,0">
+
+            <!-- ===================== 标签页 1：基础设置 ===================== -->
+            <TabItem Header="基础设置">
+                <ScrollViewer>
+                    <StackPanel Spacing="10" Margin="4">
+
+                        <!-- ① 任务文件与执行工具 -->
+                        <Border Padding="12" CornerRadius="6" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="① 任务文件与执行工具" FontWeight="SemiBold" />
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBox Grid.Column="0" Text="{Binding TaskFilePath}"
+                                             PlaceholderText="任务文件路径（.json / .md / .xlsx）"
+                                             ToolTip.Tip="【必填】任务清单文件。&#10;.json：状态与结果原地原子回写到本文件；&#10;.md：只读输入，状态写同目录 sidecar 文件 &lt;name&gt;.md.result.json；&#10;.xlsx：表头至少含 id 与 instruction 两列，状态与结果原地原子回写到同一 xlsx（表头支持中英文别名）。&#10;运行日志与汇总报告都写在它同目录。" />
+                                    <Button Grid.Column="1" Content="浏览…" Margin="8,0,0,0" Command="{Binding BrowseTaskFileCommand}" />
+                                </Grid>
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <TextBlock Text="执行工具" VerticalAlignment="Center"
+                                               ToolTip.Tip="决定用哪个适配器拉起 CLI 子进程。&#10;WorkBuddy / CodeBuddy：调真实 CLI；&#10;Mock：内置仿真适配器，不调任何 CLI，用于先跑通全流程。" />
+                                    <ComboBox ItemsSource="{Binding AgentKinds}" SelectedItem="{Binding AgentKind}" MinWidth="160" />
+                                    <TextBlock Text="降级策略" VerticalAlignment="Center"
+                                               ToolTip.Tip="降级矩阵的遍历顺序（v1.12：每个账号轮自己的候选模型池）。&#10;ModelFirst（默认）：同一账号先轮完它自己的候选模型池，全耗尽再换下一个账号；&#10;AccountFirst：按模型名聚合——先把同一模型名在所有配置了它的账号上轮完，再换下一个模型名。" />
+                                    <ComboBox ItemsSource="{Binding Strategies}" SelectedItem="{Binding DegradationStrategy}" MinWidth="160" />
+                                </StackPanel>
+                                <TextBox Text="{Binding CliPath}"
+                                         PlaceholderText="CLI 路径（留空则在 PATH 中查找）"
+                                         ToolTip.Tip="CLI 可执行文件路径。&#10;留空 = 在系统 PATH 中按默认名查找（WorkBuddy 找 workbuddy，CodeBuddy 找 codebuddy）。&#10;装了多个版本时，在这里写绝对路径最稳。" />
+                                <TextBox Text="{Binding CliArgumentsTemplate}"
+                                         PlaceholderText="CLI 参数模板，占位符 {prompt} {model} {expert} {workspace} {extra}（M0 验证前留空即用默认）"
+                                         ToolTip.Tip="留空 = 用适配器内置模板。该模板尚未经真实 CLI 实测（M0 V-1/V-2 待做），先用默认值。" />
+                                <CheckBox IsChecked="{Binding ShowCliWindow}"
+                                          Content="执行任务时弹出 CLI 原生控制台窗口（实时观察 TUI，关闭则后台无窗口运行）"
+                                          ToolTip.Tip="勾选后：执行任务会弹出 CLI 的独立控制台窗口，以真实 TTY 运行，可在窗口中直接看到实时信息。&#10;此模式下应用内实时输出流为空（窗口即实时视图），且自动应答/危险操作拦截失效，需人工值守窗口。&#10;不勾选（默认）：后台无窗口运行，输出经应用内实时输出流展示，自动应答与危险拦截照常生效。" />
+                                <TextBox Text="{Binding DefaultWorkspace}" PlaceholderText="本批默认工作空间（命名空间名或目录）"
+                                         ToolTip.Tip="本批所有未单独指定 workspace 的任务都在这里执行。&#10;可填命名空间名或绝对路径；留空 = 走 ② 里的全局默认空间；再落空 = 程序当前目录。" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- ② 工作空间 -->
+                        <Border Padding="12" CornerRadius="6" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="② 工作空间（任务 &gt; 本批默认 &gt; 全局默认 三级覆盖）" FontWeight="SemiBold"
+                                           ToolTip.Tip="决定 Agent 在哪个目录下干活。&#10;生效优先级：单任务的 workspace 字段 › 本批 default_workspace › 这里的全局默认 › 程序当前目录。" />
+                                <ListBox ItemsSource="{Binding Workspaces}" MaxHeight="160">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate DataType="domain:WorkspaceConfig">
+                                            <Grid ColumnDefinitions="160,*,Auto,Auto">
+                                                <TextBox Grid.Column="0" Text="{Binding Name}" PlaceholderText="名称"
+                                                         ToolTip.Tip="命名空间名。任务文件里写 workspace: &quot;这里的名字&quot; 就会解析到这条对应的目录。" />
+                                                <TextBox Grid.Column="1" Text="{Binding Path}" Margin="6,0" PlaceholderText="目录路径"
+                                                         ToolTip.Tip="真实目录路径。&#10;预检时目录不存在或无访问权限会直接报错拦住启动——这是有意设计，避免 Agent 在错误目录里乱改文件。" />
+                                                <CheckBox Grid.Column="2" Content="全局默认" IsChecked="{Binding IsGlobalDefault}"
+                                                          ToolTip.Tip="勾中的这条作为全局默认空间，所有未指定 workspace 的任务都在这里执行。" />
+                                                <Button Grid.Column="3" Content="删除" Margin="6,0,0,0"
+                                                        Command="{Binding $parent[UserControl].DataContext.RemoveWorkspaceCommand}" CommandParameter="{Binding}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                                <Button Content="添加工作空间" Command="{Binding AddWorkspaceCommand}" HorizontalAlignment="Left" />
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ===================== 标签页 2：账号与模型 ===================== -->
+            <TabItem Header="账号与模型">
+                <ScrollViewer>
+                    <StackPanel Spacing="10" Margin="4">
+
+                        <!-- 模型池模式（单一数据源，消除全局列表与每账号池双写） -->
+                        <Border Padding="12" CornerRadius="6" Background="{DynamicResource WarningSoftBrush}" BorderBrush="{DynamicResource WarningBrush}" BorderThickness="1">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="模型池维护方式" FontWeight="SemiBold" />
+                                <StackPanel Orientation="Horizontal" Spacing="20">
+                                    <RadioButton GroupName="ModelPoolMode" IsChecked="{Binding SharedMode}"
+                                                 Content="所有账号共用一份（推荐新手，维护最简单）" />
+                                    <RadioButton GroupName="ModelPoolMode" IsChecked="{Binding PerAccountMode}"
+                                                 Content="每个账号单独配置（不同账号可用不同模型组合）" />
+                                </StackPanel>
+                                <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" TextWrapping="Wrap"
+                                           Text="二者为同一份数据的两种维护视图：切到「每账号独立」会把当前共享列表复制到各账号；切回「共享」会把各账号模型合并为一份并清空账号自有池。保存时只写入当前模式对应的那一份，杜绝重复。" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- ③ 共享模型池 -->
+                        <Border Padding="12" CornerRadius="6" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1"
+                                IsVisible="{Binding IsSharedMode}">
+                            <StackPanel Spacing="6">
+                                <Grid ColumnDefinitions="*,Auto">
+                                    <TextBlock Grid.Column="0" Text="③ 共享候选模型列表（所有账号通用，列表顺序 = 降级优先级）" FontWeight="SemiBold"
+                                               ToolTip.Tip="所有账号都使用这一份候选模型池。&#10;点「拉取可用模型」可从当前执行工具实时读取支持的模型名，再在下拉里直接选择，避免手输错误。" />
+                                    <Button Grid.Column="1" Content="拉取可用模型" Command="{Binding FetchModelsCommand}"
+                                            IsEnabled="{Binding !IsFetchingModels}" />
+                                </Grid>
+                                <ListBox ItemsSource="{Binding Models}" MaxHeight="320">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate DataType="models:ModelEditor">
+                                            <Border Padding="8" Margin="0,2" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
+                                                <StackPanel Spacing="4">
+                                                    <Grid ColumnDefinitions="240,Auto,Auto,Auto,Auto">
+                                                        <ComboBox Grid.Column="0" IsEditable="True" MinWidth="220"
+                                                                  ItemsSource="{Binding $parent[UserControl].DataContext.AvailableModels}"
+                                                                  Text="{Binding Name, Mode=TwoWay}"
+                                                                  PlaceholderText="模型标识（可下拉选择或手输）"
+                                                                  ToolTip.Tip="模型标识，原样传给 CLI 的 --model。&#10;建议先点「拉取可用模型」再从下拉选，避免拼写错误；也可直接手输自定义标识。">
+                                                            <ComboBox.ItemTemplate>
+                                                                <DataTemplate>
+                                                                    <Grid ColumnDefinitions="*,Auto" MinWidth="200">
+                                                                        <TextBlock Text="{Binding Name}" />
+                                                                        <TextBlock Grid.Column="1" Text="{Binding DiscountDisplay}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,0"
+                                                                                   IsVisible="{Binding DiscountDisplay, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                                                    </Grid>
+                                                                </DataTemplate>
+                                                            </ComboBox.ItemTemplate>
+                                                        </ComboBox>
+                                                        <CheckBox Grid.Column="1" Content="配置免费时段" Margin="8,0" IsChecked="{Binding WindowEnabled}"
+                                                                  ToolTip.Tip="不勾 = 全天可用。&#10;勾上后按本机挂钟时间判定，不在窗口内 → 该组合「时段外跳过」。" />
+                                                        <Button Grid.Column="2" Content="↑" Margin="4,0" Command="{Binding $parent[UserControl].DataContext.MoveModelUpCommand}" CommandParameter="{Binding}" ToolTip.Tip="上移：提高该模型的降级优先级。" />
+                                                        <Button Grid.Column="3" Content="↓" Command="{Binding $parent[UserControl].DataContext.MoveModelDownCommand}" CommandParameter="{Binding}" ToolTip.Tip="下移：降低该模型的降级优先级。" />
+                                                        <Button Grid.Column="4" Content="删除" Margin="4,0,0,0" Command="{Binding $parent[UserControl].DataContext.RemoveModelCommand}" CommandParameter="{Binding}" />
+                                                    </Grid>
+                                                    <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding WindowEnabled}">
+                                                        <TextBlock Text="起" VerticalAlignment="Center" ToolTip.Tip="时段开始，HH:mm。结束时间早于开始时间视为跨零点。" />
+                                                        <TextBox Text="{Binding StartText}" Width="70" />
+                                                        <TextBlock Text="止" VerticalAlignment="Center" ToolTip.Tip="时段结束，HH:mm。跨零点示例：22:00 → 06:00。" />
+                                                        <TextBox Text="{Binding EndText}" Width="70" />
+                                                        <CheckBox Content="一" IsChecked="{Binding Mon}" ToolTip.Tip="星期过滤的语义是「时段覆盖日」：跨零点时段会同时看开始日与结束日。七天全勾 = 不过滤。" />
+                                                        <CheckBox Content="二" IsChecked="{Binding Tue}" />
+                                                        <CheckBox Content="三" IsChecked="{Binding Wed}" />
+                                                        <CheckBox Content="四" IsChecked="{Binding Thu}" />
+                                                        <CheckBox Content="五" IsChecked="{Binding Fri}" />
+                                                        <CheckBox Content="六" IsChecked="{Binding Sat}" />
+                                                        <CheckBox Content="日" IsChecked="{Binding Sun}" />
+                                                    </StackPanel>
+                                                    <TextBlock Text="{Binding Preview}" FontSize="12" Foreground="{DynamicResource PrimaryBrush}" ToolTip.Tip="时段的人话预览，确认跨零点与星期过滤是否配对。" />
+                                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                                        <TextBlock Text="预估单价(元/次)" VerticalAlignment="Center" FontSize="12"
+                                                                   ToolTip.Tip="仅当 CLI 不返回用量/费用数据时，用于「调用次数 × 预估单价」的估算口径。&#10;留空 = 不统计花费。" />
+                                                        <TextBox Text="{Binding UnitPriceText}" Width="90" />
+                                                        <TextBlock Text="折扣" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
+                                                                   ToolTip.Tip="折扣倍率：0.65 = 原价的 65%（界面显示 0.65x）。&#10;仅用于展示与人工对照，不参与调度判定。留空 = 不显示。" />
+                                                        <TextBox Text="{Binding DiscountText}" Width="60" />
+                                                        <Border CornerRadius="4" Padding="6,2" Background="{DynamicResource PrimaryBrush}" VerticalAlignment="Center"
+                                                                IsVisible="{Binding DiscountDisplay, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                                            <TextBlock Text="{Binding DiscountDisplay}" FontSize="12" FontWeight="SemiBold" Foreground="White" />
+                                                        </Border>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                                <Button Content="添加候选模型" Command="{Binding AddModelCommand}" HorizontalAlignment="Left" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- ④ 每账号模型池 -->
+                        <Border Padding="12" CornerRadius="6" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1"
+                                IsVisible="{Binding IsPerAccountMode}">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="④ 账号池（每个账号编排自己的候选/兜底模型池；凭据仅存引用，不明文保存）" FontWeight="SemiBold"
+                                           ToolTip.Tip="此处只做两件事：启用/停用账号、编排该账号自己的候选与兜底模型池。&#10;账号的新增、登录、切换、删除统一在「账号与登录」页完成；账号信息在此只读。&#10;降级矩阵 = 各启用账号 × 其自有候选池（未配置自有池的账号回退共享列表）。&#10;凭据只存「引用」，明文一律不落盘、不写日志（PRD 第 8 章）。" />
+                                <ListBox ItemsSource="{Binding Accounts}" MaxHeight="640">
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate DataType="models:AccountEditor">
+                                            <Border Padding="8" Margin="0,2" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
+                                                <StackPanel Spacing="6">
+                                                    <Grid ColumnDefinitions="140,180,*,Auto">
+                                                        <TextBlock Grid.Column="0" Text="{Binding Id}" VerticalAlignment="Center" FontWeight="SemiBold"
+                                                                   ToolTip.Tip="账号标识（只读，在「账号与登录」页维护），额度冷却记录与 Vault 快照目录都按它命名。" />
+                                                        <TextBlock Grid.Column="1" Text="{Binding DisplayName}" Margin="6,0" VerticalAlignment="Center"
+                                                                   ToolTip.Tip="显示名（只读），界面与报告里显示的名字。" />
+                                                        <TextBlock Grid.Column="2" Text="{Binding CredentialRef, TargetNullValue=(默认取账号 ID)}" Margin="6,0"
+                                                                   VerticalAlignment="Center" Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                   ToolTip.Tip="凭据「引用」（只读），不是密码。默认语义 = Vault 内账号目录名（与账号 ID 一致）。" />
+                                                        <CheckBox Grid.Column="3" Content="启用" Margin="8,0" IsChecked="{Binding Enabled}"
+                                                                  ToolTip.Tip="停用的账号会被整个降级矩阵跳过。预检失败/无 Vault 快照会被自动置为停用。" />
+                                                    </Grid>
+
+                                                    <TextBlock Text="{Binding SnapshotStatus}" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                                                               IsVisible="{Binding SnapshotStatus, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+
+                                                    <!-- 该账号自有候选模型池 -->
+                                                    <Grid ColumnDefinitions="*,Auto">
+                                                        <TextBlock Grid.Column="0" Text="该账号的候选模型池（有序；未配置任何一条 = 回退共享列表）" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                                                                   ToolTip.Tip="列表顺序 = 该账号内的降级优先级，第一个是该账号的首选模型。" />
+                                                        <Button Grid.Column="1" Content="拉取该账号可用模型" Command="{Binding $parent[ListBox].DataContext.FetchModelsForAccountCommand}" CommandParameter="{Binding}"
+                                                                IsEnabled="{Binding !IsFetchingModels}" HorizontalAlignment="Right" />
+                                                    </Grid>
+                                                    <ItemsControl ItemsSource="{Binding Models}">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <StackPanel Spacing="2" Margin="0,2">
+                                                                    <Grid ColumnDefinitions="220,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto">
+                                                                        <ComboBox Grid.Column="0" IsEditable="True" MinWidth="200"
+                                                                                  ItemsSource="{Binding $parent[ItemsControl].DataContext.AvailableModels}"
+                                                                                  Text="{Binding Name, Mode=TwoWay}"
+                                                                                  PlaceholderText="模型标识（可下拉选择或手输）"
+                                                                                  ToolTip.Tip="模型标识，原样传给 CLI 的 --model。建议先拉取再从下拉选，避免拼写错误。">
+                                                                            <ComboBox.ItemTemplate>
+                                                                                <DataTemplate>
+                                                                                    <Grid ColumnDefinitions="*,Auto" MinWidth="180">
+                                                                                        <TextBlock Text="{Binding Name}" />
+                                                                                        <TextBlock Grid.Column="1" Text="{Binding DiscountDisplay}" FontSize="11" FontWeight="SemiBold" Foreground="{DynamicResource PrimaryBrush}" Margin="8,0,0,0"
+                                                                                                   IsVisible="{Binding DiscountDisplay, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                                                                    </Grid>
+                                                                                </DataTemplate>
+                                                                            </ComboBox.ItemTemplate>
+                                                                        </ComboBox>
+                                                                        <CheckBox Grid.Column="1" Content="免费时段" Margin="8,0" IsChecked="{Binding WindowEnabled}"
+                                                                                  ToolTip.Tip="不勾 = 全天可用。时段按「账号 × 模型」组合生效。" />
+                                                                        <TextBox Grid.Column="2" Text="{Binding StartText}" Width="60" IsVisible="{Binding WindowEnabled}" />
+                                                                        <TextBlock Grid.Column="3" Text="→" Margin="4,0" VerticalAlignment="Center" IsVisible="{Binding WindowEnabled}" />
+                                                                        <TextBox Grid.Column="4" Text="{Binding EndText}" Width="60" IsVisible="{Binding WindowEnabled}" />
+                                                                        <TextBox Grid.Column="5" Text="{Binding UnitPriceText}" Width="70" Margin="8,0,0,0"
+                                                                                 ToolTip.Tip="预估单价（元/次），CLI 不返回费用时用于估算口径。留空 = 不统计。" />
+                                                                        <StackPanel Grid.Column="6" Orientation="Horizontal" Margin="8,0,0,0" Spacing="4">
+                                                                            <TextBlock Text="折扣" VerticalAlignment="Center" FontSize="11" FontWeight="SemiBold"
+                                                                                       ToolTip.Tip="折扣倍率：0.65 = 原价的 65%（界面显示 0.65x）。&#10;仅用于展示与人工对照（对齐模型选择器的折扣列），不参与调度判定。留空 = 不显示。" />
+                                                                            <TextBox Text="{Binding DiscountText}" Width="46"
+                                                                                     ToolTip.Tip="折扣倍率：0.65 = 原价的 65%（界面显示 0.65x）。&#10;仅用于展示与人工对照（对齐模型选择器的折扣列），不参与调度判定。留空 = 不显示。" />
+                                                                            <Border CornerRadius="4" Padding="6,1" Background="{DynamicResource PrimaryBrush}" VerticalAlignment="Center"
+                                                                                    IsVisible="{Binding DiscountDisplay, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                                                                                <TextBlock Text="{Binding DiscountDisplay}" FontSize="11" FontWeight="SemiBold" Foreground="White" />
+                                                                            </Border>
+                                                                        </StackPanel>
+                                                                        <Button Grid.Column="7" Content="↑" Margin="4,0" Command="{Binding $parent[ItemsControl].DataContext.MoveModelUpCommand}" CommandParameter="{Binding}" />
+                                                                        <Button Grid.Column="8" Content="↓" Margin="4,0" Command="{Binding $parent[ItemsControl].DataContext.MoveModelDownCommand}" CommandParameter="{Binding}" />
+                                                                        <Button Grid.Column="9" Content="删除" Margin="4,0" Command="{Binding $parent[ItemsControl].DataContext.RemoveModelCommand}" CommandParameter="{Binding}" />
+                                                                    </Grid>
+                                                                    <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding WindowEnabled}">
+                                                                        <CheckBox Content="一" IsChecked="{Binding Mon}" />
+                                                                        <CheckBox Content="二" IsChecked="{Binding Tue}" />
+                                                                        <CheckBox Content="三" IsChecked="{Binding Wed}" />
+                                                                        <CheckBox Content="四" IsChecked="{Binding Thu}" />
+                                                                        <CheckBox Content="五" IsChecked="{Binding Fri}" />
+                                                                        <CheckBox Content="六" IsChecked="{Binding Sat}" />
+                                                                        <CheckBox Content="日" IsChecked="{Binding Sun}" />
+                                                                        <TextBlock Text="{Binding Preview}" FontSize="12" Foreground="{DynamicResource PrimaryBrush}" VerticalAlignment="Center" />
+                                                                    </StackPanel>
+                                                                </StackPanel>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                    <Button Content="添加该账号的候选模型" Command="{Binding AddModelCommand}" HorizontalAlignment="Left" />
+
+                                                    <!-- 该账号自有兜底模型池 -->
+                                                    <TextBlock Text="该账号的兜底模型池（有序；不参与免费时段过滤，兜底触发时按账号顺序 × 池内顺序取第一个）" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}"
+                                                               ToolTip.Tip="兜底总开关与成本上限在「兜底与关机」页全局配置（默认关闭）。&#10;兜底模型不参与免费时段过滤，保证断点任务能收尾。" />
+                                                    <ItemsControl ItemsSource="{Binding FallbackModels}">
+                                                        <ItemsControl.ItemTemplate>
+                                                            <DataTemplate>
+                                                                <Grid ColumnDefinitions="200,*" Margin="0,2">
+                                                                    <ComboBox Grid.Column="0" IsEditable="True" MinWidth="180"
+                                                                              ItemsSource="{Binding $parent[ItemsControl].DataContext.AvailableModels}"
+                                                                              Text="{Binding Name, Mode=TwoWay}"
+                                                                              PlaceholderText="兜底模型标识（可下拉选择或手输）">
+                                                                        <ComboBox.ItemTemplate>
+                                                                            <DataTemplate>
+                                                                                <Grid ColumnDefinitions="*,Auto" MinWidth="160">
+                                                                                    <TextBlock Text="{Binding Name}" />
+                                                                                    <TextBlock Grid.Column="1" Text="{Binding DiscountDisplay}" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" Margin="8,0,0,0"
+                                                                                               IsVisible="{Binding DiscountDisplay, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                                                                </Grid>
+                                                                            </DataTemplate>
+                                                                        </ComboBox.ItemTemplate>
+                                                                    </ComboBox>
+                                                                    <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0">
+                                                                        <TextBlock Text="预估单价(元/次)" VerticalAlignment="Center" FontSize="12" />
+                                                                        <TextBox Text="{Binding UnitPriceText}" Width="70" Margin="6,0" />
+                                                                        <Button Content="删除" Command="{Binding $parent[ItemsControl].DataContext.RemoveFallbackModelCommand}" CommandParameter="{Binding}" />
+                                                                    </StackPanel>
+                                                                </Grid>
+                                                            </DataTemplate>
+                                                        </ItemsControl.ItemTemplate>
+                                                    </ItemsControl>
+                                                    <Button Content="添加该账号的兜底模型" Command="{Binding AddFallbackModelCommand}" HorizontalAlignment="Left" />
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- ⑤ 专家 -->
+                        <Border Padding="12" CornerRadius="6" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="⑤ 执行专家 / 专家团（未指定则使用默认智能体）" FontWeight="SemiBold"
+                                           ToolTip.Tip="可选功能。指定后会把专家 ID 填进参数模板的 {expert} 占位符。" />
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <TextBlock Text="类型" VerticalAlignment="Center" ToolTip.Tip="None = 不指定，走 CLI 默认智能体；Single = 单专家；Team = 专家团。" />
+                                    <ComboBox ItemsSource="{Binding ExpertKinds}" SelectedItem="{Binding ExpertKind}" MinWidth="140" />
+                                    <TextBlock Text="ID" VerticalAlignment="Center" ToolTip.Tip="专家 / 专家团的 ID，填进 {expert} 占位符。" />
+                                    <TextBox Text="{Binding ExpertId}" Width="180" />
+                                    <TextBlock Text="显示名" VerticalAlignment="Center" ToolTip.Tip="仅用于任务文件的 expert_used 字段与报告展示，不影响执行。" />
+                                    <TextBox Text="{Binding ExpertDisplayName}" Width="180" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ===================== 标签页 3：调度与重试 ===================== -->
+            <TabItem Header="调度与重试">
+                <ScrollViewer>
+                    <StackPanel Spacing="10" Margin="4">
+
+                        <!-- ⑦ 并发 / 重试 / 超时 / 上限 -->
+                        <Border Padding="12" CornerRadius="6" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="⑦ 并发 · 重试 · 超时 · 单任务上限" FontWeight="SemiBold"
+                                           ToolTip.Tip="这组是从窄到宽的四层闸门：&#10;单次执行超时 → 单任务总时长 → 单任务总尝试次数 → 单批最长可等待。" />
+                                <WrapPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
+                                        <TextBlock Text="并发数" VerticalAlignment="Center" Width="80" ToolTip.Tip="同时执行的任务数。1 = 严格串行（推荐）。&gt;1 更容易撞限流。" />
+                                        <TextBox Text="{Binding Concurrency}" Width="70" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
+                                        <TextBlock Text="普通重试" VerticalAlignment="Center" Width="80" ToolTip.Tip="普通失败（非限流 / 非额度 / 非危险操作）的重试次数。0 = 不重试。" />
+                                        <TextBox Text="{Binding MaxRetries}" Width="70" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
+                                        <TextBlock Text="限流退避" VerticalAlignment="Center" Width="80" ToolTip.Tip="临时限流（429 之类）的退避重试次数。用完仍失败才升级为「额度耗尽」去切组合。" />
+                                        <TextBox Text="{Binding RateLimitRetries}" Width="70" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
+                                        <TextBlock Text="单任务超时(分)" VerticalAlignment="Center" Width="110" ToolTip.Tip="单次执行超时（分钟）。超时判该次失败，部分输出会标注「部分输出」。" />
+                                        <TextBox Text="{Binding TaskTimeoutMinutes}" Width="70" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
+                                        <TextBlock Text="总尝试上限" VerticalAlignment="Center" Width="90" ToolTip.Tip="单任务总尝试次数上限（切模型/切账号/退避都算一次）。防无限转圈。" />
+                                        <TextBox Text="{Binding MaxAttempts}" Width="70" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
+                                        <TextBlock Text="总时长上限(分)" VerticalAlignment="Center" Width="110" ToolTip.Tip="单任务总时长上限（分钟），从任务开始计时，含所有重试与切换。" />
+                                        <TextBox Text="{Binding MaxTotalMinutes}" Width="70" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
+                                        <TextBlock Text="最长可等待(分)" VerticalAlignment="Center" Width="110" ToolTip.Tip="所有组合都不可用时：最早恢复在此之内 → 进入等待恢复；超出 → 转已阻塞。" />
+                                        <TextBox Text="{Binding MaxWaitMinutes}" Width="70" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
+                                        <TextBlock Text="默认冷却(分)" VerticalAlignment="Center" Width="110" ToolTip.Tip="CLI 报错解析不到「额度重置时间」时的降级冷却时长。冷却记录落盘，重启仍有效。" />
+                                        <TextBox Text="{Binding DefaultCooldownMinutes}" Width="70" />
+                                    </StackPanel>
+                                </WrapPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="16">
+                                    <CheckBox Content="强制重跑（忽略已完成状态）" IsChecked="{Binding ForceRerun}" ToolTip.Tip="勾上 = 忽略已完成状态全部重跑。不勾 = 已 done/failed 跳过（续跑语义）。" />
+                                    <CheckBox Content="失败即停" IsChecked="{Binding StopOnFailure}" ToolTip.Tip="某条任务重试用尽仍失败时，整批立刻转「已阻塞」。" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- ⑧ 危险操作白名单 -->
+                        <Border Padding="12" CornerRadius="6" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="⑧ 危险操作自动允许白名单（每行一条；黑名单命中一律拒绝）" FontWeight="SemiBold"
+                                           ToolTip.Tip="无人值守的安全阀。CLI 静默超 30 秒 → 判定在等确认 → 先查黑名单（拒绝并杀进程），再查白名单（允许），都没命中就注入默认应答。&#10;白名单优先级高于黑名单，别把危险词写进白名单。" />
+                                <TextBox Text="{Binding WhitelistText}" AcceptsReturn="True" Height="90"
+                                         PlaceholderText="每行一条，例如：读取文件 / 写入文件 / 运行测试"
+                                         ToolTip.Tip="命中即视为「这类确认你可以自己答」。判定基于关键词包含匹配，词条要覆盖 CLI 实际措辞。" />
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- ===================== 标签页 4：兜底与关机 ===================== -->
+            <TabItem Header="兜底与关机">
+                <ScrollViewer>
+                    <StackPanel Spacing="10" Margin="4">
+
+                        <!-- ⑥ 兜底 -->
+                        <Border Padding="12" CornerRadius="6" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="⑥ 特殊模型兜底 · 全局开关与成本上限（默认关闭；兜底模型池在「账号与模型」按账号配置）" FontWeight="SemiBold"
+                                           ToolTip.Tip="用付费模型给任务收尾。默认关闭，因为它是花钱的。&#10;触发需同时满足：当前任务未完成 + 免费组合矩阵全部不可用 + 兜底已开启且未超成本上限。" />
+                                <CheckBox Content="启用兜底（免费组合当前不可用且任务未完成时收尾）" IsChecked="{Binding FallbackEnabled}"
+                                          ToolTip.Tip="至少一个启用账号配置了兜底模型池才具备兜底能力。" />
+                                <StackPanel Orientation="Horizontal" Spacing="12">
+                                    <TextBlock Text="单任务上限" VerticalAlignment="Center" ToolTip.Tip="单个任务的兜底花费上限（元）。超了就不兜底，转等待或阻塞。" />
+                                    <TextBox Text="{Binding FallbackMaxPerTask}" Width="90" />
+                                    <TextBlock Text="单批总上限" VerticalAlignment="Center" ToolTip.Tip="整批的兜底花费总上限（元）。累计超了就停用兜底并转「已阻塞」。" />
+                                    <TextBox Text="{Binding FallbackMaxPerBatch}" Width="90" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                        <!-- ⑨ 自动关机 -->
+                        <Border Padding="12" CornerRadius="6" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="⑨ 批处理结束后自动关机（默认关闭，需显式开启）" FontWeight="SemiBold"
+                                           ToolTip.Tip="关机只在「批级状态为已完成」且结果 100% 落盘、报告写完之后才触发。" />
+                                <CheckBox Content="启用自动关机" IsChecked="{Binding ShutdownEnabled}" />
+                                <CheckBox Content="仅当失败率为 0 时关机" IsChecked="{Binding ShutdownOnlyZeroFailure}"
+                                          ToolTip.Tip="勾上 = 只有失败任务数为 0 才关机。不勾 = 允许带着 failed 关机（默认）。" />
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="可撤销倒计时(秒)" VerticalAlignment="Center" Width="140"
+                                               ToolTip.Tip="可撤销倒计时（秒）。当前 Windows 实现用立即关机指令，该值目前仅用于界面提示。" />
+                                    <TextBox Text="{Binding ShutdownCountdown}" Width="80" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+        </TabControl>
+
+        <!-- 底部：保存 -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" Spacing="12" Margin="12,8,12,12">
+            <Button Content="保存配置并重建引擎" Command="{Binding SaveCommand}" FontWeight="SemiBold"
+                    ToolTip.Tip="写回 %LOCALAPPDATA%\BatchAgentRunner\config.json 并重建调度引擎。&#10;注意：保存会重写整个文件，手写在文件里的注释会丢失。" />
+            <TextBlock Text="{Binding StatusMessage}" VerticalAlignment="Center" TextWrapping="Wrap" />
+        </StackPanel>
+
+        </Grid>
+</UserControl>

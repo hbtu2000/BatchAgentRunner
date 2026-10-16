@@ -1,0 +1,94 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ============ 控件全局样式（全站自动应用） ============ -->
+    <!-- 注意：Avalonia 12 不允许在 Styles 集合中放顶层 ControlTheme（运行时抛 InvalidOperationException），
+         因此用普通 Style + 选择器实现同等效果；Style 优先级高于 FluentTheme 的 ControlTheme，可正常覆盖。 -->
+    <!-- 按钮：统一圆角/描边/字体；:primary / :danger 变体；导航激活态由 StatusDotHelper.NavPage 注入 primary 类 -->
+    <Style Selector="Button">
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
+        <Setter Property="Padding" Value="12,7" />
+        <Setter Property="FontWeight" Value="Medium" />
+        <Setter Property="FontFamily" Value="{DynamicResource FontUi}" />
+        <Setter Property="Background" Value="{DynamicResource BgSurfaceBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+    <Style Selector="Button:pointerover">
+        <Setter Property="Background" Value="{DynamicResource BgHoverBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
+    </Style>
+    <Style Selector="Button:pressed">
+        <Setter Property="Background" Value="{DynamicResource BgActiveBrush}" />
+    </Style>
+    <Style Selector="Button:disabled">
+        <Setter Property="Opacity" Value="0.5" />
+    </Style>
+    <Style Selector="Button.primary">
+        <Setter Property="Background" Value="{DynamicResource PrimaryBrush}" />
+        <Setter Property="Foreground" Value="White" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.primary:pointerover">
+        <Setter Property="Background" Value="{DynamicResource PrimaryHoverBrush}" />
+    </Style>
+    <Style Selector="Button.danger">
+        <Setter Property="Background" Value="{DynamicResource ErrorBrush}" />
+        <Setter Property="Foreground" Value="White" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+    </Style>
+    <Style Selector="Button.danger:pointerover">
+        <Setter Property="Background" Value="#B91C1C" />
+    </Style>
+
+    <!-- 输入框统一描边与焦点环 -->
+    <Style Selector="TextBox">
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusSm}" />
+        <Setter Property="FontFamily" Value="{DynamicResource FontUi}" />
+        <Setter Property="Background" Value="{DynamicResource BgSurface2Brush}" />
+        <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderStrongBrush}" />
+    </Style>
+
+    <!-- ============ 状态点着色（class 命中，双主题自动切换） ============ -->
+    <!-- 任务 5 态 -->
+    <Style Selector="Ellipse.st-pending">
+        <Setter Property="Fill" Value="{DynamicResource StatusPendingBrush}" />
+    </Style>
+    <Style Selector="Ellipse.st-running">
+        <Setter Property="Fill" Value="{DynamicResource StatusRunningBrush}" />
+    </Style>
+    <Style Selector="Ellipse.st-done">
+        <Setter Property="Fill" Value="{DynamicResource StatusDoneBrush}" />
+    </Style>
+    <Style Selector="Ellipse.st-failed">
+        <Setter Property="Fill" Value="{DynamicResource StatusFailedBrush}" />
+    </Style>
+    <Style Selector="Ellipse.st-interrupted">
+        <Setter Property="Fill" Value="{DynamicResource StatusInterruptedBrush}" />
+    </Style>
+
+    <!-- 批级 6 态（主框架状态胶囊） -->
+    <Style Selector="Ellipse.batch-idle">
+        <Setter Property="Fill" Value="{DynamicResource BatchIdleBrush}" />
+    </Style>
+    <Style Selector="Ellipse.batch-running">
+        <Setter Property="Fill" Value="{DynamicResource BatchRunningBrush}" />
+    </Style>
+    <Style Selector="Ellipse.batch-waiting">
+        <Setter Property="Fill" Value="{DynamicResource BatchWaitingBrush}" />
+    </Style>
+    <Style Selector="Ellipse.batch-blocked">
+        <Setter Property="Fill" Value="{DynamicResource BatchBlockedBrush}" />
+    </Style>
+    <Style Selector="Ellipse.batch-terminated">
+        <Setter Property="Fill" Value="{DynamicResource BatchTerminatedBrush}" />
+    </Style>
+    <Style Selector="Ellipse.batch-completed">
+        <Setter Property="Fill" Value="{DynamicResource BatchCompletedBrush}" />
+    </Style>
+
+</Styles>

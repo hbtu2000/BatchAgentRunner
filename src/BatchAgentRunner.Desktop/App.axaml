@@ -1,0 +1,26 @@
+<Application xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             x:Class="BatchAgentRunner.Desktop.App"
+             xmlns:local="using:BatchAgentRunner.Desktop"
+             RequestedThemeVariant="Light">
+             <!-- 浅色优先（设计系统默认）；运行时通过主框架「主题切换」在 Light / Dark 间切换。 -->
+
+    <Application.DataTemplates>
+        <local:ViewLocator />
+    </Application.DataTemplates>
+
+    <Application.Styles>
+        <FluentTheme />
+        <!-- 全局状态点样式（class 着色，双主题自动切换） -->
+        <StyleInclude Source="avares://BatchAgentRunner.Desktop/Styles/GlobalStyles.axaml" />
+    </Application.Styles>
+
+    <Application.Resources>
+        <ResourceDictionary>
+            <ResourceDictionary.MergedDictionaries>
+                <!-- 设计系统 token / 控件主题 / 转换器 -->
+                <ResourceInclude Source="avares://BatchAgentRunner.Desktop/Styles/AppStyles.xaml" />
+            </ResourceDictionary.MergedDictionaries>
+        </ResourceDictionary>
+    </Application.Resources>
+</Application>

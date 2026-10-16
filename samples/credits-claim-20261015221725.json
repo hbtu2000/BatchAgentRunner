@@ -1,0 +1,30 @@
+{
+  "generated_at": "2026-10-15T22:17:25.4204613+08:00",
+  "cli": "CodeBuddy",
+  "records": [
+    {
+      "account_id": "acc-5",
+      "display_name": "1371455324",
+      "cli": "CodeBuddy",
+      "status": "Failed",
+      "error": "积分接口 GET /console/credits 返回 403：{\"error\":\"access_denied\",\"error_description\":\"not_authorized\"}",
+      "claimed_at": "2026-10-15T22:17:25.424794+08:00"
+    },
+    {
+      "account_id": "acc-6",
+      "display_name": "19267656150",
+      "cli": "CodeBuddy",
+      "status": "Failed",
+      "error": "积分接口 GET /console/credits 返回 403：{\"error\":\"access_denied\",\"error_description\":\"not_authorized\"}",
+      "claimed_at": "2026-10-15T22:17:26.4514134+08:00"
+    },
+    {
+      "account_id": "acc-4",
+      "display_name": "18902319064",
+      "cli": "CodeBuddy",
+      "status": "Failed",
+      "error": "积分接口 GET /console/credits 返回 403：{\"error\":\"access_denied\",\"error_description\":\"not_authorized\"}",
+      "claimed_at": "2026-10-15T22:17:26.7356415+08:00"
+    }
+  ]
+}

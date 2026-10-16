@@ -1,0 +1,118 @@
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:conv="using:BatchAgentRunner.Desktop.Converters">
+
+    <!-- ============ 共享 token（不随主题变） ============ -->
+    <!-- 注意：必须用 CornerRadius 而非 x:Double —— CornerRadius 属性经 DynamicResource 绑定时不做类型转换，
+         Double 会导致运行时 InvalidCastException -->
+    <CornerRadius x:Key="RadiusSm">6</CornerRadius>
+    <CornerRadius x:Key="RadiusMd">10</CornerRadius>
+    <CornerRadius x:Key="RadiusLg">14</CornerRadius>
+    <CornerRadius x:Key="RadiusPill">999</CornerRadius>
+
+    <Thickness x:Key="Space1">4</Thickness>
+    <Thickness x:Key="Space2">8</Thickness>
+    <Thickness x:Key="Space3">12</Thickness>
+    <Thickness x:Key="Space4">16</Thickness>
+    <Thickness x:Key="Space5">20</Thickness>
+    <Thickness x:Key="Space6">24</Thickness>
+
+    <FontFamily x:Key="FontUi">Segoe UI, Inter, system-ui, sans-serif</FontFamily>
+    <FontFamily x:Key="FontMono">JetBrains Mono, Cascadia Code, Consolas, monospace</FontFamily>
+
+    <!-- ============ 主题字典：Light / Dark（双主题仅换此处的色值） ============ -->
+    <ResourceDictionary.ThemeDictionaries>
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="BgAppBrush" Color="#F5F7FA" />
+            <SolidColorBrush x:Key="BgSurfaceBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="BgSurface2Brush" Color="#F0F3F7" />
+            <SolidColorBrush x:Key="BgHoverBrush" Color="#EAF0F7" />
+            <SolidColorBrush x:Key="BgActiveBrush" Color="#DCE7F3" />
+            <SolidColorBrush x:Key="BorderSubtleBrush" Color="#E3E8EF" />
+            <SolidColorBrush x:Key="BorderStrongBrush" Color="#C7D0DC" />
+            <SolidColorBrush x:Key="TextPrimaryBrush" Color="#1B2430" />
+            <SolidColorBrush x:Key="TextSecondaryBrush" Color="#5A6675" />
+            <SolidColorBrush x:Key="TextMutedBrush" Color="#8A95A3" />
+
+            <SolidColorBrush x:Key="PrimaryBrush" Color="#2563EB" />
+            <SolidColorBrush x:Key="PrimaryHoverBrush" Color="#1D4FD8" />
+            <SolidColorBrush x:Key="PrimarySoftBrush" Color="#E8F0FE" />
+            <SolidColorBrush x:Key="SuccessBrush" Color="#16A34A" />
+            <SolidColorBrush x:Key="SuccessSoftBrush" Color="#E6F6EC" />
+            <SolidColorBrush x:Key="WarningBrush" Color="#D97706" />
+            <SolidColorBrush x:Key="WarningSoftBrush" Color="#FDF0DB" />
+            <SolidColorBrush x:Key="ErrorBrush" Color="#DC2626" />
+            <SolidColorBrush x:Key="ErrorSoftBrush" Color="#FBE8E8" />
+            <SolidColorBrush x:Key="InfoBrush" Color="#2563EB" />
+            <SolidColorBrush x:Key="InfoSoftBrush" Color="#E8F0FE" />
+
+            <!-- 任务 5 态 -->
+            <SolidColorBrush x:Key="StatusPendingBrush" Color="#8A95A3" />
+            <SolidColorBrush x:Key="StatusRunningBrush" Color="#2563EB" />
+            <SolidColorBrush x:Key="StatusDoneBrush" Color="#16A34A" />
+            <SolidColorBrush x:Key="StatusFailedBrush" Color="#DC2626" />
+            <SolidColorBrush x:Key="StatusInterruptedBrush" Color="#D97706" />
+
+            <!-- 批级 6 态 -->
+            <SolidColorBrush x:Key="BatchIdleBrush" Color="#8A95A3" />
+            <SolidColorBrush x:Key="BatchRunningBrush" Color="#2563EB" />
+            <SolidColorBrush x:Key="BatchWaitingBrush" Color="#D97706" />
+            <SolidColorBrush x:Key="BatchBlockedBrush" Color="#DC2626" />
+            <SolidColorBrush x:Key="BatchTerminatedBrush" Color="#8A95A3" />
+            <SolidColorBrush x:Key="BatchCompletedBrush" Color="#16A34A" />
+        </ResourceDictionary>
+
+        <ResourceDictionary x:Key="Dark">
+            <SolidColorBrush x:Key="BgAppBrush" Color="#0F1419" />
+            <SolidColorBrush x:Key="BgSurfaceBrush" Color="#1A2029" />
+            <SolidColorBrush x:Key="BgSurface2Brush" Color="#222A35" />
+            <SolidColorBrush x:Key="BgHoverBrush" Color="#2A3441" />
+            <SolidColorBrush x:Key="BgActiveBrush" Color="#33404F" />
+            <SolidColorBrush x:Key="BorderSubtleBrush" Color="#2C3542" />
+            <SolidColorBrush x:Key="BorderStrongBrush" Color="#3C4858" />
+            <SolidColorBrush x:Key="TextPrimaryBrush" Color="#E8EDF3" />
+            <SolidColorBrush x:Key="TextSecondaryBrush" Color="#A6B2C0" />
+            <SolidColorBrush x:Key="TextMutedBrush" Color="#6B7686" />
+
+            <SolidColorBrush x:Key="PrimaryBrush" Color="#4C8DFF" />
+            <SolidColorBrush x:Key="PrimaryHoverBrush" Color="#6BA0FF" />
+            <SolidColorBrush x:Key="PrimarySoftBrush" Color="#1E2C44" />
+            <SolidColorBrush x:Key="SuccessBrush" Color="#3FCB6E" />
+            <SolidColorBrush x:Key="SuccessSoftBrush" Color="#15301F" />
+            <SolidColorBrush x:Key="WarningBrush" Color="#F5A623" />
+            <SolidColorBrush x:Key="WarningSoftBrush" Color="#33260F" />
+            <SolidColorBrush x:Key="ErrorBrush" Color="#F2655E" />
+            <SolidColorBrush x:Key="ErrorSoftBrush" Color="#341A1A" />
+            <SolidColorBrush x:Key="InfoBrush" Color="#4C8DFF" />
+            <SolidColorBrush x:Key="InfoSoftBrush" Color="#1E2C44" />
+
+            <!-- 任务 5 态 -->
+            <SolidColorBrush x:Key="StatusPendingBrush" Color="#6B7686" />
+            <SolidColorBrush x:Key="StatusRunningBrush" Color="#4C8DFF" />
+            <SolidColorBrush x:Key="StatusDoneBrush" Color="#3FCB6E" />
+            <SolidColorBrush x:Key="StatusFailedBrush" Color="#F2655E" />
+            <SolidColorBrush x:Key="StatusInterruptedBrush" Color="#F5A623" />
+
+            <!-- 批级 6 态 -->
+            <SolidColorBrush x:Key="BatchIdleBrush" Color="#6B7686" />
+            <SolidColorBrush x:Key="BatchRunningBrush" Color="#4C8DFF" />
+            <SolidColorBrush x:Key="BatchWaitingBrush" Color="#F5A623" />
+            <SolidColorBrush x:Key="BatchBlockedBrush" Color="#F2655E" />
+            <SolidColorBrush x:Key="BatchTerminatedBrush" Color="#6B7686" />
+            <SolidColorBrush x:Key="BatchCompletedBrush" Color="#3FCB6E" />
+        </ResourceDictionary>
+    </ResourceDictionary.ThemeDictionaries>
+
+    <!-- ============ 控件主题（显式引用） ============ -->
+    <!-- 卡片：统一表面 + 描边 + 圆角（页面内用 Theme={StaticResource Card} 引用） -->
+    <ControlTheme x:Key="Card" TargetType="Border">
+        <Setter Property="Background" Value="{DynamicResource BgSurfaceBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource BorderSubtleBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="CornerRadius" Value="{DynamicResource RadiusMd}" />
+    </ControlTheme>
+
+    <!-- ============ 转换器实例 ============ -->
+    <conv:EqualsTextConverter x:Key="EqualsTextConverter" />
+
+</ResourceDictionary>

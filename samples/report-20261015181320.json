@@ -1,0 +1,69 @@
+{
+  "generated_at": "2026-10-15T18:13:20.8262132+08:00",
+  "batch_status": "Completed",
+  "task_file": "E:/Src/CodeBak/WorkAgent/samples/tasks.json",
+  "total": 8,
+  "done": 7,
+  "failed": 1,
+  "interrupted": 0,
+  "pending": 0,
+  "skipped_already_done": 3,
+  "started_at": "2026-10-15T18:10:09.1068185+08:00",
+  "finished_at": "2026-10-15T18:13:20.8262132+08:00",
+  "duration_seconds": 191.7,
+  "account_usage": [
+    {
+      "name": "账号 2",
+      "task_count": 4
+    },
+    {
+      "name": "18902319064",
+      "task_count": 1
+    }
+  ],
+  "model_usage": [
+    {
+      "name": "hy3",
+      "task_count": 5
+    }
+  ],
+  "timeline": [
+    {
+      "at": "2026-10-15T18:12:36.8648181+08:00",
+      "kind": "切换",
+      "message": "账号 2 + hy3 → 18902319064 + hy3",
+      "task_id": "td-008-pending-unknown-field",
+      "account": "18902319064",
+      "model": "hy3"
+    },
+    {
+      "at": "2026-10-15T18:13:01.8839849+08:00",
+      "kind": "切换",
+      "message": "18902319064 + hy3 → 18902319064 + hy3",
+      "task_id": "td-008-pending-unknown-field",
+      "account": "18902319064",
+      "model": "hy3"
+    }
+  ],
+  "fallback": {
+    "used_count": 0,
+    "total_cost": 0,
+    "cost_basis": "Estimated",
+    "stopped_by_limit": false
+  },
+  "failed_tasks": [
+    {
+      "task_id": "td-006-failed-retries-exhausted",
+      "error": "任务级错误：目标文件不存在且无创建依据（TaskError）",
+      "retry_count": 2,
+      "model": "model-a",
+      "account": "acc-1"
+    }
+  ],
+  "window_wait_seconds": 0,
+  "cooldown_wait_seconds": 0,
+  "shutdown": {
+    "requested": false,
+    "executed": false
+  }
+}

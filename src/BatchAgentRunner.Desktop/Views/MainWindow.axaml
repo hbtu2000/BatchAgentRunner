@@ -1,0 +1,82 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:BatchAgentRunner.Desktop.ViewModels"
+        xmlns:conv="using:BatchAgentRunner.Desktop.Converters"
+        mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="800"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        x:Class="BatchAgentRunner.Desktop.Views.MainWindow"
+        Icon="/Assets/app-icon.ico"
+        Title="AI 批处理任务调度工具 · Batch Agent Runner"
+        Width="1280" Height="880"
+        Background="{DynamicResource BgAppBrush}">
+
+    <Design.DataContext>
+        <vm:MainViewModel />
+    </Design.DataContext>
+
+    <Grid RowDefinitions="Auto,*" ColumnDefinitions="220,*">
+
+        <!-- 顶部状态条 -->
+        <Border Grid.Row="0" Grid.ColumnSpan="2" Padding="14,10"
+                BorderThickness="0,0,0,1" BorderBrush="{DynamicResource BorderSubtleBrush}"
+                Background="{DynamicResource BgSurfaceBrush}">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+                <TextBlock Grid.Column="0" Text="AI 批处理任务调度工具" FontSize="16" FontWeight="SemiBold"
+                           VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
+
+                <!-- 批级状态胶囊：点 + 文字（颜色随状态，双主题） -->
+                <Border Grid.Column="1" Margin="16,0,0,0" Padding="10,4" CornerRadius="{DynamicResource RadiusPill}"
+                        Background="{DynamicResource BgSurface2Brush}" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Ellipse Width="8" Height="8" VerticalAlignment="Center"
+                                 conv:StatusDotHelper.BatchStatusText="{Binding StatusText}" />
+                        <TextBlock Text="{Binding StatusText}" FontWeight="SemiBold" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                    </StackPanel>
+                </Border>
+
+                <TextBlock Grid.Column="3" VerticalAlignment="Center" FontSize="12"
+                           Foreground="{DynamicResource TextMutedBrush}"
+                           Text="{Binding ConfigDirectory, StringFormat='配置目录：{0}'}" />
+
+                <!-- 主题切换 -->
+                <Button Grid.Column="4" Content="{Binding Theme, StringFormat='主题：{0}'}"
+                        Command="{Binding ToggleThemeCommand}"
+                        VerticalAlignment="Center" Margin="12,0,0,0" />
+            </Grid>
+        </Border>
+
+        <!-- 左侧导航 -->
+        <Border Grid.Row="1" Grid.Column="0" Padding="10" BorderThickness="0,0,1,0"
+                BorderBrush="{DynamicResource BorderSubtleBrush}" Background="{DynamicResource BgSurfaceBrush}">
+            <Grid RowDefinitions="Auto,*,Auto">
+                <StackPanel Grid.Row="0" Spacing="6">
+                    <Button Content="配置中心" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            Command="{Binding NavigateCommand}" CommandParameter="confighub"
+                            conv:StatusDotHelper.NavPage="confighub"
+                            conv:StatusDotHelper.NavActivePage="{Binding ActivePage}" />
+                    <Button Content="执行监控" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            Command="{Binding NavigateCommand}" CommandParameter="monitor"
+                            conv:StatusDotHelper.NavPage="monitor"
+                            conv:StatusDotHelper.NavActivePage="{Binding ActivePage}" />
+                    <Button Content="运行报告" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            Command="{Binding NavigateCommand}" CommandParameter="report"
+                            conv:StatusDotHelper.NavPage="report"
+                            conv:StatusDotHelper.NavActivePage="{Binding ActivePage}" />
+                </StackPanel>
+
+                <StackPanel Grid.Row="2" Spacing="6">
+                    <TextBlock Text="{Binding Theme, StringFormat='当前主题：{0}'}" FontSize="11"
+                               Foreground="{DynamicResource TextMutedBrush}" />
+                    <TextBlock Text="BatchAgentRunner v1.0" FontSize="11"
+                               Foreground="{DynamicResource TextMutedBrush}" />
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- 内容区 -->
+        <ContentControl Grid.Row="1" Grid.Column="1" Content="{Binding CurrentPage}" />
+
+    </Grid>
+</Window>

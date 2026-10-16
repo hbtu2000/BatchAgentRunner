@@ -1,0 +1,170 @@
+// ============================================================================
+// BatchAgentRunner 任务测试数据（混合状态 + 边界场景）
+// ----------------------------------------------------------------------------
+// 用途：配合 agent_kind = "Mock" 做端到端自测，覆盖以下场景：
+//   ① 续跑语义     —— status = done / failed 的任务默认跳过，force_rerun=true 才重跑
+//   ② 三级 workspace 覆盖 —— 命名空间名 / 绝对路径 / 留空（走全局默认）
+//   ③ 部分输出     —— Interrupted 任务的 result 以「[部分输出]」开头（HasPartialResult）
+//   ④ 兜底口径     —— fallback_used + fallback_cost 进报告统计
+//   ⑤ 前向兼容     —— 含未知字段 future_field，反序列化应忽略不报错
+//   ⑥ 报告统计     —— done/failed/interrupted/pending 各占若干，验证汇总数字
+//
+// 用法：把 config.json 的 task_file_path 指到本文件即可；JSON 格式为原地回写，
+//       状态与结果会直接写回本文件（已做自动备份，见 backup_retention）。
+// 注：JSON 里允许 // 注释，但程序回写后注释会丢失；本文件仅作一次性测试输入。
+// ============================================================================
+
+[
+  // 场景①②：普通 pending 任务，workspace 留空 → 走全局默认空间
+  {
+    "id": "td-001-pending-default-ws",
+    "workspace": "",
+    "instruction": "列出当前目录下的 .md 文件并汇总每份文件的标题",
+    "status": "pending",
+    "result": "",
+    "model_used": "",
+    "account_used": "",
+    "expert_used": "",
+    "fallback_used": false,
+    "fallback_cost": null,
+    "retry_count": 0,
+    "error": "",
+    "started_at": "",
+    "finished_at": "",
+    "duration": 0
+  },
+
+  // 场景②：workspace 用命名空间名解析
+  {
+    "id": "td-002-pending-namespace-ws",
+    "workspace": "workagent",
+    "instruction": "读取 samples/config.example.json，输出其中 agent_kind 的可选值",
+    "status": "pending",
+    "result": "",
+    "model_used": "",
+    "account_used": "",
+    "expert_used": "",
+    "fallback_used": false,
+    "fallback_cost": null,
+    "retry_count": 0,
+    "error": "",
+    "started_at": "",
+    "finished_at": "",
+    "duration": 0
+  },
+
+  // 场景②：workspace 用绝对路径覆盖
+  {
+    "id": "td-003-pending-abs-path-ws",
+    "workspace": "E:/Src/CodeBak/WorkAgent/docs",
+    "instruction": "统计本目录文档总数并在回复中给出清单",
+    "status": "pending",
+    "result": "",
+    "model_used": "",
+    "account_used": "",
+    "expert_used": "",
+    "fallback_used": false,
+    "fallback_cost": null,
+    "retry_count": 0,
+    "error": "",
+    "started_at": "",
+    "finished_at": "",
+    "duration": 0
+  },
+
+  // 场景①：已完成任务 —— 续跑时默认跳过；报告里计入 done
+  {
+    "id": "td-004-done",
+    "workspace": "",
+    "instruction": "在 README.md 中补充「快速开始」章节",
+    "status": "done",
+    "result": "已在 README.md 追加「快速开始」章节，含安装、配置与首次运行三小节。",
+    "model_used": "model-a",
+    "account_used": "acc-1",
+    "expert_used": "",
+    "fallback_used": false,
+    "fallback_cost": null,
+    "retry_count": 0,
+    "error": "",
+    "started_at": "2026-10-15T09:00:00+08:00",
+    "finished_at": "2026-10-15T09:04:31+08:00",
+    "duration": 271.0
+  },
+
+  // 场景①④：兜底完成的任务 —— 计入 done 且 fallback 口径进报告
+  {
+    "id": "td-005-done-with-fallback",
+    "workspace": "",
+    "instruction": "检查 Program.cs 的异常处理并补充日志",
+    "status": "done",
+    "result": "补充了全局异常过滤器与结构化日志输出；费用为估算口径。",
+    "model_used": "model-fallback",
+    "account_used": "acc-1",
+    "expert_used": "",
+    "fallback_used": true,
+    "fallback_cost": 0.35,
+    "retry_count": 1,
+    "error": "",
+    "started_at": "2026-10-15T09:10:00+08:00",
+    "finished_at": "2026-10-15T09:13:05+08:00",
+    "duration": 185.0
+  },
+
+  // 场景①⑥：失败任务（重试用尽）—— 续跑时默认跳过；报告里计入 failed
+  {
+    "id": "td-006-failed-retries-exhausted",
+    "workspace": "",
+    "instruction": "重构不存在的 src/never_exists/legacy.ts 模块",
+    "status": "failed",
+    "result": "",
+    "model_used": "model-a",
+    "account_used": "acc-1",
+    "expert_used": "",
+    "fallback_used": false,
+    "fallback_cost": null,
+    "retry_count": 2,
+    "error": "任务级错误：目标文件不存在且无创建依据（TaskError）",
+    "started_at": "2026-10-15T09:20:00+08:00",
+    "finished_at": "2026-10-15T09:26:42+08:00",
+    "duration": 402.0
+  },
+
+  // 场景③⑥：中断任务保留部分输出 —— HasPartialResult 应为 true
+  {
+    "id": "td-007-interrupted-partial",
+    "workspace": "",
+    "instruction": "为 samples/tasks.md 中列出的全部任务生成验收清单",
+    "status": "interrupted",
+    "result": "[部分输出] 已完成 task-001/task-002 的验收条目，task-003 及之后尚未生成。",
+    "model_used": "model-a",
+    "account_used": "acc-1",
+    "expert_used": "",
+    "fallback_used": false,
+    "fallback_cost": null,
+    "retry_count": 0,
+    "error": "用户点「终止」中断当前任务，已产生输出保留为部分输出",
+    "started_at": "2026-10-15T09:30:00+08:00",
+    "finished_at": "2026-10-15T09:32:18+08:00",
+    "duration": 138.0
+  },
+
+  // 场景⑤：含未知字段（前向兼容）+ 挂起任务排在最后，验证派发顺序
+  {
+    "id": "td-008-pending-unknown-field",
+    "workspace": "",
+    "instruction": "对本目录的 PowerShell 脚本做一次只读安全走查并输出发现清单",
+    "status": "pending",
+    "result": "",
+    "model_used": "",
+    "account_used": "",
+    "expert_used": "",
+    "fallback_used": false,
+    "fallback_cost": null,
+    "retry_count": 0,
+    "error": "",
+    "started_at": "",
+    "finished_at": "",
+    "duration": 0,
+    "future_field": "二期预留字段示例（workflow/depends_on 等），反序列化应忽略"
+  }
+]

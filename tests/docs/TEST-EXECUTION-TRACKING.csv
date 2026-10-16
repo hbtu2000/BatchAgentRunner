@@ -1,0 +1,9 @@
+﻿Test ID,Category,Title,Priority,Status,Duration (s),Notes
+TC-E2E-001,E2E,JSON 任务文件全链路：执行→原子回写→备份→报告→运行日志,P0,Pass,0.2,备份/回写/报告/日志五项断言全过
+TC-E2E-002,E2E,Markdown sidecar 回写 + 重启续跑不重跑,P0,Pass,0.3,第二轮 0 次适配器调用；md 本体未被修改
+TC-E2E-003,E2E,额度耗尽→切换→冷却落盘→重启后冷却仍生效,P0,Pass,0.4,m1 全程仅 1 次调用；重启加载冷却记录事件确认
+TC-E2E-004,E2E,全组合时段外→启动等待→到点自动恢复完成,P1,Pass,0.3,BatchWaiting→BatchResumed→Completed；累计等待>0
+TC-E2E-005,E2E,全组合额度耗尽→兜底模型收尾→成本入报告,P1,Pass,0.1,fallback_used=true；报告成本 ¥0.5
+TC-E2E-006,E2E,危险操作拦截→任务失败→批继续→日志高危标记,P0,Pass,0.1,task-002 失败其余完成；日志含 *** 高危 ***
+TC-E2E-007,E2E,预检拦截：任务文件缺失/工作空间目录不存在,P1,Pass,0.1,错误信息清晰；未抛异常
+TC-E2E-008,E2E,配置全链路：注释模板加载→保存→重载一致→派生属性不入盘,P1,Pass,0.1,注释/尾随逗号可解析；往返无损

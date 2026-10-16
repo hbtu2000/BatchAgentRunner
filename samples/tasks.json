@@ -1,0 +1,36 @@
+[
+  {
+    "id": "task-001",
+    "workspace": "",
+    "instruction": "在 README.md 中补充「快速开始」章节",
+    "status": "Pending",
+    "result": "",
+    "model_used": "",
+    "account_used": "",
+    "expert_used": "",
+    "fallback_used": false,
+    "fallback_cost": null,
+    "retry_count": 0,
+    "error": "",
+    "started_at": "",
+    "finished_at": "",
+    "duration": 0
+  },
+  {
+    "id": "task-002",
+    "workspace": "",
+    "instruction": "为 src/parser.ts 补充单元测试",
+    "status": "Pending",
+    "result": "",
+    "model_used": "",
+    "account_used": "",
+    "expert_used": "",
+    "fallback_used": false,
+    "fallback_cost": null,
+    "retry_count": 0,
+    "error": "",
+    "started_at": "",
+    "finished_at": "",
+    "duration": 0
+  }
+]

@@ -1,0 +1,1339 @@
+using BatchAgentRunner.Core.Abstractions;
+using BatchAgentRunner.Core.Domain;
+using BatchAgentRunner.Core.Events;
+using BatchAgentRunner.Core.Options;
+using BatchAgentRunner.Core.Scheduling;
+using TaskStatus = BatchAgentRunner.Core.Domain.TaskStatus;
+
+namespace BatchAgentRunner.Core.Engine;
+
+/// <summary>单任务执行循环的结果。</summary>
+public enum TaskOutcome
+{
+    /// <summary>任务到达终态（done / failed），继续下一条。</summary>
+    Finished,
+
+    /// <summary>批处理进入 blocked，停止派发。</summary>
+    Blocked,
+
+    /// <summary>被用户终止。</summary>
+    Terminated,
+
+    /// <summary>失败即停（REQ-013）触发暂停。</summary>
+    StopBatch
+}
+
+/// <summary>
+/// 批处理调度引擎（PRD 第 10 章架构方法 + 附录 B 降级状态机）。
+/// 串行 / 受控并发（REQ-012）共用同一套可用性视图与单写者回写。
+/// </summary>
+public sealed class BatchEngine
+{
+    private readonly RunOptions _options;
+    private readonly IAgentCliAdapter _adapter;
+    private readonly ITaskFileStore _taskStore;
+    private readonly ICooldownStore _cooldownStore;
+    private readonly IRunLogger _logger;
+    private readonly IClock _clock;
+    private readonly QuotaCooldownRegistry _cooldowns;
+    private readonly AvailabilityEvaluator _evaluator;
+    private readonly QuotaErrorClassifier _classifier;
+    private readonly RetryPolicy _retryPolicy;
+    /// <summary>凭证 Vault（DESIGN-账号凭证切换-v1.0）。null = 不启用凭证切换（保持旧行为）。</summary>
+    private readonly ICredentialVault? _vault;
+    private readonly List<TaskItem> _tasks = new();
+    private readonly object _writeLock = new();
+    private readonly object _statsLock = new();
+    private readonly SemaphoreSlim _waitGate = new(1, 1);
+    private readonly List<TimelineEntry> _timeline = new();
+    private readonly Dictionary<string, UsageEntry> _accountUsage = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, UsageEntry> _modelUsage = new(StringComparer.OrdinalIgnoreCase);
+
+    private DegradationMatrix _matrix;
+    private CancellationTokenSource? _runCts;
+    private TaskCompletionSource? _wake;
+    private bool _waitingCancelled;
+    private bool _terminateRequested;
+    private bool _stopAfterCurrentTask;
+    private string? _currentTaskId;
+    private decimal _fallbackBatchCost;
+    private int _fallbackUsedCount;
+    private CostBasis _fallbackCostBasis = CostBasis.Estimated;
+    private bool _fallbackStoppedByLimit;
+    private readonly List<string> _fallbackModelsUsed = new();
+    private double _windowWaitSeconds;
+    private double _cooldownWaitSeconds;
+    private HashSet<string>? _idSnapshot;
+
+    public BatchEngine(
+        RunOptions options,
+        IAgentCliAdapter adapter,
+        ITaskFileStore taskStore,
+        ICooldownStore cooldownStore,
+        IRunLogger logger,
+        IClock? clock = null,
+        QuotaErrorClassifier? classifier = null,
+        ICredentialVault? credentialVault = null)
+    {
+        _options = options;
+        _adapter = adapter;
+        _taskStore = taskStore;
+        _cooldownStore = cooldownStore;
+        _logger = logger;
+        _vault = credentialVault;
+        _clock = clock ?? new SystemClock();
+        _classifier = classifier ?? new QuotaErrorClassifier();
+        _cooldowns = new QuotaCooldownRegistry(_clock, options.DefaultCooldown);
+        _evaluator = new AvailabilityEvaluator(_cooldowns);
+        _retryPolicy = new RetryPolicy
+        {
+            MaxRetries = options.MaxRetriesPerTask,
+            RateLimitBackoffRetries = options.RateLimitBackoffRetries,
+            InitialBackoff = TimeSpan.FromSeconds(Math.Max(1, options.RateLimitInitialBackoffSeconds))
+        };
+        _matrix = new DegradationMatrix(options.Accounts, options.ModelCandidates, options.DegradationStrategy);
+    }
+
+    // ---------------- 公开状态 ----------------
+
+    public RunOptions Options => _options;
+
+    public IReadOnlyList<TaskItem> Tasks => _tasks;
+
+    public DegradationMatrix Matrix => _matrix;
+
+    public QuotaCooldownRegistry Cooldowns => _cooldowns;
+
+    public BatchStatus Status { get; private set; } = BatchStatus.Idle;
+
+    public int SkippedDoneCount { get; private set; }
+
+    public BatchReport? Report { get; private set; }
+
+    public string? CurrentTaskId => _currentTaskId;
+
+    /// <summary>引擎事件（界面与日志订阅）。</summary>
+    public event EventHandler<BatchEvent>? EventRaised;
+
+    /// <summary>任务集合/任务项发生变化（界面整体刷新）。</summary>
+    public event EventHandler? TasksChanged;
+
+    // ---------------- 生命周期 ----------------
+
+    public async Task InitializeAsync(CancellationToken cancellationToken = default)
+    {
+        var records = await _cooldownStore.LoadAsync(cancellationToken).ConfigureAwait(false);
+        foreach (var r in records)
+        {
+            _cooldowns.Record(r.AccountId, r.ModelName, r.ResetAt, _clock.Now, r.RawValue);
+        }
+
+        if (records.Count > 0)
+        {
+            Raise(new BatchEvent(BatchEventKind.Info, _clock.Now,
+                $"已加载 {records.Count} 条额度冷却记录（重启后仍然有效）"));
+        }
+    }
+
+    /// <summary>加载任务文件（REQ-001 / REQ-001a）。</summary>
+    public async Task<IReadOnlyList<TaskItem>> LoadTasksAsync(CancellationToken cancellationToken = default)
+    {
+        var result = await _taskStore.LoadAsync(_options.TaskFilePath, cancellationToken).ConfigureAwait(false);
+
+        lock (_writeLock)
+        {
+            _tasks.Clear();
+            _tasks.AddRange(result.Tasks);
+        }
+
+        foreach (var issue in result.Issues)
+        {
+            Raise(new BatchEvent(
+                string.Equals(issue.Level, "error", StringComparison.OrdinalIgnoreCase)
+                    ? BatchEventKind.Warning
+                    : BatchEventKind.Info,
+                _clock.Now, issue.Message, issue.TaskId));
+        }
+
+        TasksChanged?.Invoke(this, EventArgs.Empty);
+        return _tasks;
+    }
+
+    /// <summary>启动前预检（REQ-010）。</summary>
+    public async Task<PreflightReport> PreflightAsync(CancellationToken cancellationToken = default)
+    {
+        var report = new PreflightReport();
+
+        if (string.IsNullOrWhiteSpace(_options.TaskFilePath))
+        {
+            report.AddError("未选择任务文件");
+        }
+        else if (!File.Exists(_options.TaskFilePath))
+        {
+            report.AddError($"任务文件不存在：{_options.TaskFilePath}");
+        }
+        else
+        {
+            try
+            {
+                var loaded = await _taskStore.LoadAsync(_options.TaskFilePath, cancellationToken).ConfigureAwait(false);
+                lock (_writeLock)
+                {
+                    _tasks.Clear();
+                    _tasks.AddRange(loaded.Tasks);
+                }
+
+                report.LoadedTaskCount = loaded.Tasks.Count;
+                report.PendingTaskCount = loaded.Tasks.Count(t => t.Status is TaskStatus.Pending or TaskStatus.Interrupted);
+                foreach (var issue in loaded.Issues)
+                {
+                    report.AddWarning(issue.Message);
+                }
+
+                if (_tasks.Count == 0)
+                {
+                    report.AddError("任务文件中没有解析到任何任务");
+                }
+
+                // 工作空间校验（REQ-003a）
+                foreach (var ws in _options.Workspaces.Where(w => w.IsValid))
+                {
+                    if (!Directory.Exists(ws.Path))
+                    {
+                        report.AddError($"工作空间「{ws.Name}」目录不存在或无访问权限：{ws.Path}");
+                    }
+                }
+
+                foreach (var t in _tasks.Where(t => !string.IsNullOrWhiteSpace(t.Workspace)))
+                {
+                    var resolved = ResolveWorkspacePath(t.Workspace!);
+                    if (resolved is null)
+                    {
+                        report.AddError($"任务 {t.Id} 引用的工作空间「{t.Workspace}」不存在（命名空间悬空）");
+                    }
+                }
+            }
+            catch (TaskFileFormatException ex)
+            {
+                report.AddError($"任务文件解析失败：{ex.Message}");
+            }
+        }
+
+        // CLI 可用性
+        var env = await _adapter.ValidateEnvironmentAsync(cancellationToken).ConfigureAwait(false);
+        if (!env.Ok)
+        {
+            report.AddError($"Agent CLI 不可用：{env.Message}");
+        }
+
+        // 账号池预检：失效账号自动停用（REQ-010）
+        var enabledAccounts = _options.Accounts.Where(a => a.Enabled).ToList();
+        if (_vault is not null && _options.Concurrency > 1)
+        {
+            // DESIGN §3：同一时刻每个 CLI 只有一个身份，多账号并发切换会互相覆盖 Live
+            report.AddWarning("已启用凭证 Vault：同一时刻每个 CLI 只有一个登录身份，并发 > 1 时多账号切换会互相覆盖，建议 concurrency = 1");
+        }
+        if (enabledAccounts.Count == 0)
+        {
+            report.AddError("账号池为空：请至少添加一个启用账号");
+        }
+
+        foreach (var account in enabledAccounts)
+        {
+            // 凭证 Vault 集成（DESIGN §7）：预检前先切换到该账号；预检即验证快照有效性。
+            if (_vault is not null)
+            {
+                if (!_vault.SnapshotExists(_options.AgentKind, account.Id))
+                {
+                    account.Enabled = false;
+                    report.DisabledAccounts.Add(account.Label);
+                    report.AddWarning($"账号 {account.Label} 尚无凭证快照，已停用：请在配置页对该账号执行「引导登录」");
+                    continue;
+                }
+
+                try
+                {
+                    await _vault.SwitchToAsync(_options.AgentKind, account.Id, "preflight", cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (CredentialVaultException ex)
+                {
+                    account.Enabled = false;
+                    report.DisabledAccounts.Add(account.Label);
+                    report.AddWarning($"账号 {account.Label} 凭证切换失败已停用：{ex.Message}");
+                    continue;
+                }
+            }
+
+            var r = await _adapter.ValidateAccountAsync(account, cancellationToken).ConfigureAwait(false);
+            if (!r.Ok)
+            {
+                account.Enabled = false;
+                report.DisabledAccounts.Add(account.Label);
+                report.AddWarning($"账号 {account.Label} 预检失败已停用：{r.Message}");
+                continue;
+            }
+
+            if (_vault is not null)
+            {
+                try
+                {
+                    await _vault.MarkVerifiedAsync(_options.AgentKind, account.Id, cancellationToken)
+                        .ConfigureAwait(false);
+                }
+                catch (CredentialVaultException ex)
+                {
+                    report.AddWarning($"账号 {account.Label} 快照验证时间更新失败：{ex.Message}");
+                }
+            }
+        }
+
+        if (_options.Fallback.Enabled && _options.Accounts.All(a => !a.Enabled || !a.HasFallbackModels))
+        {
+            report.AddWarning("已启用兜底，但没有任何启用账号配置兜底模型池（accounts[].fallback_models），兜底不会生效");
+        }
+
+        // 专家（REQ-004a）
+        if (_options.Expert.IsSpecified && _adapter.Kind == AgentKind.Mock)
+        {
+            report.AddWarning("当前使用仿真适配器，专家参数不会被真实消费");
+        }
+
+        RebuildMatrix();
+
+        // 降级矩阵为空 = 所有启用账号既没有自有候选池、全局共享列表也为空（REQ-003，故事 2.1）
+        if (_matrix.IsEmpty)
+        {
+            report.AddError("降级矩阵为空：请为至少一个启用账号配置候选模型池（accounts[].model_candidates），或填写全局共享候选模型列表");
+        }
+
+        // 时段 / 冷却可用性评估（REQ-003b / REQ-004c）
+        var now = _clock.Now;
+        if (!_matrix.IsEmpty)
+        {
+            var selection = _matrix.SelectFirst(now, _evaluator);
+            if (!selection.Found)
+            {
+                report.AllCombosUnavailable = true;
+                var earliest = _matrix.EarliestRestore(now, _evaluator);
+                report.EarliestRestoreAt = earliest?.RestoreAt;
+                report.WaitKind = earliest?.WaitKind ?? WaitKind.None;
+                report.UnavailableReason = earliest is null
+                    ? "无可用组合"
+                    : string.Join("；", selection.Skipped.Take(3).Select(s => s.DescribeSkip()));
+            }
+        }
+
+        return report;
+    }
+
+    /// <summary>
+    /// 启动或续跑（REQ-008）。<paramref name="waitIfUnavailable"/> 为 true 时，
+    /// 启动前全部组合不可用会进入 waiting（REQ-010 用户选择「等待自动启动」），否则直接 blocked 退出。
+    /// </summary>
+    public async Task<BatchReport> StartAsync(bool waitIfUnavailable = false, CancellationToken cancellationToken = default)
+    {
+        _runCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        var token = _runCts.Token;
+        var startedAt = _clock.Now;
+        _terminateRequested = false;
+        _stopAfterCurrentTask = false;
+        _waitingCancelled = false;
+
+        await LoadTasksAsync(token).ConfigureAwait(false);
+        await _taskStore.BackupAsync(_options.TaskFilePath, Math.Max(0, _options.BackupRetention), token)
+            .ConfigureAwait(false);
+
+        // ID 快照校验（REQ-001a）
+        CheckIdSnapshot();
+
+        var queue = _tasks
+            .Where(t => _options.ForceRerun
+                ? true
+                : t.Status is TaskStatus.Pending or TaskStatus.Interrupted)
+            .ToList();
+
+        SkippedDoneCount = _options.ForceRerun
+            ? 0
+            : _tasks.Count(t => t.Status is TaskStatus.Done or TaskStatus.Failed);
+
+        if (SkippedDoneCount > 0)
+        {
+            Raise(new BatchEvent(BatchEventKind.Info, _clock.Now, $"已跳过 {SkippedDoneCount} 条已完成任务"));
+        }
+
+        SetStatus(BatchStatus.Running);
+
+        // 启动前预检闸门（REQ-010）：CLI 缺失属环境错误，快速失败、不进入执行循环，
+        // 任务保持 pending（不重试、不标 failed）。无恢复时间点语义，故不适用「等待自动启动」。
+        var env = await _adapter.ValidateEnvironmentAsync(token).ConfigureAwait(false);
+        if (!env.Ok)
+        {
+            SetStatus(BatchStatus.Blocked);
+            RaiseBlocked($"启动前预检未通过：{env.Message}");
+            await PersistAsync(token).ConfigureAwait(false);
+            Report = BuildReport(startedAt);
+            return Report;
+        }
+
+        // 启动前不可用处理
+        if (!_matrix.IsEmpty && _matrix.AllUnavailable(_clock.Now, _evaluator))
+        {
+            var earliest = _matrix.EarliestRestore(_clock.Now, _evaluator);
+            if (waitIfUnavailable && earliest is not null)
+            {
+                var ok = await WaitForRestoreAsync(earliest, token).ConfigureAwait(false);
+                if (!ok)
+                {
+                    SetStatus(BatchStatus.Blocked);
+                    RaiseBlocked("启动前等待被取消");
+                }
+            }
+            else
+            {
+                SetStatus(BatchStatus.Blocked);
+                RaiseBlocked(earliest is null
+                    ? "所有候选组合当前不可用"
+                    : $"所有候选组合当前不可用，最早恢复时间 {earliest.RestoreAt:HH:mm}");
+            }
+        }
+
+        if (Status == BatchStatus.Running)
+        {
+            await DispatchAsync(queue, token).ConfigureAwait(false);
+        }
+
+        // 终态判定
+        if (_terminateRequested)
+        {
+            SetStatus(BatchStatus.Terminated);
+        }
+        else if (Status is BatchStatus.Running or BatchStatus.Waiting)
+        {
+            var allTerminal = _tasks.All(t => t.IsTerminal);
+            if (allTerminal)
+            {
+                SetStatus(BatchStatus.Completed);
+                Raise(new BatchEvent(BatchEventKind.BatchCompleted, _clock.Now,
+                    $"批处理完成：成功 {_tasks.Count(t => t.Status == TaskStatus.Done)}，失败 {_tasks.Count(t => t.Status == TaskStatus.Failed)}，中断 {_tasks.Count(t => t.Status == TaskStatus.Interrupted)}")
+                {
+                    BatchStatus = BatchStatus.Completed
+                });
+            }
+            else
+            {
+                SetStatus(BatchStatus.Blocked);
+            }
+        }
+
+        await PersistAsync(token).ConfigureAwait(false);
+        Report = BuildReport(startedAt);
+        return Report;
+    }
+
+    /// <summary>终止（REQ-008）。默认立即安全中断；<paramref name="waitCurrentTask"/> 时等待当前任务完成。</summary>
+    public Task TerminateAsync(bool waitCurrentTask = false)
+    {
+        if (Status is not (BatchStatus.Running or BatchStatus.Waiting or BatchStatus.Blocked))
+        {
+            return Task.CompletedTask;
+        }
+
+        _terminateRequested = true;
+        _waitingCancelled = true;
+        _wake?.TrySetResult();
+
+        if (waitCurrentTask && _currentTaskId is not null)
+        {
+            _stopAfterCurrentTask = true;
+            Raise(new BatchEvent(BatchEventKind.Info, _clock.Now, "已请求终止：等待当前任务完成后停止"));
+        }
+        else
+        {
+            _runCts?.Cancel();
+        }
+
+        return Task.CompletedTask;
+    }
+
+    /// <summary>取消 waiting（REQ-003b：取消后转入 blocked）。</summary>
+    public void CancelWaiting()
+    {
+        if (Status != BatchStatus.Waiting)
+        {
+            return;
+        }
+
+        _waitingCancelled = true;
+        _wake?.TrySetResult();
+    }
+
+    /// <summary>
+    /// 配置变更通知：waiting 期间补充额度/新增账号模型/修改时段/手动重置冷却后，
+    /// 立即重新评估可用性，已可用则提前退出 waiting（REQ-003b / REQ-004c）。
+    /// </summary>
+    public void NotifyConfigurationChanged()
+    {
+        RebuildMatrix();
+        _wake?.TrySetResult();
+    }
+
+    /// <summary>手动重置某组合的冷却标记（REQ-004c）。</summary>
+    public void ResetCooldown(string accountId, string modelName)
+    {
+        _cooldowns.Clear(accountId, modelName);
+        NotifyConfigurationChanged();
+    }
+
+    public void ResetAllCooldowns()
+    {
+        _cooldowns.ClearAll();
+        NotifyConfigurationChanged();
+    }
+
+    // ---------------- 调度主循环 ----------------
+
+    private async Task DispatchAsync(List<TaskItem> queue, CancellationToken ct)
+    {
+        if (_options.Concurrency <= 1)
+        {
+            foreach (var task in queue)
+            {
+                if (ct.IsCancellationRequested || _stopAfterCurrentTask)
+                {
+                    break;
+                }
+
+                var outcome = await ExecuteTaskAsync(task, ct).ConfigureAwait(false);
+                if (outcome is TaskOutcome.Blocked or TaskOutcome.Terminated or TaskOutcome.StopBatch)
+                {
+                    break;
+                }
+            }
+        }
+        else
+        {
+            // 受控并发（REQ-012）：停止派发 → 逐一回收 → 全部落盘
+            using var semaphore = new SemaphoreSlim(_options.Concurrency);
+            var stopDispatch = false;
+
+            var workers = queue.Select(async task =>
+            {
+                await semaphore.WaitAsync(ct).ConfigureAwait(false);
+                try
+                {
+                    if (stopDispatch || ct.IsCancellationRequested || _stopAfterCurrentTask)
+                    {
+                        return;
+                    }
+
+                    var outcome = await ExecuteTaskAsync(task, ct).ConfigureAwait(false);
+                    if (outcome is TaskOutcome.Blocked or TaskOutcome.Terminated or TaskOutcome.StopBatch)
+                    {
+                        stopDispatch = true;
+                    }
+                }
+                finally
+                {
+                    semaphore.Release();
+                }
+            });
+
+            await Task.WhenAll(workers).ConfigureAwait(false);
+        }
+    }
+
+    private async Task<TaskOutcome> ExecuteTaskAsync(TaskItem task, CancellationToken ct)
+    {
+        using var taskCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        var startedAt = _clock.Now;
+        _currentTaskId = task.Id;
+
+        task.Status = TaskStatus.Running;
+        task.StartedAt = startedAt;
+        task.Error = null;
+        task.RetryCount = 0;
+        task.FinishedAt = null;
+        task.DurationSeconds = 0;
+        // interrupted 任务续跑重跑时清除旧的「部分输出」（旧值保留在运行日志，REQ-008）
+        if (task.HasPartialResult)
+        {
+            _logger.Write("INFO", $"任务 {task.Id} 清除上次部分输出：{Truncate(task.Result, 200)}");
+            task.Result = null;
+        }
+
+        RaiseTaskChanged(task);
+        _logger.WriteTaskStarted(task.Id, null, null, _options.Expert.ToString(), task.Workspace);
+        Raise(new BatchEvent(BatchEventKind.TaskStarted, _clock.Now, $"开始执行任务 {task.Id}", task.Id) { Task = task });
+
+        AgentCombo? combo = null;
+        var retrySameCombo = false;
+        var attempts = 0;
+        var rateLimitStreak = 0;
+        var normalRetries = 0;
+
+        while (true)
+        {
+            if (taskCts.IsCancellationRequested)
+            {
+                await MarkInterrupted(task, "用户终止，当前任务安全中断");
+                return TaskOutcome.Terminated;
+            }
+
+            if (attempts >= _options.MaxAttemptsPerTask)
+            {
+                await FailTask(task, $"单任务总尝试次数达到上限（{_options.MaxAttemptsPerTask} 次）");
+                return TaskOutcome.Finished;
+            }
+
+            if (_clock.Now - startedAt > _options.MaxTaskDuration)
+            {
+                await FailTask(task, $"单任务总时长达到上限（{_options.MaxTotalMinutesPerTask} 分钟）");
+                return TaskOutcome.Finished;
+            }
+
+            var now = _clock.Now;
+            AgentCombo? next;
+
+            if (retrySameCombo && combo is not null && _evaluator.Evaluate(combo, now).Available)
+            {
+                // 临时限流：退避后重试同一组合，不切换（REQ-005）
+                next = combo;
+            }
+            else
+            {
+                var selection = _matrix.SelectNext(combo, now, _evaluator);
+
+                foreach (var skipped in selection.Skipped)
+                {
+                    RaiseSkipEvent(skipped);
+                }
+
+                if (selection.Found)
+                {
+                    next = selection.Combo!;
+                }
+                else
+                {
+                    var invested = attempts > 0 || !string.IsNullOrEmpty(task.Result);
+
+                    // 兜底：仅对「已投入执行的当前任务」生效（REQ-004b）
+                    if (invested && _options.Fallback.Enabled)
+                    {
+                        var fb = await TryFallbackAsync(task, taskCts.Token).ConfigureAwait(false);
+                        if (fb.Success)
+                        {
+                            return TaskOutcome.Finished;
+                        }
+                    }
+
+                    var earliest = _matrix.EarliestRestore(now, _evaluator);
+                    var canWait = earliest is not null && earliest.RestoreAt <= now.Add(_options.MaxWait);
+
+                    if (!canWait)
+                    {
+                        await MarkInterrupted(task, earliest is null
+                            ? "免费组合矩阵当前不可用（额度耗尽 / 时段外 / 冷却中）"
+                            : $"免费组合矩阵当前不可用，最早恢复时间 {earliest.RestoreAt:HH:mm} 超出最长可等待时长");
+                        SetStatus(BatchStatus.Blocked);
+                        RaiseBlocked(earliest is null
+                            ? "所有候选组合额度均已用尽 / 均不在免费时段，批处理已暂停"
+                            : $"所有候选组合当前不可用，最早恢复时间 {earliest.RestoreAt:HH:mm}（超出最长可等待时长 {_options.MaxWaitMinutes} 分钟）");
+                        _logger.WriteBatchBlocked("全部组合不可用", _tasks.Count(t => !t.IsTerminal));
+                        return TaskOutcome.Blocked;
+                    }
+
+                    var waited = await WaitForRestoreAsync(earliest!, taskCts.Token).ConfigureAwait(false);
+                    if (!waited)
+                    {
+                        await MarkInterrupted(task, "用户取消等待，当前任务安全中断");
+                        SetStatus(BatchStatus.Blocked);
+                        Raise(new BatchEvent(BatchEventKind.BatchWaitingCancelled, _clock.Now,
+                            "已取消等待，批处理已暂停", task.Id) { BatchStatus = BatchStatus.Blocked });
+                        return TaskOutcome.Blocked;
+                    }
+
+                    continue;
+                }
+            }
+
+            retrySameCombo = false;
+
+            if (combo is not null && !ReferenceEquals(next, combo))
+            {
+                RaiseSwitchEvents(combo, next, task.Id);
+            }
+
+            combo = next;
+            attempts++;
+
+            if (!await EnsureLiveCredentialAsync(task, combo, taskCts.Token).ConfigureAwait(false))
+            {
+                continue;
+            }
+
+            var request = BuildRequest(task, combo, isFallback: false);
+            Raise(new BatchEvent(BatchEventKind.Info, _clock.Now,
+                $"任务 {task.Id} 使用 {combo.Account.Label} + {combo.Model.Name} 执行",
+                task.Id, combo.Account.Label, combo.Model.Name));
+
+            AgentExecutionResult result;
+            try
+            {
+                result = await ExecuteWithTimeoutAsync(request, taskCts.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                await MarkInterrupted(task, "用户终止，当前任务安全中断");
+                return TaskOutcome.Terminated;
+            }
+
+            if (!string.IsNullOrWhiteSpace(result.Output))
+            {
+                AppendPartialOutput(task, result.Output!);
+            }
+
+            if (result.Succeeded)
+            {
+                await CompleteTask(task, result);
+                return TaskOutcome.Finished;
+            }
+
+            var failure = result.Failure ?? new AgentFailure(AgentFailureKind.TaskError, "未知错误");
+
+            switch (failure.Kind)
+            {
+                case AgentFailureKind.RateLimited:
+                    rateLimitStreak++;
+                    if (rateLimitStreak <= _options.RateLimitBackoffRetries)
+                    {
+                        task.RetryCount++;
+                        var backoff = _retryPolicy.BackoffFor(rateLimitStreak);
+                        Raise(new BatchEvent(BatchEventKind.Warning, _clock.Now,
+                            $"任务 {task.Id} 触发临时限流，{backoff.TotalSeconds:0} 秒后重试同一组合（第 {rateLimitStreak} 次）",
+                            task.Id, combo.Account.Label, combo.Model.Name));
+                        await _clock.DelayAsync(backoff, taskCts.Token).ConfigureAwait(false);
+                        retrySameCombo = true;
+                        continue;
+                    }
+
+                    // 退避重试仍失败 → 升级为额度耗尽处理（REQ-005）
+                    goto case AgentFailureKind.QuotaExhausted;
+
+                case AgentFailureKind.QuotaExhausted:
+                {
+                    var record = _cooldowns.Record(combo.Account.Id, combo.Model.Name, failure.ResetAt, _clock.Now,
+                        failure.Raw);
+                    Raise(new BatchEvent(BatchEventKind.QuotaResetRecorded, _clock.Now,
+                        $"组合 {combo} 额度已耗尽，记录重置时间 {record.ResetAt:yyyy-MM-dd HH:mm}（{record.DescribeSource()}）",
+                        task.Id, combo.Account.Label, combo.Model.Name)
+                    { Detail = record.RawValue });
+                    _logger.WriteQuotaResetRecorded(combo.Account.Id, combo.Model.Name, record.ResetAt, record.Source);
+                    _cooldowns.PurgeExpired(_clock.Now);
+                    await SaveCooldownsAsync().ConfigureAwait(false);
+                    rateLimitStreak = 0;
+                    continue;
+                }
+
+                case AgentFailureKind.AuthExpired:
+                    combo.Account.Enabled = false;
+                    Raise(new BatchEvent(BatchEventKind.Warning, _clock.Now,
+                        $"账号 {combo.Account.Label} 凭据失效，已停用并切换下一账号", task.Id, combo.Account.Label));
+                    continue;
+
+                case AgentFailureKind.DangerousOperation:
+                    Raise(new BatchEvent(BatchEventKind.DangerousOperationBlocked, _clock.Now,
+                        $"检测到危险操作确认，已拒绝自动批准并中断任务 {task.Id}：{failure.Message}",
+                        task.Id, combo.Account.Label, combo.Model.Name)
+                    { IsDangerous = true });
+                    _logger.WriteDangerousOperation(task.Id, failure.Message);
+                    await FailTask(task, failure.Message);
+                    return TaskOutcome.Finished;
+
+                case AgentFailureKind.Timeout:
+                    await FailTask(task, $"单任务执行超时（{_options.TaskTimeoutMinutes} 分钟），已保留部分输出");
+                    return TaskOutcome.Finished;
+
+                default:
+                    normalRetries++;
+                    if (normalRetries <= _options.MaxRetriesPerTask)
+                    {
+                        task.RetryCount++;
+                        Raise(new BatchEvent(BatchEventKind.Warning, _clock.Now,
+                            $"任务 {task.Id} 执行失败，重试第 {normalRetries} 次：{failure.Message}", task.Id));
+                        continue;
+                    }
+
+                    await FailTask(task, failure.Message);
+                    if (_options.StopOnFailure)
+                    {
+                        SetStatus(BatchStatus.Blocked);
+                        RaiseBlocked($"任务 {task.Id} 失败，已按「失败即停」暂停批处理", task.Id);
+                        return TaskOutcome.StopBatch;
+                    }
+
+                    return TaskOutcome.Finished;
+            }
+        }
+    }
+
+    private async Task<AgentExecutionResult> ExecuteWithTimeoutAsync(AgentRequest request, CancellationToken ct)
+    {
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        timeoutCts.CancelAfter(_options.TaskTimeout);
+
+        try
+        {
+            return await _adapter.ExecuteAsync(request, timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            return AgentExecutionResult.Fail(request,
+                new AgentFailure(AgentFailureKind.Timeout, $"执行超过 {_options.TaskTimeoutMinutes} 分钟"));
+        }
+    }
+
+    // ---------------- waiting（REQ-003b / REQ-004c） ----------------
+
+    private async Task<bool> WaitForRestoreAsync(RestoreCandidate candidate, CancellationToken ct)
+    {
+        await _waitGate.WaitAsync(ct).ConfigureAwait(false);
+        try
+        {
+            SetStatus(BatchStatus.Waiting);
+            _waitingCancelled = false;
+            var waitStart = _clock.Now;
+
+            Raise(new BatchEvent(BatchEventKind.BatchWaiting, _clock.Now,
+                DescribeWaiting(candidate), CurrentTaskId)
+            {
+                BatchStatus = BatchStatus.Waiting,
+                ResumeAt = candidate.RestoreAt,
+                WaitKind = candidate.WaitKind
+            });
+            _logger.WriteBatchWaiting(candidate.RestoreAt, candidate.Combo.Model.Name, candidate.WaitKind);
+
+            while (true)
+            {
+                if (ct.IsCancellationRequested)
+                {
+                    return false;
+                }
+
+                if (_waitingCancelled)
+                {
+                    return false;
+                }
+
+                var now = _clock.Now;
+                if (now >= candidate.RestoreAt)
+                {
+                    break;
+                }
+
+                // 配置变更 / 补充额度后即时重评，已可用则提前退出
+                if (_matrix.SelectFirst(now, _evaluator).Found)
+                {
+                    Raise(new BatchEvent(BatchEventKind.BatchResumed, now, "检测到可用组合，提前结束等待继续执行"));
+                    _logger.WriteBatchResumed("配置变更或额度补充，提前退出等待");
+                    break;
+                }
+
+                var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+                _wake = tcs;
+                var remaining = candidate.RestoreAt - now;
+                var slice = remaining > TimeSpan.FromSeconds(2) ? TimeSpan.FromSeconds(2) : remaining;
+                var delay = _clock.DelayAsync(slice, ct);
+                await Task.WhenAny(delay, tcs.Task).ConfigureAwait(false);
+            }
+
+            var elapsed = (_clock.Now - waitStart).TotalSeconds;
+            if (candidate.WaitKind == WaitKind.FreeWindow || candidate.WaitKind == WaitKind.Mixed)
+            {
+                _windowWaitSeconds += elapsed;
+            }
+            else
+            {
+                _cooldownWaitSeconds += elapsed;
+            }
+
+            SetStatus(BatchStatus.Running);
+            Raise(new BatchEvent(BatchEventKind.BatchResumed, _clock.Now,
+                $"已恢复执行（等待 {elapsed / 60:0.0} 分钟）") { BatchStatus = BatchStatus.Running });
+            _logger.WriteBatchResumed("到达恢复时间点");
+            return true;
+        }
+        finally
+        {
+            _waitGate.Release();
+        }
+    }
+
+    private static string DescribeWaiting(RestoreCandidate candidate) => candidate.WaitKind switch
+    {
+        WaitKind.FreeWindow =>
+            $"当前无可用模型，将于 {candidate.RestoreAt:HH:mm} 进入下一免费时段（{candidate.Combo.Model.Name}），等待中，可取消",
+        WaitKind.QuotaReset =>
+            $"当前所有组合均在额度冷却中，将于 {candidate.RestoreAt:HH:mm} 恢复（{candidate.Combo.Model.Name}），等待中，可取消",
+        WaitKind.Mixed =>
+            $"当前无可用组合（时段外 + 冷却中），将于 {candidate.RestoreAt:HH:mm} 恢复（{candidate.Combo.Model.Name}），等待中，可取消",
+        _ => $"等待至 {candidate.RestoreAt:HH:mm} 后继续"
+    };
+
+    // ---------------- 兜底（REQ-004b） ----------------
+
+    private async Task<(bool Success, decimal Cost)> TryFallbackAsync(TaskItem task,
+        CancellationToken ct)
+    {
+        if (!_options.Fallback.Enabled)
+        {
+            return (false, 0m);
+        }
+
+        // 兜底模型池挂在账号下（REQ-004b，v1.12）：
+        // 按「账号顺序 × 该账号兜底池顺序」选取第一个可用兜底组合；账号仅需启用。
+        // 兜底模型不参与免费时段过滤（R-3）。
+        var (account, fallback) = _matrix.Accounts
+            .Where(a => a.Enabled)
+            .SelectMany(a => (a.FallbackModels ?? new List<FallbackModel>()).Select(fb => (Account: a, Fallback: fb)))
+            .FirstOrDefault();
+
+        if (fallback is null)
+        {
+            // 没有任何启用账号配置兜底模型池 → 视为未具备兜底能力（REQ-004b）
+            return (false, 0m);
+        }
+
+        var unitPrice = fallback.EstimatedUnitPrice ?? 0m;
+        if (_fallbackBatchCost + unitPrice > _options.Fallback.MaxCostPerBatch)
+        {
+            _fallbackStoppedByLimit = true;
+            Raise(new BatchEvent(BatchEventKind.Warning, _clock.Now,
+                $"兜底成本已用尽（单批上限 ¥{_options.Fallback.MaxCostPerBatch}），已停用兜底并转为阻塞", task.Id));
+            return (false, 0m);
+        }
+
+        if (unitPrice > _options.Fallback.MaxCostPerTask)
+        {
+            _fallbackStoppedByLimit = true;
+            Raise(new BatchEvent(BatchEventKind.Warning, _clock.Now,
+                $"兜底单价 ¥{unitPrice} 超出单任务上限 ¥{_options.Fallback.MaxCostPerTask}，已跳过兜底", task.Id));
+            return (false, 0m);
+        }
+
+        // 兜底模型不参与免费时段过滤（R-3）：FreeTimeWindow 恒为 null
+        var fallbackModel = new ModelCandidate
+        {
+            Name = fallback.Name,
+            FreeTimeWindow = null,
+            EstimatedUnitPrice = fallback.EstimatedUnitPrice
+        };
+        var combo = new AgentCombo(account, fallbackModel);
+
+        Raise(new BatchEvent(BatchEventKind.FallbackUsed, _clock.Now,
+            $"免费组合当前不可用，已使用兜底模型 {fallbackModel.Name} 收尾当前任务 {task.Id}",
+            task.Id, account.Label, fallbackModel.Name));
+
+        var request = BuildRequest(task, combo, isFallback: true);
+        if (!_fallbackModelsUsed.Contains(fallbackModel.Name, StringComparer.Ordinal))
+        {
+            _fallbackModelsUsed.Add(fallbackModel.Name);
+        }
+        var result = await ExecuteWithTimeoutAsync(request, ct).ConfigureAwait(false);
+
+        var cost = result.Usage?.Cost ?? unitPrice;
+        var basis = result.Usage?.Basis ?? CostBasis.Estimated;
+        cost = Math.Min(cost, Math.Max(_options.Fallback.MaxCostPerTask, cost));
+
+        if (result.Succeeded)
+        {
+            _fallbackBatchCost += cost;
+            _fallbackUsedCount++;
+            _fallbackCostBasis = basis;
+
+            task.Status = TaskStatus.Done;
+            task.Result = Truncate(result.Output, _options.ResultMaxKB * 1024);
+            task.ModelUsed = fallbackModel.Name;
+            task.AccountUsed = account.Label;
+            task.ExpertUsed = _options.Expert.ToString();
+            task.FallbackUsed = true;
+            task.FallbackCost = cost;
+            task.Error = null;
+            task.Finish(TaskStatus.Done, _clock.Now);
+
+            Raise(new BatchEvent(BatchEventKind.FallbackUsed, _clock.Now,
+                $"兜底完成：任务 {task.Id}（花费 ¥{cost:0.####}，{(basis == CostBasis.Measured ? "实测" : "估算")}）",
+                task.Id, account.Label, fallbackModel.Name) { Cost = cost, Task = task });
+            _logger.WriteFallbackUsed(task.Id, fallbackModel.Name, cost, basis);
+            RaiseTaskChanged(task);
+            await PersistAsync(ct).ConfigureAwait(false);
+            return (true, cost);
+        }
+
+        // 兜底本身也失败：按普通失败处理，不循环兜底（边缘情况 10）
+        _fallbackBatchCost += cost;
+        _fallbackCostBasis = basis;
+        await FailTask(task, $"兜底模型 {fallbackModel.Name} 执行失败：{result.Failure?.Message ?? "未知错误"}");
+        return (false, cost);
+    }
+
+    // ---------------- 任务状态写入 ----------------
+
+    private async Task CompleteTask(TaskItem task, AgentExecutionResult result)
+    {
+        var combo = result.Request;
+        task.Status = TaskStatus.Done;
+        task.Result = Truncate(result.Output, _options.ResultMaxKB * 1024);
+        task.ModelUsed = combo.Model.Name;
+        task.AccountUsed = combo.Account.Label;
+        task.ExpertUsed = _options.Expert.ToString();
+        task.FallbackUsed = false;
+        task.Error = null;
+        task.Finish(TaskStatus.Done, _clock.Now);
+
+        TrackUsage(combo.Account.Label, combo.Model.Name, result.Usage);
+
+        Raise(new BatchEvent(BatchEventKind.TaskFinished, _clock.Now,
+            $"任务 {task.Id} 完成（{task.DurationSeconds:0.#}s，{combo.Account.Label} + {combo.Model.Name}）",
+            task.Id, combo.Account.Label, combo.Model.Name) { Task = task });
+        _logger.WriteTaskFinished(task.Id, TaskStatus.Done, task.DurationSeconds, task.RetryCount);
+        RaiseTaskChanged(task);
+        await PersistAsync(CancellationToken.None);
+    }
+
+    private async Task FailTask(TaskItem task, string error)
+    {
+        task.Status = TaskStatus.Failed;
+        task.Error = error;
+        task.Finish(TaskStatus.Failed, _clock.Now);
+
+        Raise(new BatchEvent(BatchEventKind.TaskFinished, _clock.Now,
+            $"任务 {task.Id} 失败（重试 {task.RetryCount} 次）：{error}", task.Id) { Task = task });
+        _logger.WriteTaskFinished(task.Id, TaskStatus.Failed, task.DurationSeconds, task.RetryCount);
+        RaiseTaskChanged(task);
+        await PersistAsync(CancellationToken.None);
+    }
+
+    private async Task MarkInterrupted(TaskItem task, string reason)
+    {
+        if (!string.IsNullOrWhiteSpace(task.Result) && !task.HasPartialResult)
+        {
+            task.Result = TaskItem.PartialResultPrefix + task.Result;
+        }
+
+        task.Status = TaskStatus.Interrupted;
+        task.Error = reason;
+        task.Finish(TaskStatus.Interrupted, _clock.Now);
+
+        Raise(new BatchEvent(BatchEventKind.TaskFinished, _clock.Now,
+            $"任务 {task.Id} 已中断：{reason}", task.Id) { Task = task });
+        _logger.WriteTaskFinished(task.Id, TaskStatus.Interrupted, task.DurationSeconds, task.RetryCount);
+        RaiseTaskChanged(task);
+        await PersistAsync(CancellationToken.None);
+    }
+
+    private void AppendPartialOutput(TaskItem task, string output)
+    {
+        var merged = string.IsNullOrWhiteSpace(task.Result) ? output : task.Result + "\n" + output;
+        task.Result = Truncate(merged, _options.ResultMaxKB * 1024);
+    }
+
+    // ---------------- 辅助 ----------------
+
+    private AgentRequest BuildRequest(TaskItem task, AgentCombo combo, bool isFallback)
+    {
+        var workspace = ResolveWorkspacePath(task.Workspace ?? _options.DefaultWorkspace)
+                        ?? Directory.GetCurrentDirectory();
+
+        return new AgentRequest(
+            task.Id,
+            task.Instruction,
+            combo.Account,
+            combo.Model,
+            _options.Expert,
+            workspace,
+            _options.TaskTimeout,
+            _options.AutoAnswer)
+        {
+            IsFallback = isFallback,
+            OnOutputChunk = chunk =>
+                Raise(new BatchEvent(BatchEventKind.TaskOutput, _clock.Now, chunk, task.Id))
+        };
+    }
+
+    /// <summary>三级覆盖：单任务 &gt; 本批默认 &gt; 全局默认（REQ-003a）。</summary>
+    public string? ResolveWorkspacePath(string? workspace)
+    {
+        if (string.IsNullOrWhiteSpace(workspace))
+        {
+            var globalDefault = _options.Workspaces.FirstOrDefault(w => w.IsGlobalDefault);
+            return globalDefault?.Path;
+        }
+
+        var named = _options.Workspaces.FirstOrDefault(w =>
+            string.Equals(w.Name, workspace, StringComparison.OrdinalIgnoreCase));
+        if (named is not null)
+        {
+            return named.Path;
+        }
+
+        return Path.IsPathRooted(workspace) ? workspace : null;
+    }
+
+    /// <summary>
+    /// 任务边界凭证切换（DESIGN §6）：请求执行前确保 Live 凭证属于该组合的账号；
+    /// 账号变化时执行「保活回写 + 原子回填」，失败则停用该账号走既有降级逻辑。
+    /// </summary>
+    private async Task<bool> EnsureLiveCredentialAsync(TaskItem task, AgentCombo combo, CancellationToken ct)
+    {
+        if (_vault is null)
+        {
+            return true;
+        }
+
+        var current = _vault.CurrentLiveAccount(_options.AgentKind);
+        if (string.Equals(current, combo.Account.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        try
+        {
+            await _vault.SwitchToAsync(_options.AgentKind, combo.Account.Id, "task-boundary", ct)
+                .ConfigureAwait(false);
+            Raise(new BatchEvent(BatchEventKind.AccountSwitched, _clock.Now,
+                $"凭证已切换：{current ?? "（无）"} → {combo.Account.Label}（任务边界）",
+                task.Id, combo.Account.Label, combo.Model.Name));
+            _logger.WriteModelSwitched(current, null, combo.Account.Id, combo.Model.Name, "凭证切换", task.Id);
+            return true;
+        }
+        catch (CredentialVaultException ex)
+        {
+            combo.Account.Enabled = false;
+            Raise(new BatchEvent(BatchEventKind.Warning, _clock.Now,
+                $"账号 {combo.Account.Label} 凭证切换失败，已停用并切换下一账号：{ex.Message}",
+                task.Id, combo.Account.Label));
+            return false;
+        }
+    }
+
+    private void RaiseSwitchEvents(AgentCombo from, AgentCombo to, string? taskId)
+    {
+        if (!string.Equals(from.Account.Id, to.Account.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            Raise(new BatchEvent(BatchEventKind.AccountSwitched, _clock.Now,
+                $"账号额度耗尽，已切换：{from.Account.Label} → {to.Account.Label}",
+                taskId, to.Account.Label, to.Model.Name));
+            _logger.WriteModelSwitched(from.Account.Label, from.Model.Name, to.Account.Label, to.Model.Name,
+                "账号切换", taskId);
+        }
+        else if (!string.Equals(from.Model.Name, to.Model.Name, StringComparison.OrdinalIgnoreCase))
+        {
+            Raise(new BatchEvent(BatchEventKind.ModelSwitched, _clock.Now,
+                $"模型 {from.Model.Name} 免费额度已用尽，已自动切换至 {to.Model.Name}，当前任务继续执行",
+                taskId, to.Account.Label, to.Model.Name));
+            _logger.WriteModelSwitched(from.Account.Label, from.Model.Name, to.Account.Label, to.Model.Name,
+                "额度耗尽", taskId);
+        }
+
+        AddTimeline("切换", $"{from} → {to}", taskId, to.Account.Label, to.Model.Name);
+    }
+
+    private void RaiseSkipEvent(ComboAvailability skipped)
+    {
+        switch (skipped.Reason)
+        {
+            case ComboSkipReason.OutsideFreeWindow:
+                Raise(new BatchEvent(BatchEventKind.ModelWindowSkipped, _clock.Now, skipped.DescribeSkip(),
+                    null, skipped.Combo.Account.Label, skipped.Combo.Model.Name));
+                _logger.WriteWindowSkipped(skipped.Combo.Model.Name, skipped.NextWindowStart);
+                AddTimeline("时段外跳过", skipped.DescribeSkip(), null, null, skipped.Combo.Model.Name);
+                break;
+            case ComboSkipReason.Cooldown:
+                Raise(new BatchEvent(BatchEventKind.ModelCooldownSkipped, _clock.Now, skipped.DescribeSkip(),
+                    null, skipped.Combo.Account.Label, skipped.Combo.Model.Name));
+                if (skipped.ResetAt.HasValue)
+                {
+                    _logger.WriteCooldownSkipped(skipped.Combo.Account.Id, skipped.Combo.Model.Name,
+                        skipped.ResetAt.Value);
+                }
+
+                AddTimeline("冷却跳过", skipped.DescribeSkip(), null, skipped.Combo.Account.Label,
+                    skipped.Combo.Model.Name);
+                break;
+        }
+    }
+
+    private void CheckIdSnapshot()
+    {
+        var current = _tasks.Select(t => t.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        if (_idSnapshot is null)
+        {
+            _idSnapshot = current;
+            return;
+        }
+
+        var doneIds = _tasks.Where(t => t.Status == TaskStatus.Done).Select(t => t.Id)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var missing = _idSnapshot.Where(id => doneIds.Contains(id) && !current.Contains(id)).ToList();
+        if (missing.Count > 0)
+        {
+            Raise(new BatchEvent(BatchEventKind.IdSnapshotWarning, _clock.Now,
+                $"检测到已完成任务 ID 消失或变更（{string.Join("、", missing.Take(5))}），若任务被重排可能导致重跑，请确认",
+                null) { Detail = string.Join(",", missing) });
+        }
+
+        _idSnapshot = current;
+    }
+
+    private void TrackUsage(string account, string model, AgentUsage? usage)
+    {
+        lock (_statsLock)
+        {
+            TrackUsageCore(account, model, usage);
+        }
+    }
+
+    private void TrackUsageCore(string account, string model, AgentUsage? usage)
+    {
+        if (!_accountUsage.TryGetValue(account, out var au))
+        {
+            au = new UsageEntry { Name = account };
+            _accountUsage[account] = au;
+        }
+
+        if (!_modelUsage.TryGetValue(model, out var mu))
+        {
+            mu = new UsageEntry { Name = model };
+            _modelUsage[model] = mu;
+        }
+
+        au.TaskCount++;
+        mu.TaskCount++;
+        if (usage?.Cost is { } cost)
+        {
+            au.Cost = (au.Cost ?? 0m) + cost;
+            mu.Cost = (mu.Cost ?? 0m) + cost;
+            au.CostBasis = usage.Basis;
+            mu.CostBasis = usage.Basis;
+        }
+    }
+
+    private void AddTimeline(string kind, string message, string? taskId, string? account, string? model)
+    {
+        var entry = new TimelineEntry
+        {
+            At = _clock.Now, Kind = kind, Message = message, TaskId = taskId, Account = account, Model = model
+        };
+        lock (_statsLock)
+        {
+            _timeline.Add(entry);
+        }
+    }
+
+    private void RebuildMatrix() =>
+        _matrix = new DegradationMatrix(_options.Accounts, _options.ModelCandidates, _options.DegradationStrategy);
+
+    private async Task SaveCooldownsAsync()
+    {
+        try
+        {
+            await _cooldownStore.SaveAsync(_cooldowns.Snapshot(), CancellationToken.None).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.Write("WARN", $"冷却记录落盘失败：{ex.Message}");
+        }
+    }
+
+    private async Task PersistAsync(CancellationToken ct)
+    {
+        try
+        {
+            await _taskStore.SaveAsync(_options.TaskFilePath, _tasks, ct).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.Write("ERROR", $"任务文件回写失败：{ex.Message}");
+        }
+    }
+
+    private void RaiseBlocked(string reason, string? taskId = null)
+    {
+        AddTimeline("阻塞", reason, taskId, null, null);
+        Raise(new BatchEvent(BatchEventKind.BatchBlocked, _clock.Now, reason, taskId)
+        {
+            BatchStatus = BatchStatus.Blocked,
+            Detail = reason
+        });
+    }
+
+    private void SetStatus(BatchStatus status)
+    {
+        Status = status;
+        Raise(new BatchEvent(BatchEventKind.StatusChanged, _clock.Now, $"批处理状态：{status}",
+            null) { BatchStatus = status });
+    }
+
+    private void RaiseTaskChanged(TaskItem task)
+    {
+        Raise(new BatchEvent(BatchEventKind.Info, _clock.Now, string.Empty, task.Id) { Task = task });
+    }
+
+    private void Raise(BatchEvent ev)
+    {
+        EventRaised?.Invoke(this, ev);
+        _logger.Write(ev);
+    }
+
+    private static string? Truncate(string? value, int maxChars)
+    {
+        if (value is null || maxChars <= 0)
+        {
+            return value;
+        }
+
+        return value.Length <= maxChars
+            ? value
+            : value[..maxChars] + $"\n…（结果已截断，超过 {maxChars / 1024}KB，完整内容见运行日志）";
+    }
+
+    private BatchReport BuildReport(DateTimeOffset startedAt)
+    {
+        var finishedAt = _clock.Now;
+        return new BatchReport
+        {
+            GeneratedAt = finishedAt,
+            BatchStatus = Status,
+            TaskFilePath = _options.TaskFilePath,
+            Total = _tasks.Count,
+            Done = _tasks.Count(t => t.Status == TaskStatus.Done),
+            Failed = _tasks.Count(t => t.Status == TaskStatus.Failed),
+            Interrupted = _tasks.Count(t => t.Status == TaskStatus.Interrupted),
+            Pending = _tasks.Count(t => t.Status == TaskStatus.Pending),
+            SkippedAlreadyDone = SkippedDoneCount,
+            StartedAt = startedAt,
+            FinishedAt = finishedAt,
+            DurationSeconds = Math.Round((finishedAt - startedAt).TotalSeconds, 1),
+            AccountUsage = _accountUsage.Values.ToList(),
+            ModelUsage = _modelUsage.Values.ToList(),
+            Timeline = _timeline.ToList(),
+            Fallback = new FallbackSummary
+            {
+                UsedCount = _fallbackUsedCount,
+                Model = _fallbackModelsUsed.Count > 0 ? string.Join("、", _fallbackModelsUsed) : null,
+                TotalCost = _fallbackBatchCost,
+                CostBasis = _fallbackCostBasis,
+                StoppedByLimit = _fallbackStoppedByLimit
+            },
+            FailedTasks = _tasks.Where(t => t.Status == TaskStatus.Failed)
+                .Select(t => new FailedTaskEntry
+                {
+                    TaskId = t.Id, Error = t.Error, RetryCount = t.RetryCount,
+                    Model = t.ModelUsed, Account = t.AccountUsed
+                }).ToList(),
+            WindowWaitSeconds = Math.Round(_windowWaitSeconds, 1),
+            CooldownWaitSeconds = Math.Round(_cooldownWaitSeconds, 1)
+        };
+    }
+}

@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/BatchAgentRunner.Agents/BatchAgentRunner.Agents.csproj" />
+    <Project Path="src/BatchAgentRunner.Core/BatchAgentRunner.Core.csproj" />
+    <Project Path="src/BatchAgentRunner.Desktop/BatchAgentRunner.Desktop.csproj" />
+    <Project Path="src/BatchAgentRunner.Infrastructure/BatchAgentRunner.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/BatchAgentRunner.Tests/BatchAgentRunner.Tests.csproj" />
+  </Folder>
+</Solution>

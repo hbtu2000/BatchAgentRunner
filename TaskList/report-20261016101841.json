@@ -1,0 +1,53 @@
+{
+  "generated_at": "2026-10-16T10:18:41.081847+08:00",
+  "batch_status": "Completed",
+  "task_file": "E:\\Src\\CodeBak\\WorkAgent\\TaskList\\tasks.xlsx",
+  "total": 3,
+  "done": 3,
+  "failed": 0,
+  "interrupted": 0,
+  "pending": 0,
+  "skipped_already_done": 1,
+  "started_at": "2026-10-16T10:10:00.3088389+08:00",
+  "finished_at": "2026-10-16T10:18:41.081847+08:00",
+  "duration_seconds": 520.8,
+  "account_usage": [
+    {
+      "name": "1371455324",
+      "task_count": 2
+    }
+  ],
+  "model_usage": [
+    {
+      "name": "hy3",
+      "task_count": 2
+    }
+  ],
+  "timeline": [
+    {
+      "at": "2026-10-16T10:10:00.34887+08:00",
+      "kind": "时段外跳过",
+      "message": "hy4-preview 当前不在免费时段（每日 23:00 → 次日 08:00），已跳过",
+      "model": "hy4-preview"
+    },
+    {
+      "at": "2026-10-16T10:14:50.2956446+08:00",
+      "kind": "时段外跳过",
+      "message": "hy4-preview 当前不在免费时段（每日 23:00 → 次日 08:00），已跳过",
+      "model": "hy4-preview"
+    }
+  ],
+  "fallback": {
+    "used_count": 0,
+    "total_cost": 0,
+    "cost_basis": "Estimated",
+    "stopped_by_limit": false
+  },
+  "failed_tasks": [],
+  "window_wait_seconds": 0,
+  "cooldown_wait_seconds": 0,
+  "shutdown": {
+    "requested": false,
+    "executed": false
+  }
+}

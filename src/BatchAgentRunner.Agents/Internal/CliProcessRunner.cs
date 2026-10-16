@@ -1,0 +1,414 @@
+using System.Diagnostics;
+using System.Text;
+using System.Text.RegularExpressions;
+using BatchAgentRunner.Core.Options;
+
+namespace BatchAgentRunner.Agents.Internal;
+
+/// <summary>子进程启动规格。</summary>
+public sealed record CliLaunchSpec(
+    string FileName,
+    string Arguments,
+    string WorkingDirectory,
+    IReadOnlyDictionary<string, string>? EnvironmentVariables = null,
+    bool ShowWindow = false);
+
+/// <summary>子进程执行结果。</summary>
+public sealed record ProcessRunResult(
+    int ExitCode,
+    string Output,
+    bool TimedOut,
+    bool Cancelled)
+{
+    /// <summary>命中的危险交互点（非 null 表示已拒绝自动批准）。</summary>
+    public string? DangerousInteraction { get; init; }
+
+    /// <summary>自动应答过的交互点（REQ-010b 需写入日志）。</summary>
+    public IReadOnlyList<string> AutoAnsweredPoints { get; init; } = Array.Empty<string>();
+}
+
+/// <summary>
+/// Agent CLI 子进程执行器：实时输出转发、stdin 等待自动应答、危险操作拦截、进程树回收。
+/// 对应 REQ-002a / REQ-002b / REQ-008「无僵尸进程残留」。
+/// </summary>
+public sealed class CliProcessRunner
+{
+    private readonly AutoAnswerPolicy _policy;
+    private readonly Action<string>? _log;
+
+    public CliProcessRunner(AutoAnswerPolicy policy, Action<string>? log = null)
+    {
+        _policy = policy;
+        _log = log;
+    }
+
+    public async Task<ProcessRunResult> RunAsync(
+        CliLaunchSpec spec,
+        Action<string>? onOutput,
+        TimeSpan timeout,
+        CancellationToken cancellationToken)
+    {
+        if (spec.ShowWindow)
+        {
+            return await RunWindowedAsync(spec, timeout, cancellationToken).ConfigureAwait(false);
+        }
+
+        var psi = new ProcessStartInfo(spec.FileName)
+        {
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            RedirectStandardInput = true,
+            CreateNoWindow = true,
+            WorkingDirectory = string.IsNullOrWhiteSpace(spec.WorkingDirectory)
+                ? Environment.CurrentDirectory
+                : spec.WorkingDirectory
+        };
+
+        // Agent CLI（Node.js 系）输出统一为 UTF-8；不显式指定会按控制台代码页（GBK）解码导致乱码
+        psi.StandardOutputEncoding = new UTF8Encoding(false);
+        psi.StandardErrorEncoding = new UTF8Encoding(false);
+
+        // 参数需逐段传入以避免转义问题；此处按空白切分保留引号内内容
+        foreach (var arg in SplitArguments(spec.Arguments))
+        {
+            psi.ArgumentList.Add(arg);
+        }
+
+        if (spec.EnvironmentVariables is not null)
+        {
+            foreach (var kv in spec.EnvironmentVariables)
+            {
+                psi.Environment[kv.Key] = kv.Value;
+            }
+        }
+
+        using var process = Process.Start(psi);
+        if (process is null)
+        {
+            return new ProcessRunResult(-1, $"无法启动进程：{spec.FileName}", false, false);
+        }
+
+        var buffer = new StringBuilder();
+        var lockObj = new object();
+        var lastOutputAt = DateTimeOffset.Now;
+        var autoAnswered = new List<string>();
+
+        void OnData(string? data)
+        {
+            if (data is null)
+            {
+                return;
+            }
+
+            // 剥离 ANSI 转义序列（颜色 / 光标控制等），使应用内实时流为干净文本行，
+            // 避免 TUI 残留控制码污染结果与分类（REQ：让输出可观测）。
+            var clean = StripAnsi(data);
+
+            lock (lockObj)
+            {
+                buffer.AppendLine(clean);
+                lastOutputAt = DateTimeOffset.Now;
+            }
+
+            onOutput?.Invoke(clean);
+        }
+
+        process.OutputDataReceived += (_, e) => OnData(e.Data);
+        process.ErrorDataReceived += (_, e) => OnData(e.Data);
+        process.BeginOutputReadLine();
+        process.BeginErrorReadLine();
+
+        var startedAt = DateTimeOffset.Now;
+        var idleThreshold = TimeSpan.FromSeconds(Math.Max(1, _policy.StdinIdleSeconds));
+
+        try
+        {
+            while (true)
+            {
+                if (process.HasExited)
+                {
+                    break;
+                }
+
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    KillTree(process);
+                    return new ProcessRunResult(-1, buffer.ToString(), false, true);
+                }
+
+                if (DateTimeOffset.Now - startedAt > timeout)
+                {
+                    KillTree(process);
+                    return new ProcessRunResult(-1, buffer.ToString(), true, false);
+                }
+
+                // stdin 等待检测：无输出增长超阈值 → 判定交互点
+                if (DateTimeOffset.Now - lastOutputAt > idleThreshold)
+                {
+                    string tail;
+                    lock (lockObj)
+                    {
+                        tail = Tail(buffer.ToString(), 400);
+                    }
+
+                    // 缓冲为空 = 长时间零输出，视为「疑似卡死」（如 agent 卡在权限审批框 /
+                    // 非文本交互点，stdout 永远拿不到一行可读文本）。不再盲目注入应答污染会话，
+                    // 主动终止并快速失败（REQ-002a 修正：防污染 + 快速失败）。
+                    if (string.IsNullOrWhiteSpace(tail))
+                    {
+                        _log?.Invoke("[自动应答] 进程长时间无输出（缓冲为空），疑似卡死或被非文本交互点阻塞，主动终止该任务");
+                        KillTree(process);
+                        return new ProcessRunResult(-1, buffer.ToString(), true, false)
+                        {
+                            AutoAnsweredPoints = autoAnswered
+                        };
+                    }
+
+                    var decision = DangerousOperationGuard.Evaluate(tail, _policy, out var matched);
+                    if (decision == GuardDecision.Block)
+                    {
+                        KillTree(process);
+                        return new ProcessRunResult(-1, buffer.ToString(), false, false)
+                        {
+                            DangerousInteraction = matched
+                        };
+                    }
+
+                    _log?.Invoke($"[自动应答] 交互点「{Trim(tail)}」→ 默认选项 {_policy.DefaultAnswer}" +
+                                 (decision == GuardDecision.AutoAllow ? "（白名单）" : string.Empty));
+                    autoAnswered.Add(Trim(tail));
+
+                    try
+                    {
+                        await process.StandardInput.WriteLineAsync(_policy.DefaultAnswer).ConfigureAwait(false);
+                        await process.StandardInput.FlushAsync().ConfigureAwait(false);
+                    }
+                    catch
+                    {
+                        // 无法注入 → 按超时失败处理，不挂起整批
+                        KillTree(process);
+                        return new ProcessRunResult(-1, buffer.ToString(), true, false);
+                    }
+
+                    lock (lockObj)
+                    {
+                        lastOutputAt = DateTimeOffset.Now;
+                    }
+                }
+
+                await Task.Delay(500, cancellationToken).ConfigureAwait(false);
+            }
+
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            KillTree(process);
+            return new ProcessRunResult(-1, buffer.ToString(), false, true);
+        }
+
+        return new ProcessRunResult(process.ExitCode, buffer.ToString(), false, false)
+        {
+            AutoAnsweredPoints = autoAnswered
+        };
+    }
+
+    /// <summary>
+    /// 窗口模式：不重定向 stdio、以真实 TTY 运行 CLI，弹出原生控制台窗口。
+    /// 优点：CLI 的 TUI / 进度 / 实时信息可在窗口中直接观察（不依赖应用内行缓冲输出流）。
+    /// 代价：读不到 stdout/stderr，故自动应答、危险操作拦截、额度/鉴权分类均失效，
+    /// 超时与取消仍可用（按进程树回收）。应用内实时输出流在此模式下为空，窗口即实时视图。
+    /// </summary>
+    private async Task<ProcessRunResult> RunWindowedAsync(
+        CliLaunchSpec spec, TimeSpan timeout, CancellationToken cancellationToken)
+    {
+        var psi = new ProcessStartInfo(spec.FileName)
+        {
+            UseShellExecute = true,
+            CreateNoWindow = false,
+            WindowStyle = ProcessWindowStyle.Normal,
+            WorkingDirectory = string.IsNullOrWhiteSpace(spec.WorkingDirectory)
+                ? Environment.CurrentDirectory
+                : spec.WorkingDirectory
+        };
+
+        // 参数需逐段传入以避免转义问题；此处按空白切分保留引号内内容
+        foreach (var arg in SplitArguments(spec.Arguments))
+        {
+            psi.ArgumentList.Add(arg);
+        }
+
+        if (spec.EnvironmentVariables is not null)
+        {
+            foreach (var kv in spec.EnvironmentVariables)
+            {
+                psi.Environment[kv.Key] = kv.Value;
+            }
+        }
+
+        _log?.Invoke($"[窗口模式] 弹出 CLI 窗口执行：{spec.FileName} {spec.Arguments}（应用内实时输出流为空，请以 CLI 窗口为准）");
+
+        using var process = Process.Start(psi);
+        if (process is null)
+        {
+            return new ProcessRunResult(-1, $"无法启动进程：{spec.FileName}", false, false);
+        }
+
+        var startedAt = DateTimeOffset.Now;
+        try
+        {
+            while (true)
+            {
+                if (process.HasExited)
+                {
+                    break;
+                }
+
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    KillTree(process);
+                    return new ProcessRunResult(-1, string.Empty, false, true);
+                }
+
+                if (DateTimeOffset.Now - startedAt > timeout)
+                {
+                    KillTree(process);
+                    return new ProcessRunResult(-1, string.Empty, true, false);
+                }
+
+                await Task.Delay(500, cancellationToken).ConfigureAwait(false);
+            }
+
+            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            KillTree(process);
+            return new ProcessRunResult(-1, string.Empty, false, true);
+        }
+
+        return new ProcessRunResult(process.ExitCode, string.Empty, false, false);
+    }
+
+    /// <summary>进程树回收，避免残留子进程（第 8 章可靠性）。</summary>
+    public static void KillTree(Process process)
+    {
+        try
+        {
+            if (OperatingSystem.IsWindows())
+            {
+                var killInfo = new ProcessStartInfo("taskkill")
+                {
+                    UseShellExecute = false,
+                    CreateNoWindow = true
+                };
+                killInfo.ArgumentList.Add("/pid");
+                killInfo.ArgumentList.Add(process.Id.ToString());
+                killInfo.ArgumentList.Add("/T");
+                killInfo.ArgumentList.Add("/F");
+
+                var killer = Process.Start(killInfo);
+                killer?.WaitForExit(3000);
+            }
+        }
+        catch
+        {
+            // 忽略：降级到 process.Kill
+        }
+
+        try
+        {
+            if (!process.HasExited)
+            {
+                process.Kill(entireProcessTree: true);
+            }
+        }
+        catch
+        {
+            // 进程已退出
+        }
+    }
+
+    private static string Tail(string text, int maxChars) =>
+        text.Length <= maxChars ? text : text[^maxChars..];
+
+    private static string Trim(string text)
+    {
+        var s = text.Replace("\r", " ").Replace("\n", " ").Trim();
+        return s.Length <= 120 ? s : s[^120..];
+    }
+
+    /// <summary>剥离 ANSI 转义序列（CSI / OSC / 裸 ESC），使捕获到的输出为干净文本。
+    /// 不影响应用内实时流对正常文本行的读取，仅去除终端控制码。</summary>
+    private static readonly Regex AnsiRegex = new(
+        @"\x1B(?:\[[0-9;?]*[ -/]*[@-~]|\][^\x1B\x07]*\x07|[()][AB0-2])",
+        RegexOptions.Compiled);
+
+    private static string StripAnsi(string text)
+    {
+        if (text.IndexOf('\x1B') < 0)
+        {
+            return text;
+        }
+
+        var stripped = AnsiRegex.Replace(text, string.Empty);
+        if (stripped.IndexOf('\x1B') < 0)
+        {
+            return stripped;
+        }
+
+        // 兜底：仍有残留裸 ESC 字符则直接剔除
+        var sb = new StringBuilder(stripped.Length);
+        foreach (var c in stripped)
+        {
+            if (c != '\x1B')
+            {
+                sb.Append(c);
+            }
+        }
+
+        return sb.ToString();
+    }
+
+    /// <summary>按 shell 规则切分参数（支持双引号包裹）。</summary>
+    public static List<string> SplitArguments(string arguments)
+    {
+        var result = new List<string>();
+        if (string.IsNullOrWhiteSpace(arguments))
+        {
+            return result;
+        }
+
+        var current = new StringBuilder();
+        var inQuotes = false;
+        foreach (var c in arguments)
+        {
+            if (c == '"')
+            {
+                inQuotes = !inQuotes;
+                continue;
+            }
+
+            if (char.IsWhiteSpace(c) && !inQuotes)
+            {
+                if (current.Length > 0)
+                {
+                    result.Add(current.ToString());
+                    current.Clear();
+                }
+
+                continue;
+            }
+
+            current.Append(c);
+        }
+
+        if (current.Length > 0)
+        {
+            result.Add(current.ToString());
+        }
+
+        return result;
+    }
+}

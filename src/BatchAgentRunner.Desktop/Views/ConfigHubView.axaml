@@ -1,0 +1,40 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:BatchAgentRunner.Desktop.ViewModels"
+             xmlns:conv="using:BatchAgentRunner.Desktop.Converters"
+             x:Class="BatchAgentRunner.Desktop.Views.ConfigHubView">
+
+    <UserControl.Resources>
+        <conv:ActiveTabBackgroundConverter x:Key="TabBg" />
+        <conv:ActiveTabForegroundConverter x:Key="TabFg" />
+    </UserControl.Resources>
+
+    <Grid RowDefinitions="Auto,*">
+        <!-- 顶部标签：原先分散的三个配置入口合并于此一处 -->
+        <Border Grid.Row="0" Padding="10,8" BorderThickness="0,0,0,1" BorderBrush="#DDDDDD">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="账号登录（一键，最简单）"
+                        HorizontalContentAlignment="Center" Padding="16,8"
+                        FontWeight="SemiBold"
+                        Background="{Binding ActiveSubview, Converter={StaticResource TabBg}, ConverterParameter=login}"
+                        Foreground="{Binding ActiveSubview, Converter={StaticResource TabFg}, ConverterParameter=login}"
+                        Command="{Binding HubNavigateCommand}" CommandParameter="login" />
+                <Button Content="配置向导（首次推荐）"
+                        HorizontalContentAlignment="Center" Padding="16,8"
+                        FontWeight="SemiBold"
+                        Background="{Binding ActiveSubview, Converter={StaticResource TabBg}, ConverterParameter=wizard}"
+                        Foreground="{Binding ActiveSubview, Converter={StaticResource TabFg}, ConverterParameter=wizard}"
+                        Command="{Binding HubNavigateCommand}" CommandParameter="wizard" />
+                <Button Content="高级配置"
+                        HorizontalContentAlignment="Center" Padding="16,8"
+                        FontWeight="SemiBold"
+                        Background="{Binding ActiveSubview, Converter={StaticResource TabBg}, ConverterParameter=config}"
+                        Foreground="{Binding ActiveSubview, Converter={StaticResource TabFg}, ConverterParameter=config}"
+                        Command="{Binding HubNavigateCommand}" CommandParameter="config" />
+            </StackPanel>
+        </Border>
+
+        <!-- 子视图内容区：全局 ViewLocator 按 CurrentSubview 渲染对应 View -->
+        <ContentControl Grid.Row="1" Content="{Binding CurrentSubview}" Margin="0" />
+    </Grid>
+</UserControl>

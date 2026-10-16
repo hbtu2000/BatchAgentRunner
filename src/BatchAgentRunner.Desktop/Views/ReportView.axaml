@@ -1,0 +1,75 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:BatchAgentRunner.Desktop.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="760"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             x:Class="BatchAgentRunner.Desktop.Views.ReportView">
+
+    <Design.DataContext>
+        <vm:ReportViewModel />
+    </Design.DataContext>
+
+    <ScrollViewer>
+        <StackPanel Margin="12" Spacing="10">
+
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <Button Content="刷新" Command="{Binding RefreshCommand}" />
+                <TextBlock Text="{Binding ReportPath, StringFormat='报告文件：{0}'}" VerticalAlignment="Center"
+                           FontSize="12" />
+            </StackPanel>
+
+            <Border Padding="12" CornerRadius="6" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="成败统计" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding SummaryText}" />
+                    <TextBlock Text="{Binding DurationText, StringFormat='总耗时：{0}'}" />
+                </StackPanel>
+            </Border>
+
+            <Border Padding="12" CornerRadius="6" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="兜底与等待" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding FallbackText}" />
+                    <TextBlock Text="{Binding WaitText}" />
+                    <TextBlock Text="{Binding ShutdownText, StringFormat='自动关机：{0}'}" />
+                </StackPanel>
+            </Border>
+
+            <Border Padding="12" CornerRadius="6" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="失败任务清单" FontWeight="SemiBold" />
+                    <ListBox ItemsSource="{Binding FailedTasks}" MaxHeight="220">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Spacing="2">
+                                    <TextBlock Text="{Binding TaskId}" FontWeight="SemiBold" />
+                                    <TextBlock Text="{Binding Error}" FontSize="12" Foreground="{DynamicResource ErrorBrush}"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
+            </Border>
+
+            <Border Padding="12" CornerRadius="6" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="切换 / 事件时间线" FontWeight="SemiBold" />
+                    <ListBox ItemsSource="{Binding Timeline}" MaxHeight="300">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="{Binding At, StringFormat='{}{0:HH:mm:ss}'}" Opacity="0.6" />
+                                    <TextBlock Text="{Binding Kind}" Width="90" />
+                                    <TextBlock Text="{Binding Message}" TextWrapping="Wrap" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
+            </Border>
+
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>
