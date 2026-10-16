@@ -13,6 +13,12 @@ public sealed class StreamJsonRenderer
     /// <summary>最终回答文本（来自 <c>result</c> 事件；为 null 表示尚未收到或解析失败）。</summary>
     public string? FinalResult { get; private set; }
 
+    /// <summary>
+    /// 最终 <c>result</c> 事件是否带 <c>is_error=true</c>（CLI 自报执行失败，
+    /// 如 429 限流/额度耗尽）。供适配层作为 exit 0 时的失败兜底信号。
+    /// </summary>
+    public bool FinalIsError { get; private set; }
+
     /// <summary>喂入一行原始输出（CLI 的 stdout/stderr 单行），返回要转发的可读行。</summary>
     public IReadOnlyList<string> Feed(string rawLine)
     {
@@ -143,6 +149,7 @@ public sealed class StreamJsonRenderer
     private void EmitResult(JsonElement doc, List<string> outputs)
     {
         var isError = doc.TryGetProperty("is_error", out var ie) && ie.ValueKind == JsonValueKind.True;
+        FinalIsError = isError;
 
         if (doc.TryGetProperty("result", out var r) && r.ValueKind == JsonValueKind.String)
         {

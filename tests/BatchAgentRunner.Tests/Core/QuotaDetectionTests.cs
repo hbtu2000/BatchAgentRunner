@@ -78,6 +78,19 @@ public class QuotaDetectionTests
     }
 
     [Fact]
+    public void 分类_CodeBuddy真实429文案_判RateLimited并解析出重置时间()
+    {
+        // 2026-10-16 实测文案：「429 您的使用量已超出频率限制，将在 2026-10-16 20:17:12 恢复」
+        var c = new QuotaErrorClassifier();
+        var failure = c.Classify(
+            "429 您的使用量已超出频率限制，将在 2026-10-16 20:17:12 恢复", 0, Now);
+
+        Assert.Equal(AgentFailureKind.RateLimited, failure.Kind);
+        Assert.NotNull(failure.ResetAt);
+        Assert.Equal(new DateTimeOffset(2026, 10, 16, 20, 17, 12, Now.Offset), failure.ResetAt!.Value);
+    }
+
+    [Fact]
     public void 分类_凭据失效()
     {
         var c = new QuotaErrorClassifier();

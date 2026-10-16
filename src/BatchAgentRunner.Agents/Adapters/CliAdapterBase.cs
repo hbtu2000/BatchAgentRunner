@@ -162,14 +162,39 @@ public abstract class CliAdapterBase : IAgentCliAdapter
 
         // 2026-10-15 实测（codebuddy 2.167.0）：认证失败等错误以「exit 0 + stderr 输出」返回，
         // 仅凭退出码会把失败当成功回写任务；按凭据失效特征兜底分类。
-        var silent = Classifier.Classify(run.Output, exitCode: 0);
-        if (silent.Kind == AgentFailureKind.AuthExpired)
+        // 2026-10-16 修复：429 限流同样以 exit 0 返回（stream-json result 事件 is_error=true），
+        // 此前只拦 AuthExpired 导致 RateLimited/QuotaExhausted 被当成功 → 引擎不退避、不记冷却、不切换账号。
+        return ResolveExitZeroOutcome(request, run.Output, renderer.FinalResult, renderer.FinalIsError);
+    }
+
+    /// <summary>
+    /// exit 0 时的成败兜底判定（protected 以便子类/回归测试复用）：
+    /// ① result 事件 is_error=true → CLI 自报失败，按输出分类（限流/额度/凭据/普通失败）；
+    /// ② 无 result 事件（finalResult 为空）但输出命中凭据失效/限流/额度特征 → 按分类器判失败；
+    /// ③ 有正常 result 事件（is_error=false）→ 信任之，即使回答文本中碰巧含有 429/额度 等词也不误杀。
+    /// </summary>
+    protected AgentExecutionResult ResolveExitZeroOutcome(
+        AgentRequest request, string output, string? finalResult, bool finalIsError)
+    {
+        if (finalIsError)
         {
-            return AgentExecutionResult.Fail(request, silent, run.Output);
+            var failure = Classifier.Classify(output, exitCode: 1);
+            return AgentExecutionResult.Fail(request, failure, output);
         }
 
-        var output = ExtractResult(run.Output, renderer.FinalResult);
-        return AgentExecutionResult.Ok(request, output, ExtractUsage(run.Output));
+        if (finalResult is null)
+        {
+            var silent = Classifier.Classify(output, exitCode: 0);
+            if (silent.Kind is AgentFailureKind.AuthExpired
+                or AgentFailureKind.RateLimited
+                or AgentFailureKind.QuotaExhausted)
+            {
+                return AgentExecutionResult.Fail(request, silent, output);
+            }
+        }
+
+        var result = ExtractResult(output, finalResult);
+        return AgentExecutionResult.Ok(request, result, ExtractUsage(output));
     }
 
     /// <summary>

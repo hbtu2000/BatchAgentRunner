@@ -84,6 +84,23 @@ public class StreamJsonRendererTests
     }
 
     [Fact]
+    public void Feed_result事件_记录FinalIsError状态()
+    {
+        // 2026-10-16 回归：FinalIsError 供适配层在 exit 0 时识别 CLI 自报失败（429/额度耗尽）
+        var r1 = new StreamJsonRenderer();
+        r1.Feed("""{"type":"result","subtype":"error","is_error":true,"result":"429 限流"}""");
+        Assert.True(r1.FinalIsError);
+
+        var r2 = new StreamJsonRenderer();
+        r2.Feed("""{"type":"result","subtype":"success","is_error":false,"result":"已完成"}""");
+        Assert.False(r2.FinalIsError);
+
+        var r3 = new StreamJsonRenderer();
+        r3.Feed("非 JSON 文本");
+        Assert.False(r3.FinalIsError);
+    }
+
+    [Fact]
     public void Feed_损坏Json_降级透传不抛异常()
     {
         var r = new StreamJsonRenderer();

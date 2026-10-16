@@ -30,7 +30,9 @@ public sealed class QuotaErrorClassifier
     public List<string> RateLimitPatterns { get; } = new()
     {
         "rate limit", "rate_limit", "rate-limit", "too many requests", "429",
-        "try again later", "temporarily", "限流", "请求过于频繁", "请稍后重试"
+        "try again later", "temporarily", "限流", "请求过于频繁", "请稍后重试",
+        // 2026-10-16 实测 codebuddy 429 文案："您的使用量已超出频率限制，将在 <时间> 恢复"
+        "频率限制", "使用量已超出"
     };
 
     /// <summary>凭据失效关键词。</summary>
@@ -60,7 +62,9 @@ public sealed class QuotaErrorClassifier
         if (RateLimitPatterns.Any(p => lower.Contains(p.ToLowerInvariant())))
         {
             var resetAt = ResetTimeParser.Parse(text, reference);
-            return new AgentFailure(AgentFailureKind.RateLimited, ExtractMessage(text, "触发临时限流"), null, text);
+            // 2026-10-16：带上传解析的重置时间——退避重试升级为冷却时（BatchEngine goto QuotaExhausted），
+            // 可直接采用服务端给的恢复时间（如「将在 2026-10-16 20:17:12 恢复」），而非默认冷却时长。
+            return new AgentFailure(AgentFailureKind.RateLimited, ExtractMessage(text, "触发临时限流"), resetAt, text);
         }
 
         if (AuthPatterns.Any(p => lower.Contains(p.ToLowerInvariant())))
