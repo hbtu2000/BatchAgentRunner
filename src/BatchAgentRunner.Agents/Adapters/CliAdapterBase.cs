@@ -120,11 +120,19 @@ public abstract class CliAdapterBase : IAgentCliAdapter
         var template = Settings.ArgumentsTemplate ?? DefaultArgumentsTemplate;
         var arguments = CliCommandBuilder.Build(template, request, Settings.ExtraArguments);
 
+        // stream-json 渲染：把 CLI 的逐行 JSON 事件翻译成可读行喂给应用内实时流；
+        // 同时记录最终回答（result 事件）供结果回写。原始 stdout/stderr 仍由 CliProcessRunner
+        // 累积进 run.Output，鉴权/额度分类照常基于原始文本工作。
+        var renderer = new StreamJsonRenderer();
+        Action<string>? onOut = request.OnOutputChunk is null
+            ? null
+            : raw => { foreach (var line in renderer.Feed(raw)) request.OnOutputChunk(line); };
+
         var spec = new CliLaunchSpec(exe, arguments, request.WorkingDirectory, BuildEnvironment(request.Account))
         {
             ShowWindow = Settings.ShowWindow
         };
-        var run = await Runner.RunAsync(spec, request.OnOutputChunk, request.Timeout, cancellationToken)
+        var run = await Runner.RunAsync(spec, onOut, request.Timeout, cancellationToken)
             .ConfigureAwait(false);
 
         if (run.DangerousInteraction is { } matched)
@@ -160,7 +168,7 @@ public abstract class CliAdapterBase : IAgentCliAdapter
             return AgentExecutionResult.Fail(request, silent, run.Output);
         }
 
-        var output = ExtractResult(run.Output);
+        var output = ExtractResult(run.Output, renderer.FinalResult);
         return AgentExecutionResult.Ok(request, output, ExtractUsage(run.Output));
     }
 
@@ -251,8 +259,14 @@ public abstract class CliAdapterBase : IAgentCliAdapter
             .ToList();
     }
 
-    /// <summary>从原始输出中提取结果正文（各 CLI 输出格式不同，adapter 层隔离）。</summary>
-    protected virtual string ExtractResult(string rawOutput) => rawOutput.Trim();
+    /// <summary>
+    /// 从 CLI 输出中提取结果正文。stream-json 模式下原始输出是逐行 JSON（不可直接当答案），
+    /// 故优先取渲染器抽取的最终回答；解析失败或非 JSON 输出再退化为原始文本。各 CLI 可在 adapter 层覆写。
+    /// </summary>
+    protected virtual string ExtractResult(string rawOutput, string? finalResult) =>
+        !string.IsNullOrEmpty(finalResult)
+            ? finalResult!
+            : (rawOutput?.Trim() ?? string.Empty);
 
     /// <summary>
     /// 提取用量/费用（REQ-004b / M0 V-7）。当前不可得时返回 null，

@@ -504,7 +504,7 @@ public sealed class BatchEngine
                     break;
                 }
 
-                var outcome = await ExecuteTaskAsync(task, ct).ConfigureAwait(false);
+                var outcome = await ExecuteTaskSafeAsync(task, ct).ConfigureAwait(false);
                 if (outcome is TaskOutcome.Blocked or TaskOutcome.Terminated or TaskOutcome.StopBatch)
                 {
                     break;
@@ -527,7 +527,7 @@ public sealed class BatchEngine
                         return;
                     }
 
-                    var outcome = await ExecuteTaskAsync(task, ct).ConfigureAwait(false);
+                    var outcome = await ExecuteTaskSafeAsync(task, ct).ConfigureAwait(false);
                     if (outcome is TaskOutcome.Blocked or TaskOutcome.Terminated or TaskOutcome.StopBatch)
                     {
                         stopDispatch = true;
@@ -541,6 +541,43 @@ public sealed class BatchEngine
 
             await Task.WhenAll(workers).ConfigureAwait(false);
         }
+    }
+
+    /// <summary>
+    /// 单任务执行兜底：引擎自身的未预期异常（如启动进程失败、落盘失败）不允许静默冒泡
+    /// 杀死整批（2026-10-16 实测：异常被 UI 吞掉、运行日志无记录、报告不落盘，排障极困难）。
+    /// 此处记录 ERROR 日志与事件、任务判失败后继续下一任务；用户取消（OCE）按终止处理。
+    /// </summary>
+    private async Task<TaskOutcome> ExecuteTaskSafeAsync(TaskItem task, CancellationToken ct)
+    {
+        TaskOutcome outcome;
+        try
+        {
+            outcome = await ExecuteTaskAsync(task, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            await MarkInterrupted(task, "用户终止，当前任务安全中断");
+            return TaskOutcome.Terminated;
+        }
+        catch (Exception ex)
+        {
+            _logger.Write("ERROR", $"任务 {task.Id} 执行发生未预期异常：{ex.GetType().Name}：{ex.Message}");
+            Raise(new BatchEvent(BatchEventKind.Warning, _clock.Now,
+                $"任务 {task.Id} 执行异常（{ex.GetType().Name}）：{ex.Message}", task.Id));
+            try
+            {
+                await FailTask(task, $"执行异常（{ex.GetType().Name}）：{ex.Message}");
+            }
+            catch (Exception persistEx)
+            {
+                _logger.Write("ERROR", $"任务 {task.Id} 失败落盘也异常：{persistEx.GetType().Name}：{persistEx.Message}");
+            }
+
+            return TaskOutcome.Finished;
+        }
+
+        return outcome;
     }
 
     private async Task<TaskOutcome> ExecuteTaskAsync(TaskItem task, CancellationToken ct)

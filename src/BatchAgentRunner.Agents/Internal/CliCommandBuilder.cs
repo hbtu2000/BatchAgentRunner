@@ -36,13 +36,22 @@ public static class CliCommandBuilder
     /// WorkBuddy 形态。2026-10-15 实测（codebuddy 2.167.0）：WorkBuddy 品牌无独立 CLI，
     /// 同用 codebuddy 二进制；<c>--expert</c> 为非法参数（error: unknown option），
     /// 专家诉求按 PRD 降级走 prompt 注入。
+    /// 同步采用 <c>--output-format stream-json</c>（理由同 <see cref="CodeBuddyTemplate"/>）。
     /// </summary>
     public static string WorkBuddyTemplate =>
-        $"--print {PlaceholderPrompt} --model {PlaceholderModel} {PlaceholderExtra}";
+        $"--print {PlaceholderPrompt} --model {PlaceholderModel} --output-format stream-json {PlaceholderExtra}";
 
-    /// <summary>CodeBuddy 形态（待 M0 验证）。</summary>
+    /// <summary>
+    /// CodeBuddy 形态。
+    /// 2026-10-16 修正：原 <c>--output-format text</c> 在 <c>-p/--print</c> 下「只打印最终回答并退出」，
+    /// 执行全程不写 stdout —— 非窗口模式（应用内实时流）与窗口模式（真实 TTY）都看不到任何过程，
+    /// 表现为「CLI 窗口一片黑 / 应用内实时区空白」。
+    /// 改为 <c>--output-format stream-json</c>：CLI 实时输出逐行 JSON 事件（assistant / user / result），
+    /// 既能在后台（非窗口）被应用捕获并渲染成可读进度，也能在窗口模式里至少显示文本（不再是纯黑）。
+    /// 解析见 <see cref="StreamJsonRenderer"/>。
+    /// </summary>
     public static string CodeBuddyTemplate =>
-        $"-p {PlaceholderPrompt} --model {PlaceholderModel} --output-format text {PlaceholderExtra}";
+        $"-p {PlaceholderPrompt} --model {PlaceholderModel} --output-format stream-json {PlaceholderExtra}";
 
     public static string Quote(string value)
     {

@@ -121,6 +121,7 @@ public sealed class CliProcessRunner
 
         var startedAt = DateTimeOffset.Now;
         var idleThreshold = TimeSpan.FromSeconds(Math.Max(1, _policy.StdinIdleSeconds));
+        var noOutputLogged = false;
 
         try
         {
@@ -152,17 +153,26 @@ public sealed class CliProcessRunner
                         tail = Tail(buffer.ToString(), 400);
                     }
 
-                    // 缓冲为空 = 长时间零输出，视为「疑似卡死」（如 agent 卡在权限审批框 /
-                    // 非文本交互点，stdout 永远拿不到一行可读文本）。不再盲目注入应答污染会话，
-                    // 主动终止并快速失败（REQ-002a 修正：防污染 + 快速失败）。
+                    // 缓冲为空 = 长时间零输出。2026-10-16 实测：CodeBuddy CLI 的 print 模式（-p）
+                    // 在整个执行期间不向 stdout 输出任何内容、仅在结束时打印最终结果，
+                    // 「零输出」是常态而非卡死（此前在此处按「疑似卡死」强杀，导致正常执行中的
+                    // 任务于 30 秒被误杀并误报「单任务执行超时」）。故此处不再主动终止，
+                    // 交给任务级超时（REQ-013）兜底；交互点判定仅对「已有输出后停滞」的会话生效。
                     if (string.IsNullOrWhiteSpace(tail))
                     {
-                        _log?.Invoke("[自动应答] 进程长时间无输出（缓冲为空），疑似卡死或被非文本交互点阻塞，主动终止该任务");
-                        KillTree(process);
-                        return new ProcessRunResult(-1, buffer.ToString(), true, false)
+                        if (!noOutputLogged)
                         {
-                            AutoAnsweredPoints = autoAnswered
-                        };
+                            noOutputLogged = true;
+                            _log?.Invoke("[自动应答] 进程尚未产生输出（print 模式下属正常现象），继续等待；任务超时兜底仍生效");
+                        }
+
+                        lock (lockObj)
+                        {
+                            lastOutputAt = DateTimeOffset.Now;
+                        }
+
+                        await Task.Delay(500, cancellationToken).ConfigureAwait(false);
+                        continue;
                     }
 
                     var decision = DangerousOperationGuard.Evaluate(tail, _policy, out var matched);
@@ -219,25 +229,25 @@ public sealed class CliProcessRunner
     /// 优点：CLI 的 TUI / 进度 / 实时信息可在窗口中直接观察（不依赖应用内行缓冲输出流）。
     /// 代价：读不到 stdout/stderr，故自动应答、危险操作拦截、额度/鉴权分类均失效，
     /// 超时与取消仍可用（按进程树回收）。应用内实时输出流在此模式下为空，窗口即实时视图。
+    /// 注意：必须 UseShellExecute=false（2026-10-16 定案：ShellExecute 路径下设置环境变量
+    /// 会抛「Process 对象必须将 UseShellExecute 属性设置为 False 才能使用环境变量」，
+    /// 而 BuildEnvironment 恒返回非空字典 → 每次任务启动必然异常、批处理静默死亡）；
+    /// 改用 CreateNoWindow=false 让控制台子进程自建可见窗口，环境变量照常注入。
     /// </summary>
     private async Task<ProcessRunResult> RunWindowedAsync(
         CliLaunchSpec spec, TimeSpan timeout, CancellationToken cancellationToken)
     {
         var psi = new ProcessStartInfo(spec.FileName)
         {
-            UseShellExecute = true,
+            UseShellExecute = false,
             CreateNoWindow = false,
-            WindowStyle = ProcessWindowStyle.Normal,
             WorkingDirectory = string.IsNullOrWhiteSpace(spec.WorkingDirectory)
                 ? Environment.CurrentDirectory
-                : spec.WorkingDirectory
+                : spec.WorkingDirectory,
+            // 窗口模式必须用 Arguments 字符串传参；模板中的 prompt 已由 CliCommandBuilder.Quote 完成引号转义。
+            // 实测 .cmd shim 在 UseShellExecute=false 下可由 CreateProcess 正常拉起（自动经 %COMSPEC% 转交）。
+            Arguments = spec.Arguments
         };
-
-        // 参数需逐段传入以避免转义问题；此处按空白切分保留引号内内容
-        foreach (var arg in SplitArguments(spec.Arguments))
-        {
-            psi.ArgumentList.Add(arg);
-        }
 
         if (spec.EnvironmentVariables is not null)
         {

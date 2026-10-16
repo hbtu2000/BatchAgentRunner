@@ -52,8 +52,8 @@
                                          PlaceholderText="CLI 参数模板，占位符 {prompt} {model} {expert} {workspace} {extra}（M0 验证前留空即用默认）"
                                          ToolTip.Tip="留空 = 用适配器内置模板。该模板尚未经真实 CLI 实测（M0 V-1/V-2 待做），先用默认值。" />
                                 <CheckBox IsChecked="{Binding ShowCliWindow}"
-                                          Content="执行任务时弹出 CLI 原生控制台窗口（实时观察 TUI，关闭则后台无窗口运行）"
-                                          ToolTip.Tip="勾选后：执行任务会弹出 CLI 的独立控制台窗口，以真实 TTY 运行，可在窗口中直接看到实时信息。&#10;此模式下应用内实时输出流为空（窗口即实时视图），且自动应答/危险操作拦截失效，需人工值守窗口。&#10;不勾选（默认）：后台无窗口运行，输出经应用内实时输出流展示，自动应答与危险拦截照常生效。" />
+                                          Content="弹出 CLI 原生控制台窗口（默认不勾选：后台运行并实时回显进度；勾选仅排障用）"
+                                          ToolTip.Tip="默认不勾选（推荐）：后台无窗口运行，CLI 输出以 stream-json 形式被应用实时捕获并渲染成可读进度，自动应答、危险拦截、结果回写与鉴权/额度分类全部正常。&#10;勾选（仅排障）：弹出 CLI 独立控制台窗口看原始 stream-json 文本（不再是纯黑），但应用侧读不到输出 —— 结果回写/鉴权/额度分类会失效、应用内实时区空白，需人工值守窗口。常规批量任务不建议开启。" />
                                 <TextBox Text="{Binding DefaultWorkspace}" PlaceholderText="本批默认工作空间（命名空间名或目录）"
                                          ToolTip.Tip="本批所有未单独指定 workspace 的任务都在这里执行。&#10;可填命名空间名或绝对路径；留空 = 走 ② 里的全局默认空间；再落空 = 程序当前目录。" />
                             </StackPanel>

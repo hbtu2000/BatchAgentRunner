@@ -219,7 +219,22 @@ public sealed class EngineHost : ObservableObject
                 }
             }
 
-            var report = await engine.StartAsync(waitIfUnavailable, cancellationToken).ConfigureAwait(false);
+            BatchReport report;
+            try
+            {
+                report = await engine.StartAsync(waitIfUnavailable, cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                // 引擎未预期异常必须落运行日志（2026-10-16 教训：仅 UI 状态栏展示，日志无记录无法排障）
+                _logger?.Write("ERROR", $"批处理执行异常终止：{ex.GetType().Name}：{ex.Message}");
+                throw;
+            }
+
             LastReport = report;
             LastReportPath = await _reportWriter.WriteAsync(report, Options.TaskFilePath, cancellationToken)
                 .ConfigureAwait(false);
