@@ -41,6 +41,10 @@ public sealed class BatchReport
     [JsonPropertyName("duration_seconds")]
     public double DurationSeconds { get; set; }
 
+    /// <summary>净执行时长（秒）= 墙钟总时长 − 等待时长。暂停/等待期间不计入（DESIGN-额度耗尽暂停续跑）。</summary>
+    [JsonPropertyName("active_duration_seconds")]
+    public double ActiveDurationSeconds { get; set; }
+
     /// <summary>各账号使用量。</summary>
     [JsonPropertyName("account_usage")]
     public List<UsageEntry> AccountUsage { get; set; } = new();

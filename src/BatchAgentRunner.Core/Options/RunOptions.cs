@@ -99,9 +99,19 @@ public sealed class RunOptions
     [JsonPropertyName("max_total_minutes_per_task")]
     public int MaxTotalMinutesPerTask { get; set; } = 60;
 
-    /// <summary>最长可等待时长（分钟，REQ-003b，默认 60）。</summary>
+    /// <summary>最长可等待时长（分钟，REQ-003b，默认 60）。仅对「免费时段外」类等待生效；额度耗尽等待不受此限（见 <see cref="WaitForQuotaReset"/>）。</summary>
     [JsonPropertyName("max_wait_minutes")]
     public int MaxWaitMinutes { get; set; } = 60;
+
+    /// <summary>
+    /// 额度耗尽时无限等待重置（默认 <c>true</c>）。
+    /// <para>当所有启用账号的所有候选模型组合<b>因额度耗尽</b>（<see cref="WaitKind.QuotaReset"/>）同时不可用时，
+    /// 引擎进入 <c>Waiting</c> 暂停并等待最早恢复的组合额度重置后自动续跑，不再受 <see cref="MaxWaitMinutes"/> 上限约束
+    /// （额度每日必然重置，属于确定可恢复场景）。暂停时长不计入批处理与各任务的时长。</para>
+    /// <para>关闭后退回旧行为：额度耗尽等待同样受 <see cref="MaxWaitMinutes"/> 约束，超出则转 <c>Blocked</c>。</para>
+    /// </summary>
+    [JsonPropertyName("wait_for_quota_reset")]
+    public bool WaitForQuotaReset { get; set; } = true;
 
     /// <summary>CLI 未返回可解析重置时间时的默认冷却时长（分钟，REQ-004c，默认 60，标注为假设）。</summary>
     [JsonPropertyName("default_cooldown_minutes")]
@@ -157,6 +167,10 @@ public sealed class RunOptions
     /// <summary>最长可等待时长（派生自 <see cref="MaxWaitMinutes"/>，不单独持久化）。</summary>
     [JsonIgnore]
     public TimeSpan MaxWait => TimeSpan.FromMinutes(Math.Max(0, MaxWaitMinutes));
+
+    /// <summary>额度耗尽是否无限等待重置（派生自 <see cref="WaitForQuotaReset"/>，不单独持久化）。</summary>
+    [JsonIgnore]
+    public bool WaitForQuotaResetEnabled => WaitForQuotaReset;
 
     /// <summary>默认冷却时长（派生自 <see cref="DefaultCooldownMinutes"/>，不单独持久化）。</summary>
     [JsonIgnore]

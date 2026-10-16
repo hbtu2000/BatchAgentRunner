@@ -280,10 +280,12 @@ public class UsabilityTests
         await File.WriteAllTextAsync(taskPath,
             JsonDefaults.Serialize(new List<TaskItem> { new() { Id = "task-001", Instruction = "仿真指令" } }));
 
-        // 第一次：唯一模型额度耗尽 90 分钟（超出 max_wait 60 分钟）→ 无可切组合 → 阻塞
+        // 第一次：唯一模型额度耗尽 90 分钟（超出 max_wait 60 分钟）→ 无可切组合 → 阻塞。
+        // 关闭 wait_for_quota_reset 以保留「手动重置冷却后续跑」这条 UX 路径（默认开启时额度耗尽会自动等待重置）。
         var adapter = new MockAdapter((_, attempt) =>
             attempt <= 1 ? MockStep.Quota(resetIn: TimeSpan.FromMinutes(90)) : MockStep.Ok("重置后输出"));
         var options = Options(taskPath, M("m1"));
+        options.WaitForQuotaReset = false;
         var (engine, _, logger1, events1) = BuildEngine(options, adapter, dir);
 
         var report1 = await engine.StartAsync(waitIfUnavailable: false);

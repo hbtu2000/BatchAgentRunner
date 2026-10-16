@@ -1,0 +1,24 @@
+root = true
+
+[*]
+trim_trailing_whitespace = true
+insert_final_newline = true
+charset = utf-8
+
+[*.cs]
+indent_style = space
+indent_size = 4
+dotnet_sort_system_directives_first = true
+csharp_style_namespace_declarations = file_scoped:suggestion
+csharp_style_var_when_type_is_apparent = true:suggestion
+
+# 可空引用注解一致性（本项目已全面启用 Nullable）
+dotnet_diagnostic.CS8600.severity = warning
+dotnet_diagnostic.CS8602.severity = warning
+dotnet_diagnostic.CS8604.severity = warning
+
+# 库层 async 必须 ConfigureAwait(false)（CA2007）
+dotnet_diagnostic.CA2007.severity = warning
+
+# 阻止反序列化目标声明接口集合类型（项目历史坑：NotSupportedException）
+dotnet_diagnostic.CA1002.severity = none

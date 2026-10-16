@@ -376,6 +376,7 @@
                                 <StackPanel Orientation="Horizontal" Spacing="16">
                                     <CheckBox Content="强制重跑（忽略已完成状态）" IsChecked="{Binding ForceRerun}" ToolTip.Tip="勾上 = 忽略已完成状态全部重跑。不勾 = 已 done/failed 跳过（续跑语义）。" />
                                     <CheckBox Content="失败即停" IsChecked="{Binding StopOnFailure}" ToolTip.Tip="某条任务重试用尽仍失败时，整批立刻转「已阻塞」。" />
+                                    <CheckBox Content="额度耗尽无限等待重置（暂停不计入时长）" IsChecked="{Binding WaitForQuotaReset}" ToolTip.Tip="所有账号候选模型额度同时耗尽时，进入暂停并等待额度重置后自动续跑；暂停时间不计入批处理与各任务的时长。关闭则按「最长可等待」判定阻塞。" />
                                 </StackPanel>
                             </StackPanel>
                         </Border>

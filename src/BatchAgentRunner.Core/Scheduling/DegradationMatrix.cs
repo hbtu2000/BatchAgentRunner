@@ -170,4 +170,38 @@ public sealed class DegradationMatrix
     /// <summary>是否所有组合当前都不可用。</summary>
     public bool AllUnavailable(DateTimeOffset now, AvailabilityEvaluator evaluator) =>
         _ordered.All(c => !evaluator.Evaluate(c, now).Available);
+
+    /// <summary>
+    /// 是否「所有组合均因额度耗尽（冷却）而不可用」：任一组合可用、或因账号停用 / 免费时段外（含混合）而不可用的，均不算。
+    /// 仅此情形才对额度重置无限等待（DESIGN-额度耗尽暂停续跑）：其它阻塞原因不会因额度重置而消失，无限等待无意义。
+    /// </summary>
+    public bool AllUnavailablePurelyByQuota(DateTimeOffset now, AvailabilityEvaluator evaluator)
+    {
+        if (_ordered.Count == 0)
+        {
+            return false;
+        }
+
+        foreach (var combo in _ordered)
+        {
+            var a = evaluator.Evaluate(combo, now);
+            if (a.Available)
+            {
+                return false;
+            }
+
+            if (a.Reason == ComboSkipReason.AccountDisabled)
+            {
+                return false;
+            }
+
+            // 任何免费时段外（含时段+额度混合）都不属于「纯额度耗尽」
+            if (a.NextWindowStart.HasValue)
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
 }

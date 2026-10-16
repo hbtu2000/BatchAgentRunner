@@ -46,7 +46,9 @@ public sealed class ReportViewModel : ViewModelBase
         }
     }
 
-    public string DurationText => Report is null ? "-" : $"{Report.DurationSeconds:0.#} 秒";
+    public string DurationText => Report is null
+        ? "-"
+        : $"净执行 {Report.ActiveDurationSeconds:0.#} 秒（总耗时含等待 {Report.DurationSeconds:0.#} 秒）";
 
     public string FallbackText
     {

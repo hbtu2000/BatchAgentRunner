@@ -23,7 +23,7 @@
                 <StackPanel Spacing="6">
                     <TextBlock Text="成败统计" FontWeight="SemiBold" />
                     <TextBlock Text="{Binding SummaryText}" />
-                    <TextBlock Text="{Binding DurationText, StringFormat='总耗时：{0}'}" />
+                    <TextBlock Text="{Binding DurationText}" />
                 </StackPanel>
             </Border>
 

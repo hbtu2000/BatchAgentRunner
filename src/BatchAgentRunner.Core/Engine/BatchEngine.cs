@@ -63,6 +63,8 @@ public sealed class BatchEngine
     private readonly List<string> _fallbackModelsUsed = new();
     private double _windowWaitSeconds;
     private double _cooldownWaitSeconds;
+    /// <summary>单任务级暂停等待累计（DESIGN-额度耗尽暂停续跑：从任务时长中剔除）。key 不区分大小写。</summary>
+    private readonly Dictionary<string, double> _taskWaitSeconds = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string>? _idSnapshot;
 
     public BatchEngine(
@@ -380,9 +382,10 @@ public sealed class BatchEngine
         if (!_matrix.IsEmpty && _matrix.AllUnavailable(_clock.Now, _evaluator))
         {
             var earliest = _matrix.EarliestRestore(_clock.Now, _evaluator);
-            if (waitIfUnavailable && earliest is not null)
+            // 额度耗尽场景即便未勾选「等待自动启动」也自动挂起等待（必然恢复，DESIGN-额度耗尽暂停续跑）
+            if (earliest is not null && (waitIfUnavailable || IsQuotaUnboundedWait(earliest, _clock.Now)))
             {
-                var ok = await WaitForRestoreAsync(earliest, token).ConfigureAwait(false);
+                var ok = await WaitForRestoreAsync(earliest, null, token).ConfigureAwait(false);
                 if (!ok)
                 {
                     SetStatus(BatchStatus.Blocked);
@@ -625,8 +628,14 @@ public sealed class BatchEngine
 
             if (_clock.Now - startedAt > _options.MaxTaskDuration)
             {
-                await FailTask(task, $"单任务总时长达到上限（{_options.MaxTotalMinutesPerTask} 分钟）");
-                return TaskOutcome.Finished;
+                // 暂停等待时长不计入「单任务总时长」上限（DESIGN-额度耗尽暂停续跑：暂停不计入时长）
+                _taskWaitSeconds.TryGetValue(task.Id, out var waitedSoFar);
+                if ((_clock.Now - startedAt).TotalSeconds - waitedSoFar > _options.MaxTaskDuration.TotalSeconds)
+                {
+                    await FailTask(task,
+                        $"单任务净执行时长达到上限（{_options.MaxTotalMinutesPerTask} 分钟，不含暂停等待）");
+                    return TaskOutcome.Finished;
+                }
             }
 
             var now = _clock.Now;
@@ -665,7 +674,10 @@ public sealed class BatchEngine
                     }
 
                     var earliest = _matrix.EarliestRestore(now, _evaluator);
-                    var canWait = earliest is not null && earliest.RestoreAt <= now.Add(_options.MaxWait);
+                    // 额度耗尽（QuotaReset）放开等待上限：额度每日必然重置，确定可恢复 → 无限等待直到重置（DESIGN-额度耗尽暂停续跑）。
+                    // 纯免费时段外 / 时段+额度混合仍受 MaxWait 约束，避免跨天/跨周末无限挂起。
+                    var canWait = earliest is not null &&
+                                  (IsQuotaUnboundedWait(earliest, now) || earliest.RestoreAt <= now.Add(_options.MaxWait));
 
                     if (!canWait)
                     {
@@ -680,7 +692,7 @@ public sealed class BatchEngine
                         return TaskOutcome.Blocked;
                     }
 
-                    var waited = await WaitForRestoreAsync(earliest!, taskCts.Token).ConfigureAwait(false);
+                    var waited = await WaitForRestoreAsync(earliest!, task.Id, taskCts.Token).ConfigureAwait(false);
                     if (!waited)
                     {
                         await MarkInterrupted(task, "用户取消等待，当前任务安全中断");
@@ -832,7 +844,7 @@ public sealed class BatchEngine
 
     // ---------------- waiting（REQ-003b / REQ-004c） ----------------
 
-    private async Task<bool> WaitForRestoreAsync(RestoreCandidate candidate, CancellationToken ct)
+    private async Task<bool> WaitForRestoreAsync(RestoreCandidate candidate, string? taskId, CancellationToken ct)
     {
         await _waitGate.WaitAsync(ct).ConfigureAwait(false);
         try
@@ -894,9 +906,19 @@ public sealed class BatchEngine
                 _cooldownWaitSeconds += elapsed;
             }
 
+            // 单任务级暂停累计（用于从任务时长中剔除，DESIGN-额度耗尽暂停续跑）
+            if (!string.IsNullOrEmpty(taskId))
+            {
+                lock (_statsLock)
+                {
+                    _taskWaitSeconds.TryGetValue(taskId!, out var prior);
+                    _taskWaitSeconds[taskId!] = prior + elapsed;
+                }
+            }
+
             SetStatus(BatchStatus.Running);
             Raise(new BatchEvent(BatchEventKind.BatchResumed, _clock.Now,
-                $"已恢复执行（等待 {elapsed / 60:0.0} 分钟）") { BatchStatus = BatchStatus.Running });
+                $"已恢复执行（暂停 {elapsed / 60:0.0} 分钟，不计入任务时长）") { BatchStatus = BatchStatus.Running });
             _logger.WriteBatchResumed("到达恢复时间点");
             return true;
         }
@@ -906,12 +928,18 @@ public sealed class BatchEngine
         }
     }
 
+    /// <summary>是否对「额度耗尽」场景放开等待上限（无限等待直到重置）。</summary>
+    private bool IsQuotaUnboundedWait(RestoreCandidate? candidate, DateTimeOffset now) =>
+        _options.WaitForQuotaReset
+        && candidate is { WaitKind: WaitKind.QuotaReset }
+        && _matrix.AllUnavailablePurelyByQuota(now, _evaluator);
+
     private static string DescribeWaiting(RestoreCandidate candidate) => candidate.WaitKind switch
     {
         WaitKind.FreeWindow =>
             $"当前无可用模型，将于 {candidate.RestoreAt:HH:mm} 进入下一免费时段（{candidate.Combo.Model.Name}），等待中，可取消",
         WaitKind.QuotaReset =>
-            $"当前所有组合均在额度冷却中，将于 {candidate.RestoreAt:HH:mm} 恢复（{candidate.Combo.Model.Name}），等待中，可取消",
+            $"当前所有组合额度均已耗尽，将于 {candidate.RestoreAt:HH:mm} 重置恢复（{candidate.Combo.Model.Name}）；已暂停等待重置（暂停不计入时长），可取消",
         WaitKind.Mixed =>
             $"当前无可用组合（时段外 + 冷却中），将于 {candidate.RestoreAt:HH:mm} 恢复（{candidate.Combo.Model.Name}），等待中，可取消",
         _ => $"等待至 {candidate.RestoreAt:HH:mm} 后继续"
@@ -1027,6 +1055,7 @@ public sealed class BatchEngine
         task.FallbackUsed = false;
         task.Error = null;
         task.Finish(TaskStatus.Done, _clock.Now);
+        ApplyPausedExclusion(task);
 
         TrackUsage(combo.Account.Label, combo.Model.Name, result.Usage);
 
@@ -1043,6 +1072,7 @@ public sealed class BatchEngine
         task.Status = TaskStatus.Failed;
         task.Error = error;
         task.Finish(TaskStatus.Failed, _clock.Now);
+        ApplyPausedExclusion(task);
 
         Raise(new BatchEvent(BatchEventKind.TaskFinished, _clock.Now,
             $"任务 {task.Id} 失败（重试 {task.RetryCount} 次）：{error}", task.Id) { Task = task });
@@ -1061,6 +1091,7 @@ public sealed class BatchEngine
         task.Status = TaskStatus.Interrupted;
         task.Error = reason;
         task.Finish(TaskStatus.Interrupted, _clock.Now);
+        ApplyPausedExclusion(task);
 
         Raise(new BatchEvent(BatchEventKind.TaskFinished, _clock.Now,
             $"任务 {task.Id} 已中断：{reason}", task.Id) { Task = task });
@@ -1073,6 +1104,26 @@ public sealed class BatchEngine
     {
         var merged = string.IsNullOrWhiteSpace(task.Result) ? output : task.Result + "\n" + output;
         task.Result = Truncate(merged, _options.ResultMaxKB * 1024);
+    }
+
+    /// <summary>
+    /// 从任务时长中剔除其自身经历的暂停等待（DESIGN-额度耗尽暂停续跑：暂停时间不计入时长）。
+    /// 仅在终止阶段调用，等待只发生在 <see cref="ExecuteTaskAsync"/> 循环内，故本任务必有对应累计。
+    /// </summary>
+    private void ApplyPausedExclusion(TaskItem task)
+    {
+        double waited;
+        lock (_statsLock)
+        {
+            if (!_taskWaitSeconds.TryGetValue(task.Id, out waited) || waited <= 0)
+            {
+                return;
+            }
+
+            _taskWaitSeconds.Remove(task.Id);
+        }
+
+        task.DurationSeconds = Math.Max(0, Math.Round(task.DurationSeconds - waited, 3));
     }
 
     // ---------------- 辅助 ----------------
@@ -1352,6 +1403,8 @@ public sealed class BatchEngine
             StartedAt = startedAt,
             FinishedAt = finishedAt,
             DurationSeconds = Math.Round((finishedAt - startedAt).TotalSeconds, 1),
+            ActiveDurationSeconds = Math.Round(
+                Math.Max(0, (finishedAt - startedAt).TotalSeconds - _windowWaitSeconds - _cooldownWaitSeconds), 1),
             AccountUsage = _accountUsage.Values.ToList(),
             ModelUsage = _modelUsage.Values.ToList(),
             Timeline = _timeline.ToList(),

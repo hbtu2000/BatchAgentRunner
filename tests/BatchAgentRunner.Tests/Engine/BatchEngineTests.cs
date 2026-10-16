@@ -167,10 +167,13 @@ public class BatchEngineTests
     }
 
     [Fact]
-    public async Task 兜底关闭_免费组合全耗尽且无可等待_进入阻塞并保留部分输出()
+    public async Task 兜底关闭_免费组合全耗尽且关闭额度无限等待_超出最长可等待_进入阻塞()
     {
+        // 关闭 wait_for_quota_reset 后，额度耗尽等待同样受 max_wait 约束：5 小时重置远超 60 分钟 → 阻塞（R5）
+        var options = Options(M("m1"));
+        options.WaitForQuotaReset = false;
         var adapter = new MockAdapter((_, _) => MockStep.Quota(resetIn: TimeSpan.FromHours(5)));
-        var (engine, store, _, events) = Build(Options(M("m1")), adapter, new[] { "task-001" }, Noon);
+        var (engine, store, _, events) = Build(options, adapter, new[] { "task-001" }, Noon);
 
         var report = await engine.StartAsync();
 
@@ -332,5 +335,77 @@ public class BatchEngineTests
 
         Assert.Equal(BatchStatus.Completed, report.BatchStatus);
         Assert.Equal(4, report.Done);
+    }
+
+    [Fact]
+    public async Task 全部组合额度耗尽_超出最长可等待_仍无限等待重置后自动续跑完成()
+    {
+        // 恢复时间 90 分钟，远超默认 max_wait(60) 与单任务总时长上限(60)，
+        // 但属于额度耗尽（QuotaReset）→ 无限等待直到重置后自动完成（R1）
+        var adapter = new MockAdapter((req, attempt) =>
+            attempt == 1 ? MockStep.Quota(resetIn: TimeSpan.FromMinutes(90)) : MockStep.Ok("恢复后完成"));
+        var (engine, store, clock, events) = Build(Options(M("m1")), adapter, new[] { "task-001" }, Noon);
+
+        var report = await engine.StartAsync();
+
+        Assert.Equal(BatchStatus.Completed, report.BatchStatus);
+        Assert.Equal(TaskStatus.Done, store.Tasks[0].Status);
+        Assert.Contains(events, e => e.Kind == BatchEventKind.BatchWaiting);
+        Assert.Contains(events, e => e.Kind == BatchEventKind.BatchResumed);
+        Assert.True(clock.Now >= Noon.AddMinutes(90));
+        // 额度冷却等待 ≈ 90 分钟
+        Assert.Equal(90 * 60, report.CooldownWaitSeconds, 1);
+    }
+
+    [Fact]
+    public async Task 额度耗尽暂停_暂停时长不计入批处理与任务时长()
+    {
+        // 单任务：首次额度耗尽、等待 90 分钟重置后完成
+        var adapter = new MockAdapter((req, attempt) =>
+            attempt == 1 ? MockStep.Quota(resetIn: TimeSpan.FromMinutes(90)) : MockStep.Ok("恢复后完成"));
+        var (engine, store, _, _) = Build(Options(M("m1")), adapter, new[] { "task-001" }, Noon);
+
+        var report = await engine.StartAsync();
+
+        // 净执行时长 = 墙钟 − 等待 = 0（无真实执行耗时），证明暂停被剔除（R2）
+        Assert.Equal(0, report.ActiveDurationSeconds, 1);
+        Assert.True(report.DurationSeconds > 1000, "墙钟总时长应包含等待");
+        // 单任务时长也剔除本次等待
+        Assert.Equal(0, store.Tasks[0].DurationSeconds, 3);
+    }
+
+    [Fact]
+    public async Task 关闭wait_for_quota_reset_超出最长可等待_仍转阻塞()
+    {
+        // 关闭开关后，额度耗尽等待同样受 max_wait 约束，超出即阻塞（R5）
+        var options = Options(M("m1"));
+        options.WaitForQuotaReset = false;
+        var adapter = new MockAdapter((_, _) => MockStep.Quota(resetIn: TimeSpan.FromMinutes(90)));
+        var (engine, store, _, events) = Build(options, adapter, new[] { "task-001" }, Noon);
+
+        var report = await engine.StartAsync();
+
+        Assert.Equal(BatchStatus.Blocked, report.BatchStatus);
+        Assert.Equal(TaskStatus.Interrupted, store.Tasks[0].Status);
+        Assert.Contains(events, e => e.Kind == BatchEventKind.BatchBlocked);
+    }
+
+    [Fact]
+    public async Task 纯免费时段外_不受额度无限等待影响_仍尊重最长可等待()
+    {
+        // 仅免费时段约束（FreeWindow，非额度耗尽）：即便开启 wait_for_quota_reset，
+        // 仍受 max_wait 约束；下一时段远超 max_wait → 阻塞（R3）
+        var start = At.Local(2026, 10, 15, 8, 0); // 下一时段 22:00，超出默认 60 分钟
+        var window = new FreeTimeWindow(new TimeOnly(22, 0), new TimeOnly(6, 0));
+        var adapter = new MockAdapter(stepDuration: TimeSpan.Zero);
+        var options = Options(M("m1", window));
+        options.WaitForQuotaReset = true;
+        var (engine, _, _, events) = Build(options, adapter, new[] { "task-001" }, start);
+
+        // 执行路径（waitIfUnavailable 仅影响启动前预派发；此处走单任务重试循环）
+        var report = await engine.StartAsync();
+
+        Assert.Equal(BatchStatus.Blocked, report.BatchStatus);
+        Assert.Contains(events, e => e.Kind == BatchEventKind.BatchBlocked);
     }
 }

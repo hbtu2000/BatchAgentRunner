@@ -50,6 +50,7 @@ public sealed class ConfigViewModel : ViewModelBase
     private int _maxTotalMinutes = 60;
     private int _maxWaitMinutes = 60;
     private int _defaultCooldownMinutes = 60;
+    private bool _waitForQuotaReset = true;
     private bool _forceRerun;
     private bool _stopOnFailure;
     private bool _showCliWindow;
@@ -112,6 +113,7 @@ public sealed class ConfigViewModel : ViewModelBase
         MaxTotalMinutes = o.MaxTotalMinutesPerTask;
         MaxWaitMinutes = o.MaxWaitMinutes;
         DefaultCooldownMinutes = o.DefaultCooldownMinutes;
+        WaitForQuotaReset = o.WaitForQuotaReset;
         ForceRerun = o.ForceRerun;
         StopOnFailure = o.StopOnFailure;
         ShowCliWindow = o.ShowCliWindow;
@@ -406,6 +408,13 @@ public sealed class ConfigViewModel : ViewModelBase
         set => SetProperty(ref _defaultCooldownMinutes, value);
     }
 
+    /// <summary>额度耗尽时无限等待重置（暂停不计入时长）。</summary>
+    public bool WaitForQuotaReset
+    {
+        get => _waitForQuotaReset;
+        set => SetProperty(ref _waitForQuotaReset, value);
+    }
+
     public bool ForceRerun
     {
         get => _forceRerun;
@@ -608,6 +617,7 @@ public sealed class ConfigViewModel : ViewModelBase
         o.MaxTotalMinutesPerTask = Math.Max(1, MaxTotalMinutes);
         o.MaxWaitMinutes = Math.Max(0, MaxWaitMinutes);
         o.DefaultCooldownMinutes = Math.Max(1, DefaultCooldownMinutes);
+        o.WaitForQuotaReset = WaitForQuotaReset;
         o.ForceRerun = ForceRerun;
         o.StopOnFailure = StopOnFailure;
         o.ShowCliWindow = ShowCliWindow;
