@@ -14,6 +14,8 @@ namespace BatchAgentRunner.Infrastructure.Http;
 /// - 余额：POST /billing/meter/get-user-resource-summary {} → data.Packages[].CycleRemainCapacity 求和
 /// - 领取：POST /billing/meter/daily-checkin {} → 200 + code:0 + data.credit（本次发放量）；
 ///   今日已领取 → HTTP 400 + code:10001「今天已签到，请明天再来」
+/// 重要：余额接口有 WAF 校验——不带浏览器 User-Agent 的请求会被 403（code:10085「请求不合法」）
+/// 拦截（实测），故必须携带浏览器 UA。
 /// </summary>
 public sealed class CodeBuddyCreditsApiClient : ICreditsApiClient
 {
@@ -21,6 +23,10 @@ public sealed class CodeBuddyCreditsApiClient : ICreditsApiClient
     public const int AlreadyCheckedInCode = 10001;
 
     private static readonly string[] AlreadyKeywords = ["已签", "已领", "重复", "明天再来", "already", "checked in"];
+
+    /// <summary>WAF 要求浏览器形态的 User-Agent（缺失时余额接口 403 code:10085，实测）。</summary>
+    public const string BrowserUserAgent =
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
 
     private readonly CreditsClaimConfig _config;
     private readonly HttpClient _client;
@@ -31,6 +37,10 @@ public sealed class CodeBuddyCreditsApiClient : ICreditsApiClient
         _client = client ?? new HttpClient();
         _client.Timeout = TimeSpan.FromSeconds(Math.Max(1, config.TimeoutSeconds));
         _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+        if (_client.DefaultRequestHeaders.UserAgent.Count == 0)
+        {
+            _client.DefaultRequestHeaders.UserAgent.ParseAdd(BrowserUserAgent);
+        }
     }
 
     public async Task<CreditsBalanceResult> GetBalanceAsync(string accessToken,

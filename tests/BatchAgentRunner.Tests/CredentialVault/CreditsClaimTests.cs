@@ -419,6 +419,9 @@ public class LiveCredentialTokenReaderTests
 
         Assert.Equal(42.5m, balance.Balance);
         Assert.Equal("Bearer tok-1", seen!.Headers.Authorization!.ToString());
+        // WAF 契约：余额接口必须携带浏览器 User-Agent（缺失时 403 code:10085，实测）
+        Assert.Equal(CodeBuddyCreditsApiClient.BrowserUserAgent,
+            seen.Headers.UserAgent!.ToString());
     }
 
     [Fact]

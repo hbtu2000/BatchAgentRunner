@@ -32,7 +32,9 @@ public sealed class JsonConfigStore : IConfigStore
         try
         {
             var json = await File.ReadAllTextAsync(_filePath, cancellationToken).ConfigureAwait(false);
-            return JsonSerializer.Deserialize<RunOptions>(json, JsonDefaults.Options) ?? CreateSample();
+            var options = JsonSerializer.Deserialize<RunOptions>(json, JsonDefaults.Options) ?? CreateSample();
+            CreditsClaimMigrator.Migrate(options);
+            return options;
         }
         catch (JsonException)
         {
