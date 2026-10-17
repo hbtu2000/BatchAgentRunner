@@ -39,7 +39,7 @@ public static class CliCommandBuilder
     /// 同步采用 <c>--output-format stream-json</c>（理由同 <see cref="CodeBuddyTemplate"/>）。
     /// </summary>
     public static string WorkBuddyTemplate =>
-        $"--print {PlaceholderPrompt} --model {PlaceholderModel} --output-format stream-json {PlaceholderExtra}";
+        $"--print {PlaceholderPrompt} --model {PlaceholderModel} --output-format stream-json --include-partial-messages {PlaceholderExtra}";
 
     /// <summary>
     /// CodeBuddy 形态。
@@ -51,7 +51,7 @@ public static class CliCommandBuilder
     /// 解析见 <see cref="StreamJsonRenderer"/>。
     /// </summary>
     public static string CodeBuddyTemplate =>
-        $"-p {PlaceholderPrompt} --model {PlaceholderModel} --output-format stream-json {PlaceholderExtra}";
+        $"-p {PlaceholderPrompt} --model {PlaceholderModel} --output-format stream-json --include-partial-messages {PlaceholderExtra}";
 
     public static string Quote(string value)
     {

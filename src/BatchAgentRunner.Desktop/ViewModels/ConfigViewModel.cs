@@ -626,19 +626,23 @@ public sealed class ConfigViewModel : ViewModelBase
         try
         {
             var list = await _host.FetchModelsAsync(null).ConfigureAwait(false);
-            FillAvailableModels(AvailableModels, list, Models);
 
-            StatusMessage = list.Count > 0
-                ? $"已拉取 {list.Count} 个可用模型（来自当前执行工具），可直接在下拉中选择。"
-                : "未能从 CLI 读取模型列表（可能当前 CLI 版本不支持），请直接输入模型名。";
+            // P0-6：ConfigureAwait(false) 之后已在后台线程，填充 ObservableCollection 必须回到 UI 线程
+            UiThread.Post(() =>
+            {
+                FillAvailableModels(AvailableModels, list, Models);
+                StatusMessage = list.Count > 0
+                    ? $"已拉取 {list.Count} 个可用模型（来自当前执行工具），可直接在下拉中选择。"
+                    : "未能从 CLI 读取模型列表（可能当前 CLI 版本不支持），请直接输入模型名。";
+            });
         }
         catch (Exception ex)
         {
-            StatusMessage = $"拉取模型失败：{ex.Message}";
+            UiThread.Post(() => StatusMessage = $"拉取模型失败：{ex.Message}");
         }
         finally
         {
-            IsFetchingModels = false;
+            UiThread.Post(() => IsFetchingModels = false);
         }
     }
 
@@ -654,19 +658,23 @@ public sealed class ConfigViewModel : ViewModelBase
         try
         {
             var list = await _host.FetchModelsAsync(editor.Account).ConfigureAwait(false);
-            FillAvailableModels(editor.AvailableModels, list, editor.Models);
 
-            StatusMessage = list.Count > 0
-                ? $"已拉取账号「{editor.Account.Label}」的 {list.Count} 个可用模型。"
-                : $"未能读取账号「{editor.Account.Label}」的模型列表，请直接输入模型名。";
+            // P0-6：同上，回到 UI 线程再改 UI 集合
+            UiThread.Post(() =>
+            {
+                FillAvailableModels(editor.AvailableModels, list, editor.Models);
+                StatusMessage = list.Count > 0
+                    ? $"已拉取账号「{editor.Account.Label}」的 {list.Count} 个可用模型。"
+                    : $"未能读取账号「{editor.Account.Label}」的模型列表，请直接输入模型名。";
+            });
         }
         catch (Exception ex)
         {
-            StatusMessage = $"拉取失败：{ex.Message}";
+            UiThread.Post(() => StatusMessage = $"拉取失败：{ex.Message}");
         }
         finally
         {
-            editor.IsFetchingModels = false;
+            UiThread.Post(() => editor.IsFetchingModels = false);
         }
     }
 
@@ -727,7 +735,7 @@ public sealed class ConfigViewModel : ViewModelBase
         var picked = await PickTaskFile().ConfigureAwait(false);
         if (!string.IsNullOrEmpty(picked))
         {
-            TaskFilePath = picked!;
+            UiThread.Post(() => TaskFilePath = picked!);
         }
     }
 
@@ -817,7 +825,7 @@ public sealed class ConfigViewModel : ViewModelBase
         await _host.SaveConfigAsync().ConfigureAwait(false);
         _host.RebuildEngine();
 
-        StatusMessage = $"配置已保存（{DateTime.Now:HH:mm:ss}），引擎已按新配置重建";
+        UiThread.Post(() => StatusMessage = $"配置已保存（{DateTime.Now:HH:mm:ss}），引擎已按新配置重建");
     }
 
     private string _statusMessageField = string.Empty;

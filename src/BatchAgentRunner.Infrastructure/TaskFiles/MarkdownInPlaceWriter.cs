@@ -18,7 +18,10 @@ public sealed class MarkdownInPlaceWriter : IMarkdownInPlaceWriter
     {
         var text = await File.ReadAllTextAsync(markdownPath, cancellationToken).ConfigureAwait(false);
         var updated = UpdateTaskMeta(text, task);
-        await File.WriteAllTextAsync(markdownPath, updated, Encoding.UTF8, cancellationToken).ConfigureAwait(false);
+
+        // P0-8：原为 File.WriteAllTextAsync 直接覆写——写入过程中被中断（强杀 / 断电 / 与 CLI
+        // 并发写）会把用户的任务文件截成半截。改用同库已有的原子写（临时文件 + 原子替换）。
+        await AtomicFileWriter.WriteAsync(markdownPath, updated, cancellationToken).ConfigureAwait(false);
     }
 
     internal static string UpdateTaskMeta(string markdown, TaskItem task)

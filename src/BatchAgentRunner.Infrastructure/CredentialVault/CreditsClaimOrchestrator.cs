@@ -41,7 +41,7 @@ public sealed class CreditsClaimOrchestrator
         _progress = progress;
     }
 
-    /// <param name="force">true 时忽略「今日已领取」去重，强制再次尝试（服务端仍会拒绝重复领取）。</param>
+    /// <param name="force">true 时忽略去重，强制再次尝试（服务端仍会拒绝重复领取）。</param>
     public async Task<CreditsClaimSummary> RunAllAsync(AgentKind cli, IReadOnlyList<AccountConfig> accounts,
         bool force = false, CancellationToken cancellationToken = default)
     {
@@ -67,7 +67,7 @@ public sealed class CreditsClaimOrchestrator
         }
 
         Report(CreditsClaimPhase.Done, null,
-            $"积分领取结束：成功 {summary.ClaimedCount}，已领取过 {summary.AlreadyClaimedCount}，" +
+            $"每日积分领取结束：成功 {summary.ClaimedCount}，已领取过 {summary.AlreadyClaimedCount}，" +
             $"失败 {summary.FailedCount}，跳过 {summary.SkippedCount}");
         return summary;
     }
@@ -85,10 +85,10 @@ public sealed class CreditsClaimOrchestrator
 
         try
         {
-            // ① 每日去重：台账中该账号今天已有成功/已领取记录时跳过（force 除外）
+            // ① 当日去重：台账中该账号今日已有成功/已领取记录时跳过（force 除外）
             if (!force && ledger.Records.Any(r => r.AccountId == account.Id &&
-                    r.Status is CreditsClaimStatus.Claimed or CreditsClaimStatus.AlreadyClaimed &&
-                    r.ClaimedAt.LocalDateTime.Date == today))
+                    r.ClaimedAt.LocalDateTime.Date == today &&
+                    r.Status is CreditsClaimStatus.Claimed or CreditsClaimStatus.AlreadyClaimed))
             {
                 record.Status = CreditsClaimStatus.Skipped;
                 record.Message = "今日已领取过（台账去重），如需重试请勾选强制";
@@ -118,7 +118,7 @@ public sealed class CreditsClaimOrchestrator
             var before = (await _api.GetBalanceAsync(token, cancellationToken).ConfigureAwait(false)).Balance;
             record.BeforeCredits = before;
 
-            // ⑤ 领取
+            // ⑤ 领取（每日端点）
             Report(CreditsClaimPhase.Claiming, account.Id, $"正在为账号 {account.Label} 领取每日积分…");
             var claim = await _api.ClaimDailyAsync(token, cancellationToken).ConfigureAwait(false);
             record.GrantedCredits = claim.Granted;

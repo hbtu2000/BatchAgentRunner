@@ -120,6 +120,22 @@ public abstract class CliAdapterBase : IAgentCliAdapter
         var template = Settings.ArgumentsTemplate ?? DefaultArgumentsTemplate;
         var arguments = CliCommandBuilder.Build(template, request, Settings.ExtraArguments);
 
+        // codebuddy / WorkBuddy 启动时占用固定本地端口（默认 52607）作为内嵌服务端口。
+        // 若该端口已被本机其它 codebuddy/WorkBuddy 进程（如桌面端）占用，CLI 会启动失败或长时间无输出，
+        // 表现为「实时输出流」空白、任务卡死（2026-10-17 实测：端口冲突导致子进程整轮零输出）。
+        // 为每个子进程分配独立空闲端口，从根本上规避冲突；实测显式 --port 后 stream-json 正常流式输出。
+        if (Kind is AgentKind.CodeBuddy or AgentKind.WorkBuddy)
+        {
+            try
+            {
+                arguments += " --port " + FreePortFinder.GetFreeTcpPort();
+            }
+            catch
+            {
+                // 端口探测失败时退化为不附加 --port，行为同旧版（不阻断执行）
+            }
+        }
+
         // stream-json 渲染：把 CLI 的逐行 JSON 事件翻译成可读行喂给应用内实时流；
         // 同时记录最终回答（result 事件）供结果回写。原始 stdout/stderr 仍由 CliProcessRunner
         // 累积进 run.Output，鉴权/额度分类照常基于原始文本工作。
@@ -134,6 +150,15 @@ public abstract class CliAdapterBase : IAgentCliAdapter
         };
         var run = await Runner.RunAsync(spec, onOut, request.Timeout, cancellationToken)
             .ConfigureAwait(false);
+
+        // 刷出 stream-json 增量缓冲中的残留正文（若进程在最后一个 delta 后未再产生完整事件）
+        if (request.OnOutputChunk is not null)
+        {
+            foreach (var line in renderer.Flush())
+            {
+                request.OnOutputChunk(line);
+            }
+        }
 
         if (run.DangerousInteraction is { } matched)
         {

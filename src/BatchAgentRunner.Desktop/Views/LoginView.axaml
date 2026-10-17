@@ -200,7 +200,7 @@
                 </StackPanel>
             </Border>
 
-            <!-- ④ 后续：模型不用手填 -->
+            <!-- ⑤ 后续：模型不用手填 -->
             <Border Padding="12" CornerRadius="6" Background="#F7F9FC" BorderBrush="#E2E8F0" BorderThickness="1">
                 <TextBlock FontSize="12" TextWrapping="Wrap" Foreground="#475569"
                            Text="登录成功后，模型不用手填：到「配置」或「配置向导」里点「拉取可用模型」，会按当前账号实时读取该 CLI 支持的模型名，直接下拉选择即可，避免输错。" />

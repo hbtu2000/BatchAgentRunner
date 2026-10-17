@@ -520,11 +520,11 @@ public sealed class MonitorViewModel : ViewModelBase
         try
         {
             await _host.LoadTasksAsync().ConfigureAwait(false);
-            StatusMessage = $"已加载任务文件（{DateTime.Now:HH:mm:ss}）";
+            SetStatusMessage($"已加载任务文件（{DateTime.Now:HH:mm:ss}）");
         }
         catch (Exception ex)
         {
-            StatusMessage = $"加载失败：{ex.Message}";
+            SetStatusMessage($"加载失败：{ex.Message}");
         }
     }
 
@@ -533,13 +533,13 @@ public sealed class MonitorViewModel : ViewModelBase
         try
         {
             var report = await _host.PreflightAsync().ConfigureAwait(false);
-            StatusMessage = report.CanStart
+            SetStatusMessage(report.CanStart
                 ? $"预检通过：{report.LoadedTaskCount} 条任务，待处理 {report.PendingTaskCount} 条"
-                : "预检未通过：" + string.Join("；", report.Errors);
+                : "预检未通过：" + string.Join("；", report.Errors));
         }
         catch (Exception ex)
         {
-            StatusMessage = $"预检异常：{ex.Message}";
+            SetStatusMessage($"预检异常：{ex.Message}");
         }
     }
 
@@ -553,12 +553,11 @@ public sealed class MonitorViewModel : ViewModelBase
         try
         {
             var report = await _host.StartAsync(_waitIfUnavailable).ConfigureAwait(false);
-            StatusMessage = $"批处理结束：{report.BatchStatus}，成功 {report.Done} / 失败 {report.Failed} / 中断 {report.Interrupted}";
-            OnPropertyChanged(nameof(LastReportPath));
+            FinishWithReport(report);
         }
         catch (Exception ex)
         {
-            StatusMessage = $"执行异常：{ex.Message}";
+            SetStatusMessage($"执行异常：{ex.Message}");
         }
     }
 
@@ -572,14 +571,23 @@ public sealed class MonitorViewModel : ViewModelBase
         try
         {
             var report = await _host.StartAsync(_waitIfUnavailable).ConfigureAwait(false);
-            StatusMessage = $"批处理结束：{report.BatchStatus}，成功 {report.Done} / 失败 {report.Failed} / 中断 {report.Interrupted}";
-            OnPropertyChanged(nameof(LastReportPath));
+            FinishWithReport(report);
         }
         catch (Exception ex)
         {
-            StatusMessage = $"执行异常：{ex.Message}";
+            SetStatusMessage($"执行异常：{ex.Message}");
         }
     }
+
+    /// <summary>批处理结束后的界面收尾（P0-6：后台线程 → UI 线程后再写绑定属性）。</summary>
+    private void FinishWithReport(BatchReport report) => UiThread.Post(() =>
+    {
+            StatusMessage = $"批处理结束：{report.BatchStatus}，成功 {report.Done} / 失败 {report.Failed} / 中断 {report.Interrupted}";
+            OnPropertyChanged(nameof(LastReportPath));
+        });
+
+    /// <summary>状态栏文案写入：调用方可能来自后台线程，统一marshal到 UI 线程。</summary>
+    private void SetStatusMessage(string text) => UiThread.Post(() => StatusMessage = text);
 
     /// <summary>
     /// 启动前预检闸门（REQ-010）：CLI 缺失 / 任务文件与工作空间问题 / 账号池为空等
@@ -595,12 +603,12 @@ public sealed class MonitorViewModel : ViewModelBase
                 return true;
             }
 
-            StatusMessage = "预检未通过，已取消启动：" + string.Join("；", report.Errors);
+            SetStatusMessage("预检未通过，已取消启动：" + string.Join("；", report.Errors));
             return false;
         }
         catch (Exception ex)
         {
-            StatusMessage = $"预检异常，已取消启动：{ex.Message}";
+            SetStatusMessage($"预检异常，已取消启动：{ex.Message}");
             return false;
         }
     }

@@ -408,4 +408,145 @@ public class BatchEngineTests
         Assert.Equal(BatchStatus.Blocked, report.BatchStatus);
         Assert.Contains(events, e => e.Kind == BatchEventKind.BatchBlocked);
     }
+
+    // ---------------- 技术债务 P0 不变量（治理方案 §4.6：行号型台账改为断言式登记） ----------------
+
+    /// <summary>P0-1：兜底成本超单任务上限时必须被截断（原实现为 no-op，上限完全失效）。</summary>
+    [Fact]
+    public async Task 兜底实测成本超出单任务上限时按上限截断()
+    {
+        var options = Options(M("m1"));
+        options.Fallback = new FallbackConfig { Enabled = true, MaxCostPerTask = 1m, MaxCostPerBatch = 5m };
+        options.Accounts[0].FallbackModels = new List<FallbackModel>
+        {
+            new() { Name = "paid-x", EstimatedUnitPrice = 0.2m }
+        };
+
+        // 估算单价 0.2 通过上限校验，但实测花费 3.5 远超单任务上限 1.0
+        var adapter = new MockAdapter((req, _) =>
+            req.IsFallback ? MockStep.Ok("兜底完成", cost: 3.5m)
+                           : MockStep.Quota(resetIn: TimeSpan.FromHours(3)));
+        var (engine, store, _, _) = Build(options, adapter, new[] { "task-001" }, Noon);
+
+        var report = await engine.StartAsync();
+
+        Assert.Equal(TaskStatus.Done, store.Tasks[0].Status);
+        Assert.Equal(1m, store.Tasks[0].FallbackCost);
+        Assert.Equal(1m, report.Fallback.TotalCost);
+    }
+
+    /// <summary>检测并发落盘的存储替身：记录 SaveAsync 的最大并发数（P0-4 不变量 = 恒为 1）。</summary>
+    private sealed class ConcurrencyDetectingTaskFileStore : ITaskFileStore
+    {
+        private readonly List<TaskItem> _tasks;
+        private readonly object _sync = new();
+        private int _inFlight;
+        private int _maxConcurrentSaves;
+
+        public ConcurrencyDetectingTaskFileStore(IEnumerable<TaskItem> tasks) => _tasks = tasks.ToList();
+
+        public int MaxConcurrentSaves
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _maxConcurrentSaves;
+                }
+            }
+        }
+
+        public int SaveCount { get; private set; }
+
+        public IReadOnlyList<TaskItem> Tasks => _tasks;
+
+        public Task<TaskFileLoadResult> LoadAsync(string path, CancellationToken cancellationToken = default) =>
+            Task.FromResult(new TaskFileLoadResult(_tasks, path, false, Array.Empty<TaskFileIssue>()));
+
+        public async Task SaveAsync(string path, IReadOnlyList<TaskItem> tasks,
+            CancellationToken cancellationToken = default)
+        {
+            var current = Interlocked.Increment(ref _inFlight);
+            lock (_sync)
+            {
+                if (current > _maxConcurrentSaves)
+                {
+                    _maxConcurrentSaves = current;
+                }
+            }
+
+            try
+            {
+                // 放大落盘窗口：并发写一旦存在就必然被观测到
+                await Task.Delay(30, cancellationToken).ConfigureAwait(false);
+                _tasks.Clear();
+                _tasks.AddRange(tasks);
+                SaveCount++;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref _inFlight);
+            }
+        }
+
+        public Task<string?> BackupAsync(string path, int retention, CancellationToken cancellationToken = default) =>
+            Task.FromResult<string?>(null);
+
+        public string ResolveResultPath(string path) => path;
+
+        public bool IsMarkdown(string path) => false;
+    }
+
+    /// <summary>P0-4：并发下任务文件回写必须串行，且终态不回退。</summary>
+    [Fact]
+    public async Task 并发落盘串行化_终态不回退()
+    {
+        var options = Options(M("m1"));
+        options.Concurrency = 4;
+        var adapter = new MockAdapter(stepDuration: TimeSpan.FromMilliseconds(20));
+        var tasks = Enumerable.Range(1, 8)
+            .Select(i => new TaskItem { Id = $"task-{i:D3}", Instruction = "指令 " + i })
+            .ToList();
+        var store = new ConcurrencyDetectingTaskFileStore(tasks);
+        var engine = new BatchEngine(options, adapter, store, new InMemoryCooldownStore(), new NullRunLogger(),
+            new FakeClock(Noon));
+        engine.InitializeAsync().Wait();
+
+        var report = await engine.StartAsync();
+
+        Assert.Equal(BatchStatus.Completed, report.BatchStatus);
+        Assert.Equal(8, report.Done);
+        // 单写者：任何时刻落盘中的写者不超过 1 个
+        Assert.Equal(1, store.MaxConcurrentSaves);
+        // 终态不回退：全部 8 条都留在已完成的落盘结果里
+        Assert.All(store.Tasks, t => Assert.Equal(TaskStatus.Done, t.Status));
+    }
+
+    /// <summary>P0-5：并发下兜底成本与用量的累加必须准确（无锁累加会丢更新 / 越限）。</summary>
+    [Fact]
+    public async Task 并发下兜底成本与用量累计准确()
+    {
+        var options = Options(M("m1"));
+        options.Concurrency = 4;
+        // 并发下额度等待会推进共享的 FakeClock，放宽单任务时长上限，隔离出「累计是否准确」这一个变量
+        options.MaxTotalMinutesPerTask = 60 * 24;
+        options.Fallback = new FallbackConfig { Enabled = true, MaxCostPerTask = 1m, MaxCostPerBatch = 10m };
+        options.Accounts[0].FallbackModels = new List<FallbackModel>
+        {
+            new() { Name = "paid-x", EstimatedUnitPrice = 0.2m }
+        };
+        var adapter = new MockAdapter((req, _) =>
+                req.IsFallback ? MockStep.Ok("兜底完成", cost: 0.2m)
+                               : MockStep.Quota(resetIn: TimeSpan.FromHours(3)),
+            stepDuration: TimeSpan.FromMilliseconds(20));
+        var (engine, store, _, _) = Build(options, adapter,
+            Enumerable.Range(1, 8).Select(i => $"task-{i:D3}"), Noon);
+
+        var report = await engine.StartAsync();
+
+        Assert.Equal(8, report.Fallback.UsedCount);
+        Assert.Equal(1.6m, report.Fallback.TotalCost);
+        Assert.Equal("paid-x", report.Fallback.Model);
+        Assert.All(store.Tasks, t => Assert.Equal(0.2m, t.FallbackCost));
+    }
 }

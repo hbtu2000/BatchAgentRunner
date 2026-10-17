@@ -16,13 +16,14 @@ public sealed record CreditsClaimApiResult(
     string? Message);
 
 /// <summary>
-/// 积分服务端 API 端口（每日积分领取 REQ）。
+/// 积分服务端 API 端口（积分领取 REQ）。
 /// 实现方负责鉴权（Bearer accessToken）与响应解析；端点地址由 <c>RunOptions.CreditsClaim</c> 配置。
 /// </summary>
 public interface ICreditsApiClient
 {
     Task<CreditsBalanceResult> GetBalanceAsync(string accessToken, CancellationToken cancellationToken = default);
 
+    /// <summary>每日领取：调每日领取端点（<c>RunOptions.CreditsClaim.ClaimPath</c>）。</summary>
     Task<CreditsClaimApiResult> ClaimDailyAsync(string accessToken, CancellationToken cancellationToken = default);
 }
 

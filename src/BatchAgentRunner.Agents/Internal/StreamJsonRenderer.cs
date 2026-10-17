@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 
 namespace BatchAgentRunner.Agents.Internal;
@@ -19,6 +20,15 @@ public sealed class StreamJsonRenderer
     /// </summary>
     public bool FinalIsError { get; private set; }
 
+    /// <summary>是否已通过 stream_event 实时透出过增量正文；为 true 后完整 assistant 正文不再重复输出。</summary>
+    private bool _sawPartialText;
+
+    /// <summary>增量正文合并缓冲：连续 stream_event 的 delta.text 先累积，按换行或阈值刷成连贯行，降低事件量（避免逐字成行压垮日志/UI）。</summary>
+    private readonly StringBuilder _pending = new();
+
+    /// <summary>增量合并阈值（字符）：缓冲达到该长度即刷出一条行。</summary>
+    private const int CoalesceThreshold = 200;
+
     /// <summary>喂入一行原始输出（CLI 的 stdout/stderr 单行），返回要转发的可读行。</summary>
     public IReadOnlyList<string> Feed(string rawLine)
     {
@@ -36,43 +46,60 @@ public sealed class StreamJsonRenderer
         }
         catch (JsonException)
         {
-            // 非 JSON（stderr 错误/告警、启动横幅等）→ 原样透传
-            return new[] { line };
+            // 非 JSON（stderr 错误/告警、启动横幅等）→ 先刷出增量缓冲再原样透传
+            var miss = new List<string>();
+            FlushPending(miss);
+            miss.Add(line);
+            return miss;
         }
 
         try
         {
-            if (!doc.TryGetProperty("type", out var typeEl) || typeEl.ValueKind != JsonValueKind.String)
-            {
-                return new[] { line };
-            }
-
-            var outputs = new List<string>();
-            switch (typeEl.GetString())
-            {
-                case "assistant":
-                    EmitAssistant(doc, outputs);
-                    break;
-                case "user":
-                    EmitUser(doc, outputs);
-                    break;
-                case "result":
-                    EmitResult(doc, outputs);
-                    break;
-                // system / stream_event / error 等：不翻译，避免噪声淹没进度
-                default:
-                    break;
-            }
-
-            return outputs;
+        if (!doc.TryGetProperty("type", out var typeEl) || typeEl.ValueKind != JsonValueKind.String)
+        {
+            var miss = new List<string>();
+            FlushPending(miss);
+            miss.Add(line);
+            return miss;
         }
+
+        var outputs = new List<string>();
+        var type = typeEl.GetString();
+        // 非 stream_event（回合边界/完整事件）到达时，先把累积的增量缓冲刷出，避免末尾正文滞留
+        if (type != "stream_event")
+        {
+            FlushPending(outputs);
+        }
+
+        switch (type)
+        {
+            case "assistant":
+                EmitAssistant(doc, outputs);
+                break;
+            case "user":
+                EmitUser(doc, outputs);
+                break;
+            case "result":
+                EmitResult(doc, outputs);
+                break;
+            case "stream_event":
+                EmitStreamEvent(doc, outputs);
+                break;
+            // system / error 等未知类型：尽量抽取可读文本兜底，避免实时流静默
+            default:
+                TryEmitAnyText(doc, outputs);
+                break;
+        }
+
+        return outputs;
+    }
         catch
         {
             return new[] { line };
         }
     }
 
-    private static void EmitAssistant(JsonElement doc, List<string> outputs)
+    private void EmitAssistant(JsonElement doc, List<string> outputs)
     {
         if (!doc.TryGetProperty("message", out var msg)
             || !msg.TryGetProperty("content", out var content))
@@ -83,7 +110,8 @@ public sealed class StreamJsonRenderer
         if (content.ValueKind == JsonValueKind.String)
         {
             var t = content.GetString();
-            if (!string.IsNullOrEmpty(t))
+            // 已通过 stream_event 实时透出过增量正文时，跳过完整正文避免重复
+            if (!string.IsNullOrEmpty(t) && !_sawPartialText)
             {
                 outputs.Add(t!);
             }
@@ -109,7 +137,7 @@ public sealed class StreamJsonRenderer
                 if (block.TryGetProperty("text", out var txt) && txt.ValueKind == JsonValueKind.String)
                 {
                     var t = txt.GetString()!;
-                    if (t.Length > 0)
+                    if (t.Length > 0 && !_sawPartialText)
                     {
                         outputs.Add(t);
                     }
@@ -171,6 +199,91 @@ public sealed class StreamJsonRenderer
         }
     }
 
+    private void EmitStreamEvent(JsonElement doc, List<string> outputs)
+    {
+        // --include-partial-messages 下，模型增量以 {"type":"stream_event","event":{...}} 实时推送。
+        // 抽取文本增量（text_delta），并入合并缓冲，按换行或阈值刷成连贯行；
+        // 并标记已见增量，避免随后完整 assistant 正文重复输出。
+        if (!doc.TryGetProperty("event", out var ev) || ev.ValueKind != JsonValueKind.Object)
+        {
+            FlushPending(outputs);
+            return;
+        }
+
+        string? text = null;
+        if (ev.TryGetProperty("delta", out var delta) && delta.ValueKind == JsonValueKind.Object
+            && delta.TryGetProperty("text", out var txt) && txt.ValueKind == JsonValueKind.String)
+        {
+            text = txt.GetString();
+        }
+
+        if (string.IsNullOrEmpty(text))
+        {
+            // 非文本增量（如 input_json_delta / message_start）：不并入正文缓冲，
+            // 先刷出已累积部分（避免前文滞留），再做兜底透出
+            FlushPending(outputs);
+            TryEmitAnyText(doc, outputs);
+            return;
+        }
+
+        _sawPartialText = true;
+        _pending.Append(text);
+
+        var pendingStr = _pending.ToString();
+        var nl = pendingStr.LastIndexOf('\n');
+        if (nl >= 0)
+        {
+            // 遇到换行：刷出整行，余下部分继续累积
+            outputs.Add(pendingStr.Substring(0, nl).TrimEnd('\r'));
+            _pending.Clear();
+            if (nl + 1 < pendingStr.Length)
+            {
+                _pending.Append(pendingStr.Substring(nl + 1));
+            }
+        }
+        else if (_pending.Length >= CoalesceThreshold)
+        {
+            outputs.Add(pendingStr);
+            _pending.Clear();
+        }
+    }
+
+    private void TryEmitAnyText(JsonElement doc, List<string> outputs)
+    {
+        // 兜底：CLI 协议演进/字段变动时，从未知类型事件中抽取短文本，避免实时流静默。
+        foreach (var key in new[] { "text", "content", "message" })
+        {
+            if (doc.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String)
+            {
+                var s = v.GetString()!;
+                if (s.Length > 0 && s.Length <= 500)
+                {
+                    outputs.Add(s);
+                    return;
+                }
+            }
+        }
+
+        foreach (var key in new[] { "event", "delta", "data" })
+        {
+            if (doc.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var k2 in new[] { "text", "content", "message" })
+                {
+                    if (v.TryGetProperty(k2, out var v2) && v2.ValueKind == JsonValueKind.String)
+                    {
+                        var s = v2.GetString()!;
+                        if (s.Length > 0 && s.Length <= 500)
+                        {
+                            outputs.Add(s);
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     private static string SummarizeToolInput(JsonElement toolUse)
     {
         if (!toolUse.TryGetProperty("input", out var input) || input.ValueKind != JsonValueKind.Object)
@@ -190,5 +303,29 @@ public sealed class StreamJsonRenderer
 
         var json = input.GetRawText();
         return json.Length <= 120 ? json : json[..120] + "…";
+    }
+
+    /// <summary>
+    /// 把增量合并缓冲中尚未刷出的部分作为一条行输出（在完整事件到达或任务结束时调用，避免末尾正文滞留）。
+    /// </summary>
+    private void FlushPending(List<string> outputs)
+    {
+        if (_pending.Length == 0)
+        {
+            return;
+        }
+
+        outputs.Add(_pending.ToString());
+        _pending.Clear();
+    }
+
+    /// <summary>
+    /// 任务结束时刷出残留增量（适配层在进程退出后调用），返回需转发的可读行。
+    /// </summary>
+    public IReadOnlyList<string> Flush()
+    {
+        var outputs = new List<string>();
+        FlushPending(outputs);
+        return outputs;
     }
 }

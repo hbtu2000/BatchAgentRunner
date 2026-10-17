@@ -1,11 +1,12 @@
 using BatchAgentRunner.Core.Abstractions;
+using BatchAgentRunner.Core.Domain;
 
 namespace BatchAgentRunner.Infrastructure.Http;
 
 /// <summary>
 /// 仿真积分 API 客户端（AgentKind.Mock / 无服务端环境联调用）：
-/// 每个票据（= 每个账号）初始余额 100，首次领取 +20，重复领取返回「今日已领取」。
-/// 行为确定性，供单元测试与 UI 全链路演练「领取前 → 领取 → 领取后」的完整记录。
+/// 每个票据（= 每个账号）初始余额 100；每日首次领取 +20；同一天内重复领取返回「已领取过」。
+/// 按票据独立记账，供每日去重与全链路演练。
 /// </summary>
 public sealed class MockCreditsApiClient : ICreditsApiClient
 {

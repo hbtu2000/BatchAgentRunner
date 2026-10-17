@@ -4,6 +4,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using BatchAgentRunner.Core.Abstractions;
+using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Options;
 
 namespace BatchAgentRunner.Infrastructure.Http;
@@ -54,7 +55,7 @@ public sealed class CodeBuddyCreditsApiClient : ICreditsApiClient
     public async Task<CreditsClaimApiResult> ClaimDailyAsync(string accessToken,
         CancellationToken cancellationToken = default)
     {
-        // 400（今日已签到）不是异常路径，需要读 body 区分，故不在 Send 阶段抛错
+        // 400（今日已签到）不是异常路径，需要读 body 区分，故不在 Send 阶段抛错。
         var (json, status) = await PostAsync(_config.ClaimPath, accessToken, expectSuccess: false, cancellationToken)
             .ConfigureAwait(false);
 

@@ -429,6 +429,12 @@ BatchEngine ──(BatchEvent)──▶ EngineHost(订阅)
 - 顺序硬约束：**先全部落盘并回收子进程 → 再关机**
 - Windows：`shutdown /s /t 0`（权限不足 → 降级提示手动关机并记录）；macOS：AppleScript `shut down`
 - 未触发时在界面与报告标注原因（边缘情况 7）
+- **实现状态（2026-10-17 补齐，技术债务 P0-10）**：原实现判定条件后直接执行关机指令，跳过可撤销倒计时。
+  现在策略下沉到 `Core/Engine/AutoShutdownCoordinator`（条件判定 + 倒计时委托），
+  Desktop 以 `Views/ShutdownCountdownWindow` 提供倒计时窗口（剩余秒数 +「立即关机」/「取消关机」），
+  只有「倒计时走完未被取消」才调用 `IShutdownService.TryShutdownAsync()`。
+  倒计时在应用内计时而非 OS 级延时：进程不在时默认**不关机**（失效即保护），因此系统命令仍是 `/t 0` 立即执行。
+  任何异常/被取消/窗口不可用 → `ShutdownOutcome.Executed = false` 并把原因写进报告。
 
 ---
 

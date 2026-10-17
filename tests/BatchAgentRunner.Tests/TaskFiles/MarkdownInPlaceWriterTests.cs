@@ -112,6 +112,23 @@ public class MarkdownInPlaceWriterTests : IDisposable
         Assert.Contains("s2: Done", text);
     }
 
+    /// <summary>
+    /// P0-8 不变量：回写必须是「临时文件 + 原子替换」，不得再出现 File.WriteAllTextAsync 直接覆写。
+    /// 观测方式：写入完成后目录里不得残留 .tmp-* 临时文件（残留说明走了非原子路径或原子写未收尾）。
+    /// </summary>
+    [Fact]
+    public async Task 回写走原子写_目录内不残留临时文件()
+    {
+        var path = WriteMd("## task-001\n\n实现功能\n");
+
+        await new MarkdownInPlaceWriter().WriteBackAsync(path, Done("task-001"));
+
+        var leftovers = Directory.GetFiles(_dir).Select(Path.GetFileName).Where(n => n!.Contains(".tmp-")).ToList();
+        Assert.Empty(leftovers);
+        Assert.Single(Directory.GetFiles(_dir));
+        Assert.Contains("<!-- batch-agent-runner:meta task-001 -->", File.ReadAllText(path));
+    }
+
     private static int CountOccurrences(string text, string value)
     {
         var count = 0;

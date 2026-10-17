@@ -114,8 +114,31 @@ public sealed class CliProcessRunner
             onOutput?.Invoke(clean);
         }
 
-        process.OutputDataReceived += (_, e) => OnData(e.Data);
-        process.ErrorDataReceived += (_, e) => OnData(e.Data);
+        // P0-2：异步读取回调收到 null 即表示该流已关闭（EOF）。以此为门，进程退出后必须等两个流
+        // 都到达 EOF 才能读 buffer —— 否则输出尾部会被丢掉（漏判额度重置、stream-json result 被截断）。
+        var stdoutClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var stderrClosed = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        process.OutputDataReceived += (_, e) =>
+        {
+            if (e.Data is null)
+            {
+                stdoutClosed.TrySetResult();
+                return;
+            }
+
+            OnData(e.Data);
+        };
+        process.ErrorDataReceived += (_, e) =>
+        {
+            if (e.Data is null)
+            {
+                stderrClosed.TrySetResult();
+                return;
+            }
+
+            OnData(e.Data);
+        };
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();
 
@@ -212,6 +235,10 @@ public sealed class CliProcessRunner
             }
 
             await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
+
+            // P0-2：进程退出 ≠ 输出已排空。子进程把 stdout 句柄交给孙进程时 EOF 可能永不到达，
+            // 故设上限（超时只记日志，不阻塞批处理）。
+            await DrainOutputAsync(stdoutClosed.Task, stderrClosed.Task).ConfigureAwait(false);
         }
         catch (OperationCanceledException)
         {
@@ -223,6 +250,23 @@ public sealed class CliProcessRunner
         {
             AutoAnsweredPoints = autoAnswered
         };
+    }
+
+    /// <summary>输出排空等待上限：EOF 迟迟不到（孙进程持有管道句柄）时不能把任务挂死。</summary>
+    private static readonly TimeSpan OutputDrainTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>等待 stdout / stderr 两个异步读取流都到达 EOF。</summary>
+    private async Task DrainOutputAsync(Task stdoutClosed, Task stderrClosed)
+    {
+        try
+        {
+            await Task.WhenAll(stdoutClosed, stderrClosed).WaitAsync(OutputDrainTimeout).ConfigureAwait(false);
+        }
+        catch (TimeoutException)
+        {
+            _log?.Invoke($"[输出排空] 进程已退出，但输出流 {OutputDrainTimeout.TotalSeconds:0} 秒内未到达 EOF，" +
+                         "按已收到的输出继续处理（输出可能不完整）");
+        }
     }
 
     /// <summary>

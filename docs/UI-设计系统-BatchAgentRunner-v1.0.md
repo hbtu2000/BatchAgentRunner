@@ -366,6 +366,10 @@ TopBar: [批级:Running●]                        [停止] [续跑]
 - 弹 Dialog：标题"即将自动关机" + 60s 可撤销倒计时条（warning 色）+ 「取消关机」(primary) + 「立即关机」(danger)。
 - 硬约束顺序：先全部落盘 + 回收子进程 → 再关机；权限不足降级提示手动关机并记日志。
 - 倒计时内点"取消关机"→ 关闭 Dialog，批级回 Completed 静置。
+- **实现状态（2026-10-17 补齐，债务 P0-10）**：`Views/ShutdownCountdownWindow` 即本节对话框;
+  标题区 + 剩余秒数 + 「取消关机」(primary) / 「立即关机」(danger)，倒计时秒数取 `auto_shutdown.countdown_seconds`。
+  策略下沉在 `Core/Engine/AutoShutdownCoordinator`：只有"倒计时走完未被取消"才调用系统关机；
+  窗口弹不出来 / 进程异常 → 一律不关机并把原因写进报告 `shutdown` 段。
 
 ### 6.4 取消等待 / 续跑 / 强制重跑
 - 取消等待：Waiting → 用户主动，转 Blocked（当前任务 interrupted）。

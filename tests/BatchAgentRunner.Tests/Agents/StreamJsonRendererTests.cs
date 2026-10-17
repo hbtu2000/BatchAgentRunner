@@ -108,4 +108,99 @@ public class StreamJsonRendererTests
         Assert.Single(outLines);
         Assert.Null(r.FinalResult);
     }
+
+    [Fact]
+    public void Feed_streamEvent_textDelta_增量合并后由Flush刷出()
+    {
+        // --include-partial-messages 下，单行 delta 先进入合并缓冲，不足阈值时不会立即成行，
+        // 需 Flush（或达到阈值/换行/完整事件到达）才刷出。
+        var r = new StreamJsonRenderer();
+        r.Feed("""{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"正在分析"}}}""");
+
+        var flushed = r.Flush();
+        Assert.Single(flushed);
+        Assert.Equal("正在分析", flushed[0]);
+        Assert.Null(r.FinalResult);
+    }
+
+    [Fact]
+    public void Feed_连续delta_合并为单一连贯行()
+    {
+        var r = new StreamJsonRenderer();
+        r.Feed("""{"type":"stream_event","event":{"delta":{"text":"短句一"}}}""");
+        r.Feed("""{"type":"stream_event","event":{"delta":{"text":"短句二"}}}""");
+        r.Feed("""{"type":"stream_event","event":{"delta":{"text":"短句三"}}}""");
+
+        // 三段均不足阈值且无换行，仍留在缓冲，Flush 后合并为一行
+        var flushed = r.Flush();
+        Assert.Single(flushed);
+        Assert.Equal("短句一短句二短句三", flushed[0]);
+    }
+
+    [Fact]
+    public void Feed_streamEvent_遇换行_按行拆分刷出()
+    {
+        var r = new StreamJsonRenderer();
+        var lines = new List<string>();
+        lines.AddRange(r.Feed("""{"type":"stream_event","event":{"delta":{"text":"第一行\n第二行"}}}"""));
+        lines.AddRange(r.Flush());
+
+        Assert.Equal(2, lines.Count);
+        Assert.Equal("第一行", lines[0]);
+        Assert.Equal("第二行", lines[1]);
+    }
+
+    [Fact]
+    public void Feed_streamEvent_达阈值_自动刷出连贯行()
+    {
+        var r = new StreamJsonRenderer();
+        var longText = new string('中', 250);
+        var outLines = r.Feed($"""{{"type":"stream_event","event":{{"delta":{{"text":"{longText}"}}}}}}""");
+
+        // 超过合并阈值，单个超长 delta 直接刷出（不再等 Flush）
+        Assert.Single(outLines);
+        Assert.Equal(longText, outLines[0]);
+    }
+
+    [Fact]
+    public void Feed_先streamEvent后assistant_正文不重复输出()
+    {
+        // --include-partial-messages 下，正文已通过 stream_event 实时透出（合并刷出），
+        // 完整 assistant 事件到达时不应再重复输出整段正文（整体只出现一次）。
+        var r = new StreamJsonRenderer();
+        var all = new List<string>();
+        all.AddRange(r.Feed("""{"type":"stream_event","event":{"delta":{"type":"text_delta","text":"最终答案内容"}}}"""));
+        all.AddRange(r.Feed("""{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"最终答案内容"}]}}"""));
+
+        var count = 0;
+        foreach (var l in all)
+        {
+            if (l.Contains("最终答案内容"))
+            {
+                count++;
+            }
+        }
+
+        Assert.Equal(1, count);
+    }
+
+    [Fact]
+    public void Feed_streamEvent非文本_不影响后续assistant正文()
+    {
+        // 非文本增量（如 message_start）不触发抑制标志，后续 assistant 正文仍正常透出。
+        var r = new StreamJsonRenderer();
+        r.Feed("""{"type":"stream_event","event":{"type":"message_start","message":{"id":"m1"}}}""");
+        var outLines = r.Feed("""{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"完整正文"}]}}""");
+
+        Assert.Contains("完整正文", outLines);
+    }
+
+    [Fact]
+    public void Feed_未知类型含文本_兜底透出()
+    {
+        var r = new StreamJsonRenderer();
+        var outLines = r.Feed("""{"type":"system","subtype":"init","message":"会话已初始化"}""");
+
+        Assert.Contains("会话已初始化", outLines);
+    }
 }

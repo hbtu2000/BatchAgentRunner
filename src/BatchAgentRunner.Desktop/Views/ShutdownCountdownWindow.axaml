@@ -1,0 +1,41 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="BatchAgentRunner.Desktop.Views.ShutdownCountdownWindow"
+        Width="440" Height="250"
+        CanResize="False"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        SystemDecorations="BorderOnly"
+        Title="即将关机"
+        FontFamily="{DynamicResource FontUi}">
+
+    <Border Background="{DynamicResource BgAppBrush}" Padding="24">
+        <Grid RowDefinitions="Auto,Auto,*,Auto">
+            <TextBlock Grid.Row="0"
+                       Text="批处理已完成，系统即将关机"
+                       FontSize="16" FontWeight="SemiBold"
+                       Foreground="{DynamicResource TextPrimaryBrush}" />
+
+            <TextBlock Grid.Row="1"
+                       Margin="0,8,0,0"
+                       TextWrapping="Wrap"
+                       Foreground="{DynamicResource TextSecondaryBrush}"
+                       Text="所有结果已落盘。倒计时结束后将执行关机，点「取消关机」可中止。" />
+
+            <StackPanel Grid.Row="2" Orientation="Horizontal" VerticalAlignment="Center" Spacing="10" Margin="0,20,0,0">
+                <TextBlock Text="剩余" FontSize="14" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+                <TextBlock x:Name="CountdownText"
+                           Text="60"
+                           FontSize="34" FontWeight="Bold"
+                           Foreground="{DynamicResource ErrorBrush}"
+                           VerticalAlignment="Center" />
+                <TextBlock Text="秒" FontSize="14" Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" />
+            </StackPanel>
+
+            <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right" Spacing="10">
+                <Button Content="取消关机" Classes="primary" Click="OnCancelClick" />
+                <Button Content="立即关机" Classes="danger" Click="OnShutdownNowClick" />
+            </StackPanel>
+        </Grid>
+    </Border>
+</Window>

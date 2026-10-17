@@ -1,3 +1,5 @@
+using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
 using BatchAgentRunner.Agents.Adapters;
 using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
@@ -14,6 +16,7 @@ using BatchAgentRunner.Infrastructure.Persistence;
 using BatchAgentRunner.Infrastructure.Platform;
 using BatchAgentRunner.Infrastructure.Reporting;
 using BatchAgentRunner.Infrastructure.TaskFiles;
+using BatchAgentRunner.Desktop.Views;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System.Collections.Generic;
 
@@ -29,7 +32,11 @@ public sealed class EngineHost : ObservableObject
     private readonly ICooldownStore _cooldownStore = new JsonCooldownStore();
     private readonly ITaskFileStore _taskFileStore = new TaskFileStore();
     private readonly IReportWriter _reportWriter = new ReportWriter();
-    private readonly IShutdownService _shutdownService = new ShutdownService();
+    /// <summary>
+    /// 自动关机协调器（REQ-015 / P0-10）：负责触发条件判定与可撤销倒计时策略，
+    /// Desktop 只提供倒计时窗口。策略不再散落在 UI 宿主里。
+    /// </summary>
+    private readonly AutoShutdownCoordinator _shutdownCoordinator = new(new ShutdownService());
 
     /// <summary>凭证 Vault 宿主（DESIGN-账号凭证切换-v1.0）：Vault 本体随引擎生命周期复用。</summary>
     public CredentialVaultHost VaultHost { get; } = CreateVaultHost();
@@ -64,13 +71,17 @@ public sealed class EngineHost : ObservableObject
     /// <summary>最近一次「领取每日积分」报告的 Markdown 路径（本次会话内）。</summary>
     public string? LastCreditsClaimReportPath { get; private set; }
 
-    /// <summary>引擎事件（已确保不跨线程直接触达 UI 集合，订阅方自行切线程）。</summary>
+    /// <summary>引擎事件（已在 UI 线程广播，订阅方可直接改 UI 集合）。</summary>
     public event EventHandler<BatchEvent>? EventRaised;
 
+    /// <summary>任务列表变更：已在 UI 线程广播。</summary>
     public event EventHandler? TasksChanged;
 
-    /// <summary>每日积分领取进度（订阅方自行切线程）。</summary>
+    /// <summary>每日积分领取进度：已在 UI 线程广播。</summary>
     public event EventHandler<CreditsClaimProgress>? CreditsClaimProgressRaised;
+
+    /// <summary>唯一的事件广播出口（P0-7）：保证订阅方永远在 UI 线程被调用。</summary>
+    private void Raise(BatchEvent ev) => UiThread.Post(() => EventRaised?.Invoke(this, ev));
 
     public string ConfigDirectory => _configStore.ConfigDirectory;
 
@@ -115,7 +126,9 @@ public sealed class EngineHost : ObservableObject
             diffCollector: Options.CollectDiffs ? new DiffCollector(_logger, Options) : null,
             git: new LocalGitIntegration(),
             markdownWriter: new MarkdownInPlaceWriter());
-        engine.EventRaised += (_, ev) =>
+        // P0-7：单一收敛点。引擎事件在后台线程触发，这里统一切到 UI 线程后再广播，
+        // 订阅方（7 处）不必再各自记得 Dispatcher.UIThread.Post —— 由构造保证，而不是靠约定。
+        engine.EventRaised += (_, ev) => UiThread.Post(() =>
         {
             if (ev.BatchStatus.HasValue)
             {
@@ -124,8 +137,8 @@ public sealed class EngineHost : ObservableObject
             }
 
             EventRaised?.Invoke(this, ev);
-        };
-        engine.TasksChanged += (_, _) => TasksChanged?.Invoke(this, EventArgs.Empty);
+        });
+        engine.TasksChanged += (_, _) => UiThread.Post(() => TasksChanged?.Invoke(this, EventArgs.Empty));
         return engine;
     }
 
@@ -146,8 +159,7 @@ public sealed class EngineHost : ObservableObject
     {
         var notifiers = new List<INotifier>
         {
-            new DesktopNotifier((title, message) => EventRaised?.Invoke(this,
-                new BatchEvent(BatchEventKind.Info, DateTimeOffset.Now, $"[通知] {title}：{message}"))),
+            new DesktopNotifier((title, message) => Raise(new BatchEvent(BatchEventKind.Info, DateTimeOffset.Now, $"[通知] {title}：{message}"))),
             new WebhookNotifier(),
             new SmtpNotifier(_logger)
         };
@@ -185,12 +197,17 @@ public sealed class EngineHost : ObservableObject
     /// 结果写入台账（配置目录 credits-claims.json，跨日去重）与报告文件（credits-claim-*.md/.json）。
     /// Mock 执行工具使用仿真积分客户端，供无服务端环境演练完整流程。
     /// </summary>
+    /// <summary>
+    /// 一键领取所有启用账号的每日积分：逐账号「切换凭证 → 读领取前积分 → 领取 → 读领取后积分 → 记录」。
+    /// 结果写入台账（配置目录 credits-claims.json，跨日去重）与报告文件（credits-claim-*.md/.json）。
+    /// Mock 执行工具使用仿真积分客户端，供无服务端环境演练完整流程。
+    /// </summary>
     public async Task<CreditsClaimSummary> ClaimDailyCreditsAsync(bool force = false,
         CancellationToken cancellationToken = default)
     {
         if (!Options.CreditsClaim.Enabled)
         {
-            throw new InvalidOperationException("每日积分领取已在配置中关闭（credits_claim.enabled = false）");
+            throw new InvalidOperationException("积分领取已在配置中关闭（credits_claim.enabled = false）");
         }
 
         var cli = Options.AgentKind;
@@ -201,10 +218,11 @@ public sealed class EngineHost : ObservableObject
         var orchestrator = new CreditsClaimOrchestrator(
             VaultHost.Vault, api, new JsonCreditsClaimStore(ConfigDirectory),
             logger: _logger,
-            progress: p => CreditsClaimProgressRaised?.Invoke(this, p));
+            progress: p => UiThread.Post(() => CreditsClaimProgressRaised?.Invoke(this, p)));
 
         var accounts = Options.Accounts.Where(a => a.Enabled).ToList();
-        var summary = await orchestrator.RunAllAsync(cli, accounts, force, cancellationToken).ConfigureAwait(false);
+        var summary = await orchestrator.RunAllAsync(cli, accounts, force, cancellationToken)
+            .ConfigureAwait(false);
 
         if (summary.Records.Count > 0)
         {
@@ -285,49 +303,40 @@ public sealed class EngineHost : ObservableObject
 
     public void ResetAllCooldowns() => _engine?.ResetAllCooldowns();
 
-    /// <summary>自动关机（REQ-015）：正常完成 + 落盘完成 + 可撤销倒计时。</summary>
+    /// <summary>
+    /// 自动关机（REQ-015）：正常完成 + 落盘完成 + 可撤销倒计时。
+    /// P0-10：条件判定与倒计时策略已下沉到 <see cref="AutoShutdownCoordinator"/>，
+    /// 本类只提供倒计时窗口；不再出现「判定完直接关机」的强关路径。
+    /// </summary>
     private async Task MaybeShutdownAsync(BatchReport report)
     {
-        if (!Options.AutoShutdown.Enabled)
+        // 结果已 100% 落盘（报告写完后）才进入关机流程（REQ-015 顺序硬约束）
+        report.Shutdown = await _shutdownCoordinator
+            .RunAsync(Options.AutoShutdown, report, ShowShutdownCountdownAsync)
+            .ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// 关机倒计时窗口（REQ-015 可撤销倒计时）。返回 true = 倒计时走完未被取消。
+    /// 窗口弹不出来时返回 false：宁可不关机，也不能让用户在无法撤销的情况下被关机。
+    /// </summary>
+    private static Task<bool> ShowShutdownCountdownAsync(int countdownSeconds, CancellationToken cancellationToken)
+    {
+        if (countdownSeconds <= 0)
         {
-            return;
+            return Task.FromResult(true);
         }
 
-        if (report.BatchStatus != BatchStatus.Completed)
+        return UiThread.InvokeAsync(async () =>
         {
-            report.Shutdown = new ShutdownOutcome
+            var owner = (Application.Current?.ApplicationLifetime as IClassicDesktopStyleApplicationLifetime)?.MainWindow;
+            if (owner is null)
             {
-                Requested = true, Executed = false,
-                Reason = $"批级状态为 {report.BatchStatus}，不满足关机触发条件"
-            };
-            return;
-        }
+                return false;
+            }
 
-        if (Options.AutoShutdown.OnlyWhenZeroFailure && report.Failed > 0)
-        {
-            report.Shutdown = new ShutdownOutcome
-            {
-                Requested = true, Executed = false,
-                Reason = $"存在 {report.Failed} 条失败任务，已勾选「仅失败率为 0 时关机」"
-            };
-            return;
-        }
-
-        if (!_shutdownService.IsSupported)
-        {
-            report.Shutdown = new ShutdownOutcome
-            {
-                Requested = true, Executed = false, Reason = "当前平台不支持自动关机，请手动关机"
-            };
-            return;
-        }
-
-        // 结果已 100% 落盘后才关机（硬性顺序约束）
-        var executed = await _shutdownService.TryShutdownAsync().ConfigureAwait(false);
-        report.Shutdown = new ShutdownOutcome
-        {
-            Requested = true, Executed = executed,
-            Reason = executed ? "批处理正常完成，已触发关机" : "权限不足，已降级为提示手动关机"
-        };
+            var window = new ShutdownCountdownWindow(countdownSeconds);
+            return await window.ShowDialog<bool>(owner).ConfigureAwait(true);
+        });
     }
 }

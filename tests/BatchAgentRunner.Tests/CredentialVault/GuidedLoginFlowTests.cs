@@ -109,4 +109,40 @@ public class GuidedLoginFlowTests
         Assert.Contains("进程仍在运行", ex.Message);
         Assert.False(launched);
     }
+
+    /// <summary>
+    /// P0-9 不变量：登录未走完（超时 / 校验失败）时，清理掉的 Live 凭证必须原样还原，
+    /// 不能出现「凭证被删且不可恢复」。
+    /// </summary>
+    [Fact]
+    public async Task 登录超时_清理前的Live凭证被原样回滚()
+    {
+        var oldCredential = "{\"access_token\":\"sk-old\",\"refresh_token\":\"rt-old\"}";
+        var f = NewFixture(_ => { }); // 登录无任何新凭证 → 超时
+        await File.WriteAllTextAsync(LivePath(f.LiveRoot), oldCredential);
+
+        await Assert.ThrowsAsync<CredentialVaultException>(() =>
+            f.Orchestrator.RunAsync(AgentKind.Mock, "acc-a", timeout: TimeSpan.FromSeconds(30)));
+
+        Assert.Equal(oldCredential, await File.ReadAllTextAsync(LivePath(f.LiveRoot)));
+        Assert.False(f.Vault.SnapshotExists(AgentKind.Mock, "acc-a"));
+        Assert.Contains(f.Progress, p => p.Phase == GuidedLoginPhase.Failed);
+    }
+
+    /// <summary>P0-9：登录成功后清掉暂存副本，凭证目录里不留第二份明确保留的凭证。</summary>
+    [Fact]
+    public async Task 登录成功_暂存凭证备份已清理()
+    {
+        var f = NewFixture(liveRoot => File.WriteAllText(LivePath(liveRoot),
+            "{\"access_token\":\"sk-new-login\",\"refresh_token\":\"rt-new\"}"));
+        await File.WriteAllTextAsync(LivePath(f.LiveRoot), "{\"access_token\":\"sk-old\"}");
+
+        await f.Orchestrator.RunAsync(AgentKind.Mock, "acc-a", "A 账号",
+            timeout: TimeSpan.FromSeconds(30),
+            validator: (_, _) => Task.FromResult(PreflightResult.Pass("ok")));
+
+        var staging = Path.Combine(f.LiveRoot, ".bar-guided-login-backup");
+        Assert.False(Directory.Exists(staging), "登录成功后暂存凭证目录应已被清理");
+        Assert.DoesNotContain(f.Progress, p => p.Phase == GuidedLoginPhase.Failed);
+    }
 }

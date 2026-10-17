@@ -42,8 +42,17 @@ public sealed class BatchEngine
     /// <summary>凭证 Vault（DESIGN-账号凭证切换-v1.0）。null = 不启用凭证切换（保持旧行为）。</summary>
     private readonly ICredentialVault? _vault;
     private readonly List<TaskItem> _tasks = new();
-    private readonly object _writeLock = new();
+    /// <summary>
+    /// 任务状态写入区（P0-4「读改写同锁」）。用 <see cref="SemaphoreSlim"/> 而非 <c>lock</c>：
+    /// 落盘序列化必须在持锁期间 <c>await</c>（<c>lock</c> 不允许），且 <see cref="TaskItem"/> 可变，
+    /// 浅拷贝快照挡不住并发写入——只有让「状态写入」与「序列化读取」互斥才能落盘一致状态。
+    /// </summary>
+    private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly object _statsLock = new();
+    /// <summary>兜底成本/用量锁（P0-5）：跨任务共享，且「检查上限 → 累加」是 check-then-act。</summary>
+    private readonly object _fallbackLock = new();
+    /// <summary>持久化单写者门（P0-4）：同一时刻只允许一个写者落盘任务文件。</summary>
+    private readonly SemaphoreSlim _persistGate = new(1, 1);
     private readonly SemaphoreSlim _waitGate = new(1, 1);
     private readonly List<TimelineEntry> _timeline = new();
     private readonly Dictionary<string, UsageEntry> _accountUsage = new(StringComparer.OrdinalIgnoreCase);
@@ -165,7 +174,7 @@ public sealed class BatchEngine
     {
         var result = await _taskStore.LoadAsync(_options.TaskFilePath, cancellationToken).ConfigureAwait(false);
 
-        lock (_writeLock)
+        using (await EnterWriteGateAsync().ConfigureAwait(false))
         {
             _tasks.Clear();
             _tasks.AddRange(result.Tasks);
@@ -202,7 +211,7 @@ public sealed class BatchEngine
             try
             {
                 var loaded = await _taskStore.LoadAsync(_options.TaskFilePath, cancellationToken).ConfigureAwait(false);
-                lock (_writeLock)
+                using (await EnterWriteGateAsync().ConfigureAwait(false))
                 {
                     _tasks.Clear();
                     _tasks.AddRange(loaded.Tasks);
@@ -768,16 +777,19 @@ public sealed class BatchEngine
     {
         var outcome = await new WorkflowExecutor(BuildWorkflowContext()).RunAsync(task, ct).ConfigureAwait(false);
 
-        task.Status = outcome.FinalStatus;
-        task.Result = Truncate(outcome.Result, _options.ResultMaxKB * 1024);
-        task.Error = outcome.Error;
-        task.StageResults = outcome.StageResults;
-        task.ModelUsed = outcome.ModelUsed;
-        task.AccountUsed = outcome.AccountUsed;
-        task.ExpertUsed = outcome.ExpertUsed;
-        task.FallbackUsed = outcome.FallbackUsed;
-        task.FallbackCost = outcome.FallbackCost;
-        task.Finish(outcome.FinalStatus, _clock.Now);
+        using (await EnterWriteGateAsync().ConfigureAwait(false)) // P0-4：与落盘序列化互斥
+        {
+            task.Status = outcome.FinalStatus;
+            task.Result = Truncate(outcome.Result, _options.ResultMaxKB * 1024);
+            task.Error = outcome.Error;
+            task.StageResults = outcome.StageResults;
+            task.ModelUsed = outcome.ModelUsed;
+            task.AccountUsed = outcome.AccountUsed;
+            task.ExpertUsed = outcome.ExpertUsed;
+            task.FallbackUsed = outcome.FallbackUsed;
+            task.FallbackCost = outcome.FallbackCost;
+            task.Finish(outcome.FinalStatus, _clock.Now);
+        }
 
         RaiseTaskChanged(task);
         _logger.WriteTaskFinished(task.Id, outcome.FinalStatus, task.DurationSeconds, task.RetryCount);
@@ -901,9 +913,13 @@ public sealed class BatchEngine
 
         if (_options.DependencyFailurePolicy == DependencyFailurePolicy.AbortBatch)
         {
-            task.Status = TaskStatus.Blocked;
-            task.Error = reason;
-            task.Finish(TaskStatus.Blocked, _clock.Now);
+            using (await EnterWriteGateAsync().ConfigureAwait(false)) // P0-4：与落盘序列化互斥
+            {
+                task.Status = TaskStatus.Blocked;
+                task.Error = reason;
+                task.Finish(TaskStatus.Blocked, _clock.Now);
+            }
+
             RaiseTaskChanged(task);
             await PersistAsync(CancellationToken.None).ConfigureAwait(false);
             SetStatus(BatchStatus.Blocked);
@@ -911,9 +927,13 @@ public sealed class BatchEngine
             return false;
         }
 
-        task.Status = TaskStatus.Blocked;
-        task.Error = reason;
-        task.Finish(TaskStatus.Blocked, _clock.Now);
+        using (await EnterWriteGateAsync().ConfigureAwait(false)) // P0-4：与落盘序列化互斥
+        {
+            task.Status = TaskStatus.Blocked;
+            task.Error = reason;
+            task.Finish(TaskStatus.Blocked, _clock.Now);
+        }
+
         RaiseTaskChanged(task);
         _logger.WriteTaskFinished(task.Id, TaskStatus.Blocked, task.DurationSeconds, task.RetryCount);
         Raise(new BatchEvent(BatchEventKind.TaskFinished, _clock.Now,
@@ -1365,19 +1385,30 @@ public sealed class BatchEngine
         }
 
         var unitPrice = fallback.EstimatedUnitPrice ?? 0m;
-        if (_fallbackBatchCost + unitPrice > _options.Fallback.MaxCostPerBatch)
+
+        // P0-5：兜底成本/用量是跨任务共享状态（Concurrency>1 时并发累加），且「检查上限 → 累加」
+        // 属 check-then-act，必须与累加共用同一把锁；事件广播在锁外进行（避免持锁调用订阅方）。
+        string? limitReason = null;
+        lock (_fallbackLock)
         {
-            _fallbackStoppedByLimit = true;
-            Raise(new BatchEvent(BatchEventKind.Warning, _clock.Now,
-                $"兜底成本已用尽（单批上限 ¥{_options.Fallback.MaxCostPerBatch}），已停用兜底并转为阻塞", task.Id));
-            return (false, 0m);
+            if (_fallbackBatchCost + unitPrice > _options.Fallback.MaxCostPerBatch)
+            {
+                limitReason = $"兜底成本已用尽（单批上限 ¥{_options.Fallback.MaxCostPerBatch}），已停用兜底并转为阻塞";
+            }
+            else if (unitPrice > _options.Fallback.MaxCostPerTask)
+            {
+                limitReason = $"兜底单价 ¥{unitPrice} 超出单任务上限 ¥{_options.Fallback.MaxCostPerTask}，已跳过兜底";
+            }
+
+            if (limitReason is not null)
+            {
+                _fallbackStoppedByLimit = true;
+            }
         }
 
-        if (unitPrice > _options.Fallback.MaxCostPerTask)
+        if (limitReason is not null)
         {
-            _fallbackStoppedByLimit = true;
-            Raise(new BatchEvent(BatchEventKind.Warning, _clock.Now,
-                $"兜底单价 ¥{unitPrice} 超出单任务上限 ¥{_options.Fallback.MaxCostPerTask}，已跳过兜底", task.Id));
+            Raise(new BatchEvent(BatchEventKind.Warning, _clock.Now, limitReason, task.Id));
             return (false, 0m);
         }
 
@@ -1395,31 +1426,46 @@ public sealed class BatchEngine
             task.Id, account.Label, fallbackModel.Name));
 
         var request = BuildRequest(task, combo, isFallback: true);
-        if (!_fallbackModelsUsed.Contains(fallbackModel.Name, StringComparer.Ordinal))
+        lock (_fallbackLock)
         {
-            _fallbackModelsUsed.Add(fallbackModel.Name);
+            if (!_fallbackModelsUsed.Contains(fallbackModel.Name, StringComparer.Ordinal))
+            {
+                _fallbackModelsUsed.Add(fallbackModel.Name);
+            }
         }
+
         var result = await ExecuteWithTimeoutAsync(request, ct).ConfigureAwait(false);
 
         var cost = result.Usage?.Cost ?? unitPrice;
         var basis = result.Usage?.Basis ?? CostBasis.Estimated;
-        cost = Math.Min(cost, Math.Max(_options.Fallback.MaxCostPerTask, cost));
+
+        // P0-1：原写法 Math.Min(cost, Math.Max(MaxCostPerTask, cost)) 恒等于 cost（no-op），
+        // 单任务成本上限完全失效 → 实测花费再高也全额计入。改为按 MaxCostPerTask 真实截断。
+        // 不变量：TryFallbackAsync 记入 _fallbackBatchCost / task.FallbackCost 的 cost
+        // 必须 ≤ Fallback.MaxCostPerTask（由 BatchEngineTests.兜底成本超单任务上限时按上限截断 锁住）。
+        cost = Math.Min(cost, Math.Max(0m, _options.Fallback.MaxCostPerTask));
 
         if (result.Succeeded)
         {
-            _fallbackBatchCost += cost;
-            _fallbackUsedCount++;
-            _fallbackCostBasis = basis;
+            lock (_fallbackLock)
+            {
+                _fallbackBatchCost += cost;
+                _fallbackUsedCount++;
+                _fallbackCostBasis = basis;
+            }
 
-            task.Status = TaskStatus.Done;
-            task.Result = Truncate(result.Output, _options.ResultMaxKB * 1024);
-            task.ModelUsed = fallbackModel.Name;
-            task.AccountUsed = account.Label;
-            task.ExpertUsed = _options.Expert.ToString();
-            task.FallbackUsed = true;
-            task.FallbackCost = cost;
-            task.Error = null;
-            task.Finish(TaskStatus.Done, _clock.Now);
+            using (await EnterWriteGateAsync().ConfigureAwait(false)) // P0-4：与落盘序列化互斥
+            {
+                task.Status = TaskStatus.Done;
+                task.Result = Truncate(result.Output, _options.ResultMaxKB * 1024);
+                task.ModelUsed = fallbackModel.Name;
+                task.AccountUsed = account.Label;
+                task.ExpertUsed = _options.Expert.ToString();
+                task.FallbackUsed = true;
+                task.FallbackCost = cost;
+                task.Error = null;
+                task.Finish(TaskStatus.Done, _clock.Now);
+            }
 
             Raise(new BatchEvent(BatchEventKind.FallbackUsed, _clock.Now,
                 $"兜底完成：任务 {task.Id}（花费 ¥{cost:0.####}，{(basis == CostBasis.Measured ? "实测" : "估算")}）",
@@ -1431,8 +1477,11 @@ public sealed class BatchEngine
         }
 
         // 兜底本身也失败：按普通失败处理，不循环兜底（边缘情况 10）
-        _fallbackBatchCost += cost;
-        _fallbackCostBasis = basis;
+        lock (_fallbackLock)
+        {
+            _fallbackBatchCost += cost;
+            _fallbackCostBasis = basis;
+        }
         await FailTask(task, $"兜底模型 {fallbackModel.Name} 执行失败：{result.Failure?.Message ?? "未知错误"}");
         return (false, cost);
     }
@@ -1442,17 +1491,23 @@ public sealed class BatchEngine
     private async Task CompleteTask(TaskItem task, AgentExecutionResult result)
     {
         var combo = result.Request;
-        task.Status = TaskStatus.Done;
-        task.Result = Truncate(result.Output, _options.ResultMaxKB * 1024);
-        task.ModelUsed = combo.Model.Name;
-        task.AccountUsed = combo.Account.Label;
-        task.ExpertUsed = _options.Expert.ToString();
-        task.FallbackUsed = false;
-        task.Error = null;
-        task.Finish(TaskStatus.Done, _clock.Now);
-        ApplyPausedExclusion(task);
 
-        TrackUsage(combo.Account.Label, combo.Model.Name, result.Usage);
+        // P0-4：终态写入与落盘序列化互斥，保证落盘的是一致状态（不会写完 Status
+        // 还没写 Result 就被另一个写者序列化走）。事件广播保持在锁外。
+        using (await EnterWriteGateAsync().ConfigureAwait(false))
+        {
+            task.Status = TaskStatus.Done;
+            task.Result = Truncate(result.Output, _options.ResultMaxKB * 1024);
+            task.ModelUsed = combo.Model.Name;
+            task.AccountUsed = combo.Account.Label;
+            task.ExpertUsed = _options.Expert.ToString();
+            task.FallbackUsed = false;
+            task.Error = null;
+            task.Finish(TaskStatus.Done, _clock.Now);
+            ApplyPausedExclusion(task);
+
+            TrackUsageCore(combo.Account.Label, combo.Model.Name, result.Usage);
+        }
 
         Raise(new BatchEvent(BatchEventKind.TaskFinished, _clock.Now,
             $"任务 {task.Id} 完成（{task.DurationSeconds:0.#}s，{combo.Account.Label} + {combo.Model.Name}）",
@@ -1464,10 +1519,13 @@ public sealed class BatchEngine
 
     private async Task FailTask(TaskItem task, string error)
     {
-        task.Status = TaskStatus.Failed;
-        task.Error = error;
-        task.Finish(TaskStatus.Failed, _clock.Now);
-        ApplyPausedExclusion(task);
+        using (await EnterWriteGateAsync().ConfigureAwait(false)) // P0-4：与落盘序列化互斥
+        {
+            task.Status = TaskStatus.Failed;
+            task.Error = error;
+            task.Finish(TaskStatus.Failed, _clock.Now);
+            ApplyPausedExclusion(task);
+        }
 
         Raise(new BatchEvent(BatchEventKind.TaskFinished, _clock.Now,
             $"任务 {task.Id} 失败（重试 {task.RetryCount} 次）：{error}", task.Id) { Task = task });
@@ -1481,15 +1539,18 @@ public sealed class BatchEngine
 
     private async Task MarkInterrupted(TaskItem task, string reason)
     {
-        if (!string.IsNullOrWhiteSpace(task.Result) && !task.HasPartialResult)
+        using (await EnterWriteGateAsync().ConfigureAwait(false)) // P0-4：与落盘序列化互斥
         {
-            task.Result = TaskItem.PartialResultPrefix + task.Result;
-        }
+            if (!string.IsNullOrWhiteSpace(task.Result) && !task.HasPartialResult)
+            {
+                task.Result = TaskItem.PartialResultPrefix + task.Result;
+            }
 
-        task.Status = TaskStatus.Interrupted;
-        task.Error = reason;
-        task.Finish(TaskStatus.Interrupted, _clock.Now);
-        ApplyPausedExclusion(task);
+            task.Status = TaskStatus.Interrupted;
+            task.Error = reason;
+            task.Finish(TaskStatus.Interrupted, _clock.Now);
+            ApplyPausedExclusion(task);
+        }
 
         Raise(new BatchEvent(BatchEventKind.TaskFinished, _clock.Now,
             $"任务 {task.Id} 已中断：{reason}", task.Id) { Task = task });
@@ -1732,16 +1793,46 @@ public sealed class BatchEngine
         }
     }
 
+    /// <summary>
+    /// 任务文件回写（P0-4 单写者）。原实现：并发的 <c>CompleteTask/FailTask/MarkInterrupted</c>
+    /// 各自直接 <c>SaveAsync(_tasks)</c> —— 既在不同时刻快照（后落盘的旧快照会回退已完成状态），
+    /// 又并发写同一结果文件。改为：
+    /// ① <see cref="_persistGate"/> 串行化写入，同一时刻只有一个写者，先排队者先落盘（单调向前）；
+    /// ② 序列化在 <see cref="_writeGate"/> 内完成，与任务状态写入互斥（读改写同锁）。
+    /// </summary>
     private async Task PersistAsync(CancellationToken ct)
     {
+        await _persistGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
         try
         {
-            await _taskStore.SaveAsync(_options.TaskFilePath, _tasks, ct).ConfigureAwait(false);
+            using (await EnterWriteGateAsync().ConfigureAwait(false))
+            {
+                await _taskStore.SaveAsync(_options.TaskFilePath, _tasks, ct).ConfigureAwait(false);
+            }
         }
         catch (Exception ex)
         {
             _logger.Write("ERROR", $"任务文件回写失败：{ex.Message}");
         }
+        finally
+        {
+            _persistGate.Release();
+        }
+    }
+
+    /// <summary>
+    /// 进入任务状态写入区（P0-4）。不可取消：等待期间的取消会导致终态丢失（中断/完成不落盘），
+    /// 故固定用 <see cref="CancellationToken.None"/>，由整个批处理的取消入口统一收敛。
+    /// </summary>
+    private async Task<IDisposable> EnterWriteGateAsync()
+    {
+        await _writeGate.WaitAsync(CancellationToken.None).ConfigureAwait(false);
+        return new GateReleaser(_writeGate);
+    }
+
+    private sealed class GateReleaser(SemaphoreSlim gate) : IDisposable
+    {
+        public void Dispose() => gate.Release();
     }
 
     private void RaiseBlocked(string reason, string? taskId = null)
@@ -1784,6 +1875,22 @@ public sealed class BatchEngine
             : value[..maxChars] + $"\n…（结果已截断，超过 {maxChars / 1024}KB，完整内容见运行日志）";
     }
 
+    /// <summary>兜底用量快照（P0-5：读也走同一把锁，避免并发下读到撕裂状态）。</summary>
+    private FallbackSummary BuildFallbackSummary()
+    {
+        lock (_fallbackLock)
+        {
+            return new FallbackSummary
+            {
+                UsedCount = _fallbackUsedCount,
+                Model = _fallbackModelsUsed.Count > 0 ? string.Join("、", _fallbackModelsUsed) : null,
+                TotalCost = _fallbackBatchCost,
+                CostBasis = _fallbackCostBasis,
+                StoppedByLimit = _fallbackStoppedByLimit
+            };
+        }
+    }
+
     private BatchReport BuildReport(DateTimeOffset startedAt)
     {
         var finishedAt = _clock.Now;
@@ -1808,14 +1915,7 @@ public sealed class BatchEngine
             AccountUsage = _accountUsage.Values.ToList(),
             ModelUsage = _modelUsage.Values.ToList(),
             Timeline = _timeline.ToList(),
-            Fallback = new FallbackSummary
-            {
-                UsedCount = _fallbackUsedCount,
-                Model = _fallbackModelsUsed.Count > 0 ? string.Join("、", _fallbackModelsUsed) : null,
-                TotalCost = _fallbackBatchCost,
-                CostBasis = _fallbackCostBasis,
-                StoppedByLimit = _fallbackStoppedByLimit
-            },
+            Fallback = BuildFallbackSummary(),
             FailedTasks = _tasks.Where(t => t.Status == TaskStatus.Failed)
                 .Select(t => new FailedTaskEntry
                 {

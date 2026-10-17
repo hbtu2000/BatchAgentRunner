@@ -17,9 +17,10 @@ public static class CreditsClaimReportWriter
         CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(directory);
+        var periodLabel = "daily";
         var stamp = summary.GeneratedAt.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
-        var jsonPath = Path.Combine(directory, $"credits-claim-{stamp}.json");
-        var mdPath = Path.Combine(directory, $"credits-claim-{stamp}.md");
+        var jsonPath = Path.Combine(directory, $"credits-claim-{periodLabel}-{stamp}.json");
+        var mdPath = Path.Combine(directory, $"credits-claim-{periodLabel}-{stamp}.md");
 
         await AtomicFileWriter.WriteAsync(jsonPath, JsonDefaults.Serialize(summary), cancellationToken)
             .ConfigureAwait(false);
@@ -30,8 +31,9 @@ public static class CreditsClaimReportWriter
 
     public static string ToMarkdown(CreditsClaimSummary s)
     {
+        var title = "每日积分领取报告";
         var sb = new StringBuilder();
-        sb.AppendLine("# 每日积分领取报告");
+        sb.AppendLine($"# {title}");
         sb.AppendLine();
         sb.AppendLine($"- 生成时间：{s.GeneratedAt:yyyy-MM-dd HH:mm:ss}");
         sb.AppendLine($"- 执行工具：{s.Cli}");
@@ -55,7 +57,7 @@ public static class CreditsClaimReportWriter
     private static string StatusText(CreditsClaimStatus status) => status switch
     {
         CreditsClaimStatus.Claimed => "领取成功",
-        CreditsClaimStatus.AlreadyClaimed => "今日已领取过",
+        CreditsClaimStatus.AlreadyClaimed => "已领取过",
         CreditsClaimStatus.Failed => "失败",
         CreditsClaimStatus.Skipped => "跳过",
         _ => status.ToString()

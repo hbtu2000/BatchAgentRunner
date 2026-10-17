@@ -122,6 +122,44 @@ public class CliProcessRunnerTests
         }
     }
 
+    /// <summary>
+    /// P0-2 不变量：进程退出后必须排空异步输出流再读缓冲，输出尾部不得丢失
+    /// （尾部丢失会漏判额度重置、截断 stream-json 的 result 事件）。
+    /// </summary>
+    [Fact]
+    public async Task RunAsync_大量输出_进程退出后输出尾部不丢失()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return; // 用 cmd 构造大输出，仅 Windows 验证
+        }
+
+        // 约 20 万字符输出后打印哨兵行：不排空异步读取流时，尾部几乎必然被丢掉
+        var script = Path.Combine(Path.GetTempPath(), $"bar-tail-test-{Guid.NewGuid()}.cmd");
+        var sb = new StringBuilder();
+        sb.AppendLine("@echo off");
+        sb.AppendLine("for /L %%i in (1,1,2000) do echo line-%%i-0123456789012345678901234567890123456789012345678901234567890123456789");
+        sb.AppendLine("echo TAIL-SENTINEL");
+        File.WriteAllText(script, sb.ToString(), Encoding.Default);
+
+        try
+        {
+            var runner = CreateRunner(stdinIdleSeconds: 1);
+            var spec = new CliLaunchSpec("cmd", $"/c \"{script}\"", Environment.CurrentDirectory);
+
+            var result = await runner.RunAsync(spec, null, TimeSpan.FromSeconds(60),
+                CancellationToken.None);
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.Contains("TAIL-SENTINEL", result.Output);
+            Assert.Contains("line-1-", result.Output);
+        }
+        finally
+        {
+            File.Delete(script);
+        }
+    }
+
     [Fact]
     public async Task RunAsync_确认型交互_仍注入默认应答()
     {
