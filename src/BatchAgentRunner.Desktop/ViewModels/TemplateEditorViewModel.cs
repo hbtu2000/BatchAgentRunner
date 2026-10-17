@@ -24,6 +24,7 @@ public sealed class TemplateEditorViewModel : ViewModelBase
     private string _baseDir = string.Empty;
     private string _outputPath = string.Empty;
     private string _statusMessage = string.Empty;
+    private string _flowSummary = string.Empty;
 
     public TemplateEditorViewModel(EngineHost host)
     {
@@ -33,6 +34,7 @@ public sealed class TemplateEditorViewModel : ViewModelBase
         _outputPath = Path.Combine(generatedDir, "template-output.tasks.json");
         PreviewTasks = new ObservableCollection<PreviewTaskRowViewModel>();
         VarInputs = new ObservableCollection<TemplateVarInputViewModel>();
+        FlowNodes = new ObservableCollection<TemplateFlowNodeViewModel>();
 
         LoadCommand = new AsyncRelayCommand(LoadAsync);
         PreviewCommand = new RelayCommand(Preview);
@@ -56,6 +58,18 @@ public sealed class TemplateEditorViewModel : ViewModelBase
 
     public ObservableCollection<PreviewTaskRowViewModel> PreviewTasks { get; }
 
+    /// <summary>流程示意节点（自上而下 = 执行顺序；单指令模板为单节点）。</summary>
+    public ObservableCollection<TemplateFlowNodeViewModel> FlowNodes { get; }
+
+    public bool HasFlow => FlowNodes.Count > 0;
+
+    /// <summary>流程示意顶部的一句话摘要（工作流配置摘要 / 单指令说明）。</summary>
+    public string FlowSummary
+    {
+        get => _flowSummary;
+        private set => SetProperty(ref _flowSummary, value);
+    }
+
     public TemplateRowViewModel? SelectedTemplate
     {
         get => _selectedTemplate;
@@ -66,6 +80,7 @@ public sealed class TemplateEditorViewModel : ViewModelBase
                 OnPropertyChanged(nameof(SelectedDescription));
                 OnPropertyChanged(nameof(SelectedWorkflowText));
                 OnPropertyChanged(nameof(SelectedChainText));
+                BuildFlow();
                 LoadVarInputs();
                 PreviewTasks.Clear();
                 GenerateCommand.NotifyCanExecuteChanged();
@@ -190,9 +205,136 @@ public sealed class TemplateEditorViewModel : ViewModelBase
         return spec;
     }
 
-    private void LoadVarInputs()
+    /// <summary>
+    /// 构建流程示意：按阶段依赖（depends_on_stage）做拓扑排序，生成自上而下的执行顺序；
+    /// 单指令模板退化为单节点。节点上标注门禁 / 修订循环 / 执行器覆盖 / 被引用的产出。
+    /// </summary>
+    private void BuildFlow()
     {
-        VarInputs.Clear();
+        FlowNodes.Clear();
+        var spec = _selectedTemplate?.Spec;
+        if (spec is null)
+        {
+            FlowSummary = string.Empty;
+            OnPropertyChanged(nameof(HasFlow));
+            return;
+        }
+
+        if (spec.Workflow is not { Stages.Count: > 0 } wf)
+        {
+            FlowNodes.Add(new TemplateFlowNodeViewModel(
+                index: 1,
+                stage: null,
+                spec: spec,
+                consumedBy: Array.Empty<string>(),
+                isLast: true));
+            FlowSummary = spec.FileGlob is { Count: > 0 }
+                ? "单指令模板：每命中一个文件生成一条任务，独立执行、无阶段编排"
+                : "单指令模板：一条指令即一个任务，无阶段编排";
+            OnPropertyChanged(nameof(HasFlow));
+            return;
+        }
+
+        var ordered = TopoSortStages(wf.Stages);
+        var consumers = BuildOutputConsumers(ordered);
+
+        for (var i = 0; i < ordered.Count; i++)
+        {
+            FlowNodes.Add(new TemplateFlowNodeViewModel(
+                index: i + 1,
+                stage: ordered[i],
+                spec: spec,
+                consumedBy: consumers.TryGetValue(ordered[i].Id, out var by) ? by : Array.Empty<string>(),
+                isLast: i == ordered.Count - 1));
+        }
+
+        FlowSummary =
+            $"{wf.Name}：{ordered.Count} 个阶段顺序执行（{DescribeOnFailure(wf.OnFailure)}，门禁默认最多修订 {wf.DefaultMaxLoops} 轮{(wf.FreshSessionPerStage ? "，每阶段独立会话" : string.Empty)}）";
+        OnPropertyChanged(nameof(HasFlow));
+    }
+
+    /// <summary>按 depends_on_stage 做稳定拓扑排序；存在环或悬空依赖时退化为原始顺序。</summary>
+    private static List<WorkflowStage> TopoSortStages(List<WorkflowStage> stages)
+    {
+        var result = new List<WorkflowStage>(stages.Count);
+        var known = new HashSet<string>(stages.Select(s => s.Id), StringComparer.Ordinal);
+        var placed = new HashSet<string>(StringComparer.Ordinal);
+
+        var remaining = stages.ToList();
+        var guard = stages.Count + 1;
+        while (remaining.Count > 0 && guard-- > 0)
+        {
+            var progressed = false;
+            for (var i = 0; i < remaining.Count; i++)
+            {
+                var dep = remaining[i].DependsOnStage;
+                var ready = string.IsNullOrWhiteSpace(dep)
+                    || !known.Contains(dep)
+                    || placed.Contains(dep);
+                if (!ready)
+                {
+                    continue;
+                }
+
+                result.Add(remaining[i]);
+                placed.Add(remaining[i].Id);
+                remaining.RemoveAt(i);
+                progressed = true;
+                i--;
+            }
+
+            if (!progressed)
+            {
+                // 有环：按原顺序补齐，保证界面仍能展示完整流程
+                result.AddRange(remaining);
+                break;
+            }
+        }
+
+        return result;
+    }
+
+    /// <summary>统计每个阶段的产出被哪些后续阶段以 {output:stageId} 引用。</summary>
+    private static Dictionary<string, List<string>> BuildOutputConsumers(List<WorkflowStage> stages)
+    {
+        var map = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+        foreach (var producer in stages)
+        {
+            foreach (var consumer in stages)
+            {
+                if (string.Equals(producer.Id, consumer.Id, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (!consumer.InstructionTemplate.Contains($"{{output:{producer.Id}}}", StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                if (!map.TryGetValue(producer.Id, out var list))
+                {
+                    list = new List<string>();
+                    map[producer.Id] = list;
+                }
+
+                list.Add(consumer.Id);
+            }
+        }
+
+        return map;
+    }
+
+    private static string DescribeOnFailure(WorkflowOnFailure onFailure) => onFailure switch
+    {
+        WorkflowOnFailure.MarkNeedsAttention => "阶段失败即停并标记待人工接管",
+        WorkflowOnFailure.Fail => "阶段失败即停并标记失败",
+        WorkflowOnFailure.ContinueNextStage => "阶段失败也继续下一阶段",
+        _ => onFailure.ToString()
+    };
+
+    private void LoadVarInputs()
+    {        VarInputs.Clear();
         if (_selectedTemplate is null)
         {
             return;
@@ -260,6 +402,163 @@ public sealed class TemplateVarInputViewModel : ObservableObject
     {
         get => _valuesText;
         set => SetProperty(ref _valuesText, value);
+    }
+}
+
+/// <summary>
+/// 流程示意节点（二期 UI）：一个节点 = 一个执行阶段（单指令模板则为一个虚拟节点）。
+/// 节点之间的连线由视图根据 <see cref="IsLast"/> 绘制成箭头。
+/// </summary>
+public sealed class TemplateFlowNodeViewModel
+{
+    private static readonly System.Text.RegularExpressions.Regex PlaceholderRx = new(
+        @"\{(output:[^}]+|var:[^}]+|task\.[^}]+)\}",
+        System.Text.RegularExpressions.RegexOptions.Compiled);
+
+    public TemplateFlowNodeViewModel(
+        int index,
+        WorkflowStage? stage,
+        TemplateSpec spec,
+        IReadOnlyList<string> consumedBy,
+        bool isLast)
+    {
+        Index = index;
+        Stage = stage;
+        IsLast = isLast;
+        IsSingleStep = stage is null;
+
+        var template = stage?.InstructionTemplate ?? spec.InstructionTemplate;
+        Title = stage is null
+            ? spec.Name
+            : string.IsNullOrWhiteSpace(stage.Name) ? stage.Id : stage.Name;
+        Template = string.IsNullOrWhiteSpace(template) ? "（未填写指令模板）" : template;
+        Placeholders = PlaceholderRx.Matches(Template).Select(m => m.Value).Distinct().ToArray();
+        ExecutorText = BuildExecutorText(stage);
+        GateText = BuildGateText(stage);
+        LoopText = stage is null
+            ? string.Empty
+            : $"最多 {stage.MaxLoops ?? (spec.Workflow?.DefaultMaxLoops ?? 3)} 轮修订（{DescribeStageGateFail(stage.OnGateFail)}）";
+        DependsText = string.IsNullOrWhiteSpace(stage?.DependsOnStage)
+            ? string.Empty
+            : $"依赖阶段：{stage!.DependsOnStage}";
+        ConsumedByText = consumedBy.Count == 0
+            ? string.Empty
+            : $"产出被引用：{string.Join("、", consumedBy)}";
+    }
+
+    public int Index { get; }
+
+    public WorkflowStage? Stage { get; }
+
+    public bool IsLast { get; }
+
+    /// <summary>单指令模板的虚拟节点（无门禁/执行器概念）。</summary>
+    public bool IsSingleStep { get; }
+
+    public string IndexText => Index.ToString();
+
+    public string Title { get; }
+
+    public string Template { get; }
+
+    public IReadOnlyList<string> Placeholders { get; }
+
+    public string ExecutorText { get; }
+
+    public string GateText { get; }
+
+    public string LoopText { get; }
+
+    public string DependsText { get; }
+
+    public string ConsumedByText { get; }
+
+    public bool HasPlaceholders => Placeholders.Count > 0;
+
+    public bool HasDepends => DependsText.Length > 0;
+
+    public bool HasConsumedBy => ConsumedByText.Length > 0;
+
+    public bool HasLoop => LoopText.Length > 0;
+
+    public bool HasConnector => !IsLast;
+
+    public bool HasExecutor => ExecutorText.Length > 0;
+
+    public bool HasGate => GateText.Length > 0;
+
+    private static string BuildExecutorText(WorkflowStage? stage)
+    {
+        var ex = stage?.Executor;
+        if (ex is null)
+        {
+            return stage is null ? string.Empty : "执行器：继承全局配置";
+        }
+
+        var parts = new List<string>();
+        if (!string.IsNullOrWhiteSpace(ex.AccountId))
+        {
+            parts.Add($"账号 {ex.AccountId}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(ex.Model))
+        {
+            parts.Add($"模型 {ex.Model}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(ex.ExpertId))
+        {
+            parts.Add($"专家 {ex.ExpertId}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(ex.Workspace))
+        {
+            parts.Add($"工作空间 {ex.Workspace}");
+        }
+
+        return parts.Count == 0 ? string.Empty : "执行器：" + string.Join(" · ", parts);
+    }
+
+    private static string BuildGateText(WorkflowStage? stage)
+    {
+        if (stage?.Gate is not { } gate)
+        {
+            return stage is null ? string.Empty : "门禁：无";
+        }
+
+        var kind = gate.Kind switch
+        {
+            GateKind.Command => "命令",
+            GateKind.Review => "审查",
+            GateKind.Manual => "人工",
+            _ => gate.Kind.ToString()
+        };
+
+        var detail = gate.Kind switch
+        {
+            GateKind.Command when !string.IsNullOrWhiteSpace(gate.Command) =>
+                $"{gate.Command}（期望退出码 {gate.ExpectedExitCode ?? "0"}）",
+            GateKind.Review when !string.IsNullOrWhiteSpace(gate.ReviewChecklist) =>
+                Shorten(gate.ReviewChecklist, 60),
+            GateKind.Manual => gate.ManualApproval ? "需人工确认" : "自动通过",
+            _ => string.Empty
+        };
+
+        return string.IsNullOrEmpty(detail) ? $"门禁：{kind}" : $"门禁：{kind} · {detail}";
+    }
+
+    private static string DescribeStageGateFail(StageOnGateFail onGateFail) => onGateFail switch
+    {
+        StageOnGateFail.FixLoop => "不通过则修订重跑",
+        StageOnGateFail.StopStage => "不通过则停止本阶段",
+        StageOnGateFail.MarkNeedsAttention => "不通过则标记待人工接管",
+        _ => onGateFail.ToString()
+    };
+
+    private static string Shorten(string text, int max)
+    {
+        var flat = text.ReplaceLineEndings(" ").Trim();
+        return flat.Length <= max ? flat : flat[..max] + "…";
     }
 }
 

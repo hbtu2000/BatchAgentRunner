@@ -45,7 +45,7 @@
         </Border>
 
         <!-- 变量编辑 + 预览 -->
-        <Grid Grid.Column="1" RowDefinitions="Auto,Auto,*,Auto">
+        <Grid Grid.Column="1" RowDefinitions="Auto,Auto,Auto,*,Auto">
             <Border Grid.Row="0" Padding="12" Theme="{StaticResource Card}" Margin="0,0,0,8">
                 <StackPanel Spacing="6">
                     <StackPanel Orientation="Horizontal" Spacing="12">
@@ -62,8 +62,105 @@
                 </StackPanel>
             </Border>
 
+            <!-- 流程示意（选中模板后展示，便于理解流程长什么样） -->
+            <Border Grid.Row="1" Padding="12" Theme="{StaticResource Card}" Margin="0,0,0,8"
+                    IsVisible="{Binding HasFlow}">
+                <StackPanel Spacing="8">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="流程示意" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Text="自上而下 = 执行顺序" FontSize="11"
+                                   Foreground="{DynamicResource TextMutedBrush}" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding FlowSummary}" TextWrapping="Wrap" FontSize="12"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                    <ItemsControl ItemsSource="{Binding FlowNodes}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="vm:TemplateFlowNodeViewModel">
+                                <Grid ColumnDefinitions="26,*" Margin="0,0,0,0">
+                                    <!-- 左侧轨道：序号圆点 + 连接线（最后节点无连接线） -->
+                                    <Grid Grid.Column="0" RowDefinitions="Auto,*" Margin="0,0,8,0">
+                                        <Border Grid.Row="0" Width="24" Height="24" CornerRadius="12"
+                                                Background="{DynamicResource PrimarySoftBrush}"
+                                                VerticalAlignment="Top">
+                                            <TextBlock Text="{Binding IndexText}" FontSize="12" FontWeight="SemiBold"
+                                                       HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                       Foreground="{DynamicResource PrimaryBrush}" />
+                                        </Border>
+                                        <Rectangle Grid.Row="1" Width="2" Margin="0,4,0,0"
+                                                   Fill="{DynamicResource BorderStrongBrush}"
+                                                   IsVisible="{Binding HasConnector}" />
+                                    </Grid>
+
+                                    <!-- 节点卡片 -->
+                                    <Border Grid.Column="1" Padding="10,8" Margin="0,0,0,8"
+                                            CornerRadius="{StaticResource RadiusSm}"
+                                            Background="{DynamicResource BgSurface2Brush}">
+                                        <StackPanel Spacing="4">
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Text="{Binding Title}" FontWeight="SemiBold"
+                                                           TextWrapping="Wrap"
+                                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                <Border Background="{DynamicResource InfoSoftBrush}" CornerRadius="8"
+                                                        Padding="6,1" VerticalAlignment="Center"
+                                                        IsVisible="{Binding IsSingleStep}">
+                                                    <TextBlock Text="单指令" FontSize="11"
+                                                               Foreground="{DynamicResource InfoBrush}" />
+                                                </Border>
+                                            </StackPanel>
+
+                                            <TextBlock Text="{Binding Template}" FontSize="12" TextWrapping="Wrap"
+                                                       MaxHeight="54" FontFamily="{DynamicResource FontMono}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+
+                                            <ItemsControl ItemsSource="{Binding Placeholders}"
+                                                          IsVisible="{Binding HasPlaceholders}">
+                                                <ItemsControl.ItemsPanel>
+                                                    <ItemsPanelTemplate>
+                                                        <WrapPanel Orientation="Horizontal" />
+                                                    </ItemsPanelTemplate>
+                                                </ItemsControl.ItemsPanel>
+                                                <ItemsControl.ItemTemplate>
+                                                    <DataTemplate>
+                                                        <Border Background="{DynamicResource BgSurfaceBrush}"
+                                                                BorderBrush="{DynamicResource BorderSubtleBrush}"
+                                                                BorderThickness="1" CornerRadius="8"
+                                                                Padding="6,1" Margin="0,2,4,0">
+                                                            <TextBlock Text="{Binding}" FontSize="11"
+                                                                       FontFamily="{DynamicResource FontMono}"
+                                                                       Foreground="{DynamicResource TextMutedBrush}" />
+                                                        </Border>
+                                                    </DataTemplate>
+                                                </ItemsControl.ItemTemplate>
+                                            </ItemsControl>
+
+                                            <TextBlock Text="{Binding ExecutorText}" FontSize="11" TextWrapping="Wrap"
+                                                       IsVisible="{Binding HasExecutor}"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding GateText}" FontSize="11" TextWrapping="Wrap"
+                                                       IsVisible="{Binding HasGate}"
+                                                       Foreground="{DynamicResource WarningBrush}" />
+                                            <TextBlock Text="{Binding LoopText}" FontSize="11" TextWrapping="Wrap"
+                                                       IsVisible="{Binding HasLoop}"
+                                                       Foreground="{DynamicResource TextMutedBrush}" />
+                                            <TextBlock Text="{Binding DependsText}" FontSize="11" TextWrapping="Wrap"
+                                                       IsVisible="{Binding HasDepends}"
+                                                       Foreground="{DynamicResource StatusBlockedBrush}" />
+                                            <TextBlock Text="{Binding ConsumedByText}" FontSize="11" TextWrapping="Wrap"
+                                                       IsVisible="{Binding HasConsumedBy}"
+                                                       Foreground="{DynamicResource SuccessBrush}" />
+                                        </StackPanel>
+                                    </Border>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </Border>
+
             <!-- 变量编辑 -->
-            <Border Grid.Row="1" Padding="12" Theme="{StaticResource Card}" Margin="0,0,0,8">
+            <Border Grid.Row="2" Padding="12" Theme="{StaticResource Card}" Margin="0,0,0,8">
                 <StackPanel Spacing="6">
                     <TextBlock Text="变量取值" FontWeight="SemiBold"
                                Foreground="{DynamicResource TextPrimaryBrush}" />
@@ -98,7 +195,7 @@
             </Border>
 
             <!-- 展开预览 -->
-            <Border Grid.Row="2" Padding="8" Theme="{StaticResource Card}" Margin="0,0,0,8">
+            <Border Grid.Row="3" Padding="8" Theme="{StaticResource Card}" Margin="0,0,0,8">
                 <ListBox ItemsSource="{Binding PreviewTasks}" Background="Transparent" BorderThickness="0">
                     <ListBox.ItemTemplate>
                         <DataTemplate DataType="vm:PreviewTaskRowViewModel">
@@ -122,7 +219,7 @@
             </Border>
 
             <!-- 输出路径 + 状态 -->
-            <StackPanel Grid.Row="3" Spacing="6">
+            <StackPanel Grid.Row="4" Spacing="6">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <TextBlock Text="输出路径：" VerticalAlignment="Center"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
