@@ -108,7 +108,7 @@ BatchAgentRunner.sln
 │  │                     IRunLogger, IConfigStore, IReportWriter, IShutdownService
 │  ├─ BatchAgentRunner.Agents/
 │  │   ├─ Adapters/      WorkBuddyAdapter, CodeBuddyAdapter, MockAdapter, AdapterFactory
-│  │   └─ Internal/      CliProcessRunner, DangerousOperationGuard, AutoResponder
+│  │   └─ Internal/      CliProcessRunner, DangerousOperationGuard, PromptClassifier
 │  ├─ BatchAgentRunner.Infrastructure/
 │  │   ├─ TaskFiles/     JsonTaskFileStore, MarkdownTaskParser, TaskFileWriter, BackupManager
 │  │   ├─ Persistence/   JsonConfigStore, JsonCooldownStore, AtomicFileWriter
@@ -359,7 +359,7 @@ public record AgentRequest(
 **`CliProcessRunner`（Agents/Internal）职责：**
 - 以 `RedirectStandardOutput/Input/Error` 启动子进程，`WorkingDirectory` = 任务工作空间（REQ-003a）
 - 增量转发 stdout → `OnOutputChunk`（界面流式追加）
-- **零人工介入（REQ-002a）**：优先 CLI 官方无人值守参数；检测「无输出增长超阈值」判定 stdin 等待 → 注入默认应答；无法注入 → 超时失败，不挂起
+- **零人工介入（REQ-002a）**：优先 CLI 官方无人值守参数；检测「无输出增长超阈值」判定 stdin 等待；普通确认注入 `default_answer`，选择型交互（含编号选项）按 `default_choice_index` 自动选择对应选项；无法注入 → 超时失败，不挂起
 - **危险操作防护（REQ-002b）**：`DangerousOperationGuard` 维护黑名单（删除文件 / 系统配置修改 / `git push --force` / `rm -rf` / 格式化 …）与白名单；**命中黑名单永不自动批准**，该任务标记 failed 并醒目标记日志（REQ-010b）
 - **进程树回收**：终止/超时/崩溃时 kill 子进程树，无残留（第 8 章可靠性）
 
@@ -441,7 +441,7 @@ BatchEngine ──(BatchEvent)──▶ EngineHost(订阅)
 | V-3 额度错误特征 | `QuotaErrorClassifier` 模式库 | 模式库配置化 + 手动标记额度耗尽入口 |
 | V-4 多账号切换 | `AccountConfig` 凭据策略 | 账号仅存标识 + 凭据引用，切换策略可替换；**凭据备份/切换专项设计见 `docs/DESIGN-账号凭证切换-v1.0.md`（凭证快照 Vault 方案）** |
 | V-5 专家参数 | `AgentRequest.ExpertId` | 不支持时降级为 prompt 注入角色描述 |
-| V-6 无人值守交互覆盖 | `AutoResponder` | stdin 等待检测 + 默认应答注入兜底 |
+| V-6 无人值守交互覆盖 | `CliProcessRunner` + `PromptClassifier` | stdin 等待检测；确认型注入默认应答，选择型按索引自动选默认项 |
 | V-7 用量/费用数据 | `AgentUsage` / `FallbackCost` | 不可得 → 调用次数 × 预估单价，报告标注「估算」 |
 | V-8 会话恢复 | 一期不依赖 | 一律「完整指令重新执行」（方案 a） |
 | V-9 危险操作默认项 | `DangerousOperationGuard` 黑白名单 | 黑名单命中一律拒绝自动批准（保守默认） |

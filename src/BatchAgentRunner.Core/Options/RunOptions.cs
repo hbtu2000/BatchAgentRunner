@@ -309,6 +309,25 @@ public sealed class AutoAnswerPolicy
     [JsonPropertyName("stdin_idle_seconds")]
     public int StdinIdleSeconds { get; set; } = 30;
 
+    /// <summary>
+    /// 识别「选择型」交互提示的关键词。提示文本包含任一关键词且能提取出编号选项时，
+    /// 自动按 <see cref="DefaultChoiceIndex"/> 选择对应选项，而不是注入 <see cref="DefaultAnswer"/>。
+    /// </summary>
+    [JsonPropertyName("choice_prompt_patterns")]
+    public List<string> ChoicePromptPatterns { get; set; } = new();
+
+    /// <summary>
+    /// 匹配选项行的正则。必须包含捕获组：第 1 组为选项编号/键，第 2 组为选项文本。
+    /// 默认匹配 "1. xxx" / "1、xxx" / "1) xxx" / "[1] xxx" 等常见形态。
+    /// </summary>
+    [JsonPropertyName("choice_option_pattern")]
+    public string ChoiceOptionPattern { get; set; } =
+        @"^\s*\[?(\d+)\]?[\.、,\)\]\s]+(.+)$";
+
+    /// <summary>选择型交互默认选择的选项索引（0-based）。0 表示第一个选项。</summary>
+    [JsonPropertyName("default_choice_index")]
+    public int DefaultChoiceIndex { get; set; } = 0;
+
     public static AutoAnswerPolicy CreateDefault() => new()
     {
         DangerousBlacklist = new List<string>
@@ -323,6 +342,12 @@ public sealed class AutoAnswerPolicy
             "读取文件", "写入文件", "创建文件", "运行测试", "运行命令", "读取目录"
         },
         DefaultAnswer = "y",
-        StdinIdleSeconds = 30
+        StdinIdleSeconds = 30,
+        ChoicePromptPatterns = new List<string>
+        {
+            "选择", "请选择", "选项", "scheme", "select", "choose", "please choose"
+        },
+        ChoiceOptionPattern = @"^\s*\[?(\d+)\]?[\.、,\)\]\s]+(.+)$",
+        DefaultChoiceIndex = 0
     };
 }

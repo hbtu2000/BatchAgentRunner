@@ -1,3 +1,4 @@
+using System.Text;
 using BatchAgentRunner.Agents.Internal;
 using BatchAgentRunner.Core.Options;
 
@@ -80,5 +81,76 @@ public class CliProcessRunnerTests
         Assert.False(result.TimedOut);
         Assert.False(result.Cancelled);
         Assert.Equal(0, result.ExitCode);
+    }
+
+    [Fact]
+    public async Task RunAsync_选择型交互_自动选择第一个选项并继续执行()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return; // cmd/set/p 仅 Windows 验证
+        }
+
+        var script = Path.Combine(Path.GetTempPath(), $"bar-choice-test-{Guid.NewGuid()}.cmd");
+        var sb = new StringBuilder();
+        sb.AppendLine("@echo off");
+        sb.AppendLine("echo select one:");
+        sb.AppendLine("echo 1. option A");
+        sb.AppendLine("echo 2. option B");
+        sb.AppendLine("set /p answer=");
+        sb.AppendLine("echo CHOSEN=%answer%");
+        File.WriteAllText(script, sb.ToString(), Encoding.Default);
+
+        try
+        {
+            var policy = AutoAnswerPolicy.CreateDefault();
+            policy.StdinIdleSeconds = 1;
+            var runner = new CliProcessRunner(policy);
+            var spec = new CliLaunchSpec("cmd", $"/c \"{script}\"", Environment.CurrentDirectory);
+
+            var result = await runner.RunAsync(spec, null, TimeSpan.FromSeconds(30),
+                CancellationToken.None);
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.Contains("CHOSEN=1", result.Output);
+            Assert.Single(result.AutoAnsweredPoints);
+            Assert.Contains("select", result.AutoAnsweredPoints[0]);
+        }
+        finally
+        {
+            File.Delete(script);
+        }
+    }
+
+    [Fact]
+    public async Task RunAsync_确认型交互_仍注入默认应答()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return; // cmd/set/p 仅 Windows 验证
+        }
+
+        var script = Path.Combine(Path.GetTempPath(), $"bar-confirm-test-{Guid.NewGuid()}.cmd");
+        File.WriteAllText(script,
+            "@echo off\necho 是否继续 (y/n)?\nset /p answer=\necho ANSWER=%answer%\n",
+            Encoding.Default);
+
+        try
+        {
+            var policy = AutoAnswerPolicy.CreateDefault();
+            policy.StdinIdleSeconds = 1;
+            var runner = new CliProcessRunner(policy);
+            var spec = new CliLaunchSpec("cmd", $"/c \"{script}\"", Environment.CurrentDirectory);
+
+            var result = await runner.RunAsync(spec, null, TimeSpan.FromSeconds(30),
+                CancellationToken.None);
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.Contains("ANSWER=y", result.Output);
+        }
+        finally
+        {
+            File.Delete(script);
+        }
     }
 }

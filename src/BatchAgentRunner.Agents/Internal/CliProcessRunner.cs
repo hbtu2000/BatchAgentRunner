@@ -185,13 +185,14 @@ public sealed class CliProcessRunner
                         };
                     }
 
-                    _log?.Invoke($"[自动应答] 交互点「{Trim(tail)}」→ 默认选项 {_policy.DefaultAnswer}" +
+                    var classification = PromptClassifier.Classify(tail, _policy);
+                    _log?.Invoke($"[自动应答] 交互点「{Trim(tail)}」→ {classification.Description}" +
                                  (decision == GuardDecision.AutoAllow ? "（白名单）" : string.Empty));
                     autoAnswered.Add(Trim(tail));
 
                     try
                     {
-                        await process.StandardInput.WriteLineAsync(_policy.DefaultAnswer).ConfigureAwait(false);
+                        await process.StandardInput.WriteLineAsync(classification.Answer).ConfigureAwait(false);
                         await process.StandardInput.FlushAsync().ConfigureAwait(false);
                     }
                     catch

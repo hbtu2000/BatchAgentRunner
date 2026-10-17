@@ -166,18 +166,23 @@ Mock 用来验证调度逻辑（降级、时段跳过、冷却等待、兜底、
 CLI 静默超过 stdin_idle_seconds
    └─▶ 判定为「在等确认」
          ├─ 命中 dangerous_blacklist → 拒绝自动批准，杀进程，该任务判失败
-         ├─ 命中 allowed_whitelist   → 视为允许，注入 default_answer，记日志
-         └─ 都没命中                → 注入 default_answer，记日志
+         ├─ 命中 allowed_whitelist   → 视为允许，注入 default_answer / 选择默认选项，记日志
+         └─ 都没命中                → 注入 default_answer / 选择默认选项，记日志
 ```
 
 | 字段 | 默认 | 含义 |
 |------|------|------|
 | `auto_answer.dangerous_blacklist` | 18 条 | 命中即**绝不**自动批准。默认覆盖 `rm -rf`、`git push --force`、`删除文件` 等。 |
 | `auto_answer.allowed_whitelist` | 6 条 | 命中即视为允许。**白名单优先级高于黑名单**，所以别把危险词写进白名单。 |
-| `auto_answer.default_answer` | `"y"` | 注入 stdin 的默认应答内容。多数 CLI 的确认默认项就是 `y`。 |
+| `auto_answer.default_answer` | `"y"` | 普通确认型交互注入 stdin 的默认应答内容。多数 CLI 的确认默认项就是 `y`。 |
 | `auto_answer.stdin_idle_seconds` | `30` | 静默多少秒判定为"在等输入"。设太小会误判——模型思考时间长时也会静默。 |
+| `auto_answer.choice_prompt_patterns` | 7 条 | 识别**选择型**交互的关键词。提示文本含任一关键词且能提取编号选项时，按 `default_choice_index` 选择对应选项。 |
+| `auto_answer.choice_option_pattern` | 见默认正则 | 匹配选项行的正则。第 1 捕获组为选项编号/键，第 2 组为选项文本。默认覆盖 `1. xxx`、`1、xxx`、`1) xxx`、`[1] xxx` 等。 |
+| `auto_answer.default_choice_index` | `0` | 选择型交互默认选择的选项索引（0-based）。`0` 表示第一个选项。 |
 
 判定基于**提示文本的关键词包含匹配**，所以黑名单词条必须覆盖你所用 CLI 的实际措辞。误判了就在这里补词。
+
+> 选择型示例：CLI 输出 `请选择：\n1. 方案 A\n2. 方案 B\n>` 时，会自动注入 `1`（第一个选项）。若你想要的不是第一个，调整 `default_choice_index` 或把该场景写进白名单/黑名单。
 
 ### ⑩ 其它
 
