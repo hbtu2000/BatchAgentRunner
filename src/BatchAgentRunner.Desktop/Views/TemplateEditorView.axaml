@@ -44,9 +44,12 @@
             </Grid>
         </Border>
 
-        <!-- 变量编辑 + 预览 -->
-        <Grid Grid.Column="1" RowDefinitions="Auto,Auto,Auto,*,Auto">
-            <Border Grid.Row="0" Padding="12" Theme="{StaticResource Card}" Margin="0,0,0,8">
+        <!-- 变量编辑 + 预览（整体可滚动，避免下方内容被挤出视口） -->
+        <ScrollViewer Grid.Column="1" VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled">
+            <StackPanel Spacing="0">
+
+            <Border Padding="12" Theme="{StaticResource Card}" Margin="0,0,0,8">
                 <StackPanel Spacing="6">
                     <StackPanel Orientation="Horizontal" Spacing="12">
                         <TextBlock Text="{Binding SelectedTemplate.Name}" FontSize="15" FontWeight="SemiBold"
@@ -62,19 +65,37 @@
                 </StackPanel>
             </Border>
 
-            <!-- 流程示意（选中模板后展示，便于理解流程长什么样） -->
-            <Border Grid.Row="1" Padding="12" Theme="{StaticResource Card}" Margin="0,0,0,8"
+            <!-- 流程示意（选中模板后展示，便于理解流程长什么样；可展开/收起） -->
+            <Border Padding="12" Theme="{StaticResource Card}" Margin="0,0,0,8"
                     IsVisible="{Binding HasFlow}">
                 <StackPanel Spacing="8">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <TextBlock Text="流程示意" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource TextPrimaryBrush}" />
-                        <TextBlock Text="自上而下 = 执行顺序" FontSize="11"
-                                   Foreground="{DynamicResource TextMutedBrush}" />
-                    </StackPanel>
+                    <!-- 标题行：整行可点 + 右侧显式按钮 -->
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Button Grid.Column="0" HorizontalAlignment="Stretch"
+                                HorizontalContentAlignment="Left" Background="Transparent"
+                                BorderThickness="0" Padding="0,2" Command="{Binding ToggleFlowCommand}"
+                                ToolTip.Tip="点击展开 / 收起流程示意">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="流程示意" FontWeight="SemiBold" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <TextBlock Text="{Binding FlowNodeCountText}" FontSize="11" VerticalAlignment="Center"
+                                           Foreground="{DynamicResource TextMutedBrush}" />
+                                <TextBlock Text="自上而下 = 执行顺序" FontSize="11" VerticalAlignment="Center"
+                                           IsVisible="{Binding IsFlowExpanded}"
+                                           Foreground="{DynamicResource TextMutedBrush}" />
+                            </StackPanel>
+                        </Button>
+                        <Button Grid.Column="1" Content="{Binding FlowToggleText}" Padding="10,3"
+                                FontSize="12" Command="{Binding ToggleFlowCommand}"
+                                ToolTip.Tip="展开 / 收起流程示意" />
+                    </Grid>
+
                     <TextBlock Text="{Binding FlowSummary}" TextWrapping="Wrap" FontSize="12"
+                               IsVisible="{Binding IsFlowExpanded}"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
 
+                    <ScrollViewer MaxHeight="320" VerticalScrollBarVisibility="Auto"
+                                  IsVisible="{Binding IsFlowExpanded}">
                     <ItemsControl ItemsSource="{Binding FlowNodes}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate DataType="vm:TemplateFlowNodeViewModel">
@@ -156,11 +177,12 @@
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+                    </ScrollViewer>
                 </StackPanel>
             </Border>
 
             <!-- 变量编辑 -->
-            <Border Grid.Row="2" Padding="12" Theme="{StaticResource Card}" Margin="0,0,0,8">
+            <Border Padding="12" Theme="{StaticResource Card}" Margin="0,0,0,8">
                 <StackPanel Spacing="6">
                     <TextBlock Text="变量取值" FontWeight="SemiBold"
                                Foreground="{DynamicResource TextPrimaryBrush}" />
@@ -194,32 +216,40 @@
                 </StackPanel>
             </Border>
 
-            <!-- 展开预览 -->
-            <Border Grid.Row="3" Padding="8" Theme="{StaticResource Card}" Margin="0,0,0,8">
-                <ListBox ItemsSource="{Binding PreviewTasks}" Background="Transparent" BorderThickness="0">
-                    <ListBox.ItemTemplate>
-                        <DataTemplate DataType="vm:PreviewTaskRowViewModel">
-                            <StackPanel Margin="2" Spacing="2">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <TextBlock Text="{Binding Id}" FontWeight="SemiBold"
-                                               Foreground="{DynamicResource TextPrimaryBrush}" />
-                                    <TextBlock Text="{Binding StageText}" FontSize="12"
-                                               Foreground="{DynamicResource InfoBrush}" />
-                                    <TextBlock Text="{Binding DependsText}" FontSize="12"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               IsVisible="{Binding HasDepends}" />
+            <!-- 展开预览（限高 + 自身滚动，外层页面也可整体滚动） -->
+            <Border Padding="8" Theme="{StaticResource Card}" Margin="0,0,0,8">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="展开预览" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <ListBox ItemsSource="{Binding PreviewTasks}" MaxHeight="360"
+                             Background="Transparent" BorderThickness="0">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate DataType="vm:PreviewTaskRowViewModel">
+                                <StackPanel Margin="2" Spacing="2">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="{Binding Id}" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                                        <TextBlock Text="{Binding StageText}" FontSize="12"
+                                                   Foreground="{DynamicResource InfoBrush}" />
+                                        <TextBlock Text="{Binding DependsText}" FontSize="12"
+                                                   Foreground="{DynamicResource TextMutedBrush}"
+                                                   IsVisible="{Binding HasDepends}" />
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding Instruction}" FontSize="12" TextWrapping="Wrap"
+                                               MaxHeight="60" FontFamily="{DynamicResource FontMono}"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
                                 </StackPanel>
-                                <TextBlock Text="{Binding Instruction}" FontSize="12" TextWrapping="Wrap"
-                                           MaxHeight="60" FontFamily="{DynamicResource FontMono}"
-                                           Foreground="{DynamicResource TextSecondaryBrush}" />
-                            </StackPanel>
-                        </DataTemplate>
-                    </ListBox.ItemTemplate>
-                </ListBox>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                    <TextBlock Text="尚未展开预览。设置变量取值后点上方「展开预览」。" FontSize="12"
+                               IsVisible="{Binding !HasPreviewTasks}"
+                               Foreground="{DynamicResource TextMutedBrush}" />
+                </StackPanel>
             </Border>
 
             <!-- 输出路径 + 状态 -->
-            <StackPanel Grid.Row="4" Spacing="6">
+            <StackPanel Spacing="6">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <TextBlock Text="输出路径：" VerticalAlignment="Center"
                                Foreground="{DynamicResource TextSecondaryBrush}" />
@@ -228,6 +258,7 @@
                 <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap"
                            Foreground="{DynamicResource TextSecondaryBrush}" />
             </StackPanel>
-        </Grid>
+            </StackPanel>
+        </ScrollViewer>
     </Grid>
 </UserControl>

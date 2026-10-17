@@ -25,6 +25,7 @@ public sealed class TemplateEditorViewModel : ViewModelBase
     private string _outputPath = string.Empty;
     private string _statusMessage = string.Empty;
     private string _flowSummary = string.Empty;
+    private bool _isFlowExpanded = true;
 
     public TemplateEditorViewModel(EngineHost host)
     {
@@ -39,6 +40,7 @@ public sealed class TemplateEditorViewModel : ViewModelBase
         LoadCommand = new AsyncRelayCommand(LoadAsync);
         PreviewCommand = new RelayCommand(Preview);
         GenerateCommand = new AsyncRelayCommand(GenerateAsync, () => _selectedTemplate is not null);
+        ToggleFlowCommand = new RelayCommand(() => IsFlowExpanded = !IsFlowExpanded);
     }
 
     public IAsyncRelayCommand LoadCommand { get; }
@@ -46,6 +48,9 @@ public sealed class TemplateEditorViewModel : ViewModelBase
     public IRelayCommand PreviewCommand { get; }
 
     public IAsyncRelayCommand GenerateCommand { get; }
+
+    /// <summary>展开 / 收起流程示意。</summary>
+    public IRelayCommand ToggleFlowCommand { get; }
 
     /// <summary>模板清单（内置 S1–S16 + 用户自定义）。</summary>
     public ObservableCollection<TemplateRowViewModel> Templates
@@ -63,12 +68,35 @@ public sealed class TemplateEditorViewModel : ViewModelBase
 
     public bool HasFlow => FlowNodes.Count > 0;
 
+    /// <summary>是否已有展开预览结果（用于空态提示）。</summary>
+    public bool HasPreviewTasks => PreviewTasks.Count > 0;
+
+    /// <summary>标题旁的节点计数（如「4 个阶段」/「单指令」）。</summary>
+    public string FlowNodeCountText => _selectedTemplate?.Spec.Workflow is { Stages.Count: > 0 } wf
+        ? $"{wf.Stages.Count} 个阶段"
+        : "单指令";
+
     /// <summary>流程示意顶部的一句话摘要（工作流配置摘要 / 单指令说明）。</summary>
     public string FlowSummary
     {
         get => _flowSummary;
         private set => SetProperty(ref _flowSummary, value);
     }
+
+    /// <summary>流程示意是否展开（收起后仅保留标题行，点击可再展开）。</summary>
+    public bool IsFlowExpanded
+    {
+        get => _isFlowExpanded;
+        set
+        {
+            if (SetProperty(ref _isFlowExpanded, value))
+            {
+                OnPropertyChanged(nameof(FlowToggleText));
+            }
+        }
+    }
+
+    public string FlowToggleText => _isFlowExpanded ? "收起" : "展开";
 
     public TemplateRowViewModel? SelectedTemplate
     {
@@ -80,9 +108,12 @@ public sealed class TemplateEditorViewModel : ViewModelBase
                 OnPropertyChanged(nameof(SelectedDescription));
                 OnPropertyChanged(nameof(SelectedWorkflowText));
                 OnPropertyChanged(nameof(SelectedChainText));
+                OnPropertyChanged(nameof(FlowNodeCountText));
+                IsFlowExpanded = true;
                 BuildFlow();
                 LoadVarInputs();
                 PreviewTasks.Clear();
+                OnPropertyChanged(nameof(HasPreviewTasks));
                 GenerateCommand.NotifyCanExecuteChanged();
             }
         }
@@ -138,6 +169,7 @@ public sealed class TemplateEditorViewModel : ViewModelBase
     public void Preview()
     {
         PreviewTasks.Clear();
+        OnPropertyChanged(nameof(HasPreviewTasks));
         if (_selectedTemplate is null)
         {
             return;
@@ -152,6 +184,7 @@ public sealed class TemplateEditorViewModel : ViewModelBase
             }
 
             StatusMessage = $"展开得到 {tasks.Count} 条任务（预览未落盘）";
+            OnPropertyChanged(nameof(HasPreviewTasks));
         }
         catch (Exception ex)
         {
