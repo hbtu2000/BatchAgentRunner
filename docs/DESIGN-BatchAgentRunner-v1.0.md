@@ -16,6 +16,10 @@
 **本设计覆盖：** PRD 一期 **P0 全量 + P1 全量**（用户确认范围）
 **开发语言 / 平台：** C# / .NET 10，界面 Avalonia 12（跨平台桌面，Windows 优先）
 
+**相关设计文档：**
+- 二期扩展设计：`docs/DESIGN-BatchAgentRunner-二期-v1.0.md`（流程模板/多阶段编排、DAG 依赖、质量门禁、场景模板库 S1–S16、REQ-016/017/018、Markdown 原地回写、断点会话恢复）
+- 凭证快照与账号切换：`docs/DESIGN-账号凭证切换-v1.0.md`（会话恢复方案 b 的 `ICredentialVault` 基础）
+
 ---
 
 ## 1. 设计目标与约束

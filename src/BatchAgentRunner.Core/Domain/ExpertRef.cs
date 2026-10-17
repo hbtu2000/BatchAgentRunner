@@ -34,6 +34,17 @@ public sealed class ExpertRef
 
     public static ExpertRef Default() => new();
 
+    public ExpertRef()
+    {
+    }
+
+    /// <summary>按专家 id 构造「单专家」引用（二期工作流阶段执行器覆盖用）。</summary>
+    public ExpertRef(string id)
+    {
+        Kind = ExpertKind.Single;
+        Id = id;
+    }
+
     public override string ToString() => IsSpecified
         ? $"{DisplayName ?? Id}{(Kind == ExpertKind.Team ? "（专家团）" : "（专家）")}"
         : "默认智能体";

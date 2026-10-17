@@ -7,7 +7,11 @@ public enum TaskStatus
     Running,
     Done,
     Failed,
-    Interrupted
+    Interrupted,
+    /// <summary>二期新增：门禁/修订循环超限，产出遗留问题清单，等待人工介入（不计入失败率）。</summary>
+    NeedsAttention,
+    /// <summary>二期新增：依赖未满足或依赖失败导致本任务阻塞（区别于批级 Blocked）。</summary>
+    Blocked
 }
 
 /// <summary>批级运行态（PRD 第 10 章）。Waiting 为独立状态，非 Running 子状态。</summary>

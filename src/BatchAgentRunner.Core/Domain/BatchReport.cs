@@ -29,6 +29,14 @@ public sealed class BatchReport
     [JsonPropertyName("pending")]
     public int Pending { get; set; }
 
+    /// <summary>需人工接管（二期：工作流门禁未过/阶段依赖未满足，不计入失败率）。</summary>
+    [JsonPropertyName("needs_attention")]
+    public int NeedsAttention { get; set; }
+
+    /// <summary>被依赖失败阻断（二期 DAG，不计入失败率）。</summary>
+    [JsonPropertyName("blocked")]
+    public int Blocked { get; set; }
+
     [JsonPropertyName("skipped_already_done")]
     public int SkippedAlreadyDone { get; set; }
 
@@ -73,6 +81,59 @@ public sealed class BatchReport
 
     [JsonPropertyName("shutdown")]
     public ShutdownOutcome Shutdown { get; set; } = new();
+
+    /// <summary>结果 diff 采集记录（二期 REQ-017；仅当启用 diff 采集时有内容）。</summary>
+    [JsonPropertyName("diffs")]
+    public List<DiffRecord> Diffs { get; set; } = new();
+
+    /// <summary>
+    /// 任务级明细快照（二期报告章节数据源：工作流时间线 / DAG 概览 / 门禁统计 / 待人工清单）。
+    /// 一期报告不使用；为空时报告渲染自动省略对应章节，保持一期输出不变。
+    /// </summary>
+    [JsonPropertyName("tasks")]
+    public List<TaskReportEntry> Tasks { get; set; } = new();
+}
+
+/// <summary>报告中的任务级明细（二期：含阶段结果、依赖与阻断来源）。</summary>
+public sealed class TaskReportEntry
+{
+    [JsonPropertyName("task_id")]
+    public string TaskId { get; set; } = string.Empty;
+
+    [JsonPropertyName("status")]
+    public TaskStatus Status { get; set; } = TaskStatus.Pending;
+
+    /// <summary>本任务依赖的任务 Id 列表（DAG）。</summary>
+    [JsonPropertyName("depends_on")]
+    public List<string>? DependsOn { get; set; }
+
+    /// <summary>阻断来源：导致本任务 Blocked 的依赖 Id（失败/阻断/悬空）。</summary>
+    [JsonPropertyName("blocked_by")]
+    public List<string>? BlockedBy { get; set; }
+
+    [JsonPropertyName("error")]
+    public string? Error { get; set; }
+
+    /// <summary>待人工原因：门禁遗留问题或阻断说明。</summary>
+    [JsonPropertyName("leftover")]
+    public string? Leftover { get; set; }
+
+    /// <summary>工作流阶段结果（仅工作流任务）。</summary>
+    [JsonPropertyName("stage_results")]
+    public List<StageResult>? StageResults { get; set; }
+
+    /// <summary>来源模板 Id（模板展开产物溯源）。</summary>
+    [JsonPropertyName("template_id")]
+    public string? TemplateId { get; set; }
+
+    [JsonPropertyName("duration_seconds")]
+    public double DurationSeconds { get; set; }
+
+    [JsonPropertyName("model_used")]
+    public string? ModelUsed { get; set; }
+
+    [JsonPropertyName("account_used")]
+    public string? AccountUsed { get; set; }
 }
 
 public sealed class UsageEntry

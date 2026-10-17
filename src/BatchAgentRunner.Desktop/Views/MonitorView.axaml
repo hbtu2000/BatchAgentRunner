@@ -65,6 +65,22 @@
                             <TextBlock Text="已中断" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
                         </StackPanel>
                     </Border>
+                    <Border Theme="{StaticResource Card}" Padding="14,8" Margin="0,0,8,0"
+                            IsVisible="{Binding NeedsAttention, Converter={StaticResource GreaterThanZeroConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding NeedsAttention}" FontSize="22" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource StatusAttentionBrush}" />
+                            <TextBlock Text="待人工介入" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Theme="{StaticResource Card}" Padding="14,8" Margin="0,0,8,0"
+                            IsVisible="{Binding Blocked, Converter={StaticResource GreaterThanZeroConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="{Binding Blocked}" FontSize="22" FontWeight="SemiBold"
+                                       Foreground="{DynamicResource StatusBlockedBrush}" />
+                            <TextBlock Text="依赖阻塞" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                        </StackPanel>
+                    </Border>
                     <Border Theme="{StaticResource Card}" Padding="14,8">
                         <StackPanel>
                             <TextBlock Text="{Binding Skipped}" FontSize="22" FontWeight="SemiBold"
@@ -128,33 +144,72 @@
 
         <!-- 任务列表 -->
         <Border Grid.Row="3" Grid.Column="0" Padding="8" Theme="{StaticResource Card}" Margin="0,0,8,0">
-            <ListBox ItemsSource="{Binding Tasks}" SelectedItem="{Binding SelectedTask}"
-                     Background="Transparent" BorderThickness="0">
-                <ListBox.ItemTemplate>
-                    <DataTemplate DataType="models:TaskRowViewModel">
-                        <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="4">
-                            <Ellipse Grid.Column="0" Width="9" Height="9" VerticalAlignment="Center" Margin="0,0,8,0"
-                                     conv:StatusDotHelper.TaskStatus="{Binding Status}" />
-                            <StackPanel Grid.Column="1" Spacing="2">
-                                <TextBlock Text="{Binding Id}" FontWeight="SemiBold"
-                                           Foreground="{DynamicResource TextPrimaryBrush}" />
-                                <TextBlock Text="{Binding ExecutionInfo}" FontSize="12"
-                                           Foreground="{DynamicResource TextSecondaryBrush}" />
-                                <TextBlock Text="{Binding Item.Error}" FontSize="12"
-                                           Foreground="{DynamicResource ErrorBrush}" IsVisible="{Binding HasError}"
-                                           TextWrapping="Wrap" />
-                            </StackPanel>
-                            <TextBlock Grid.Column="2" Text="{Binding DurationText}" VerticalAlignment="Center"
-                                       Margin="8,0" Foreground="{DynamicResource TextSecondaryBrush}" />
-                            <Border Grid.Column="3" Padding="8,3" CornerRadius="10"
-                                    Background="{DynamicResource BgSurface2Brush}" VerticalAlignment="Center">
-                                <TextBlock Text="{Binding StatusText}" FontSize="12"
-                                           Foreground="{DynamicResource TextPrimaryBrush}" />
-                            </Border>
-                        </Grid>
-                    </DataTemplate>
-                </ListBox.ItemTemplate>
-            </ListBox>
+            <Grid RowDefinitions="*,Auto">
+                <ListBox Grid.Row="0" ItemsSource="{Binding Tasks}" SelectedItem="{Binding SelectedTask}"
+                         Background="Transparent" BorderThickness="0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="models:TaskRowViewModel">
+                            <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="4">
+                                <Ellipse Grid.Column="0" Width="9" Height="9" VerticalAlignment="Center" Margin="0,0,8,0"
+                                         conv:StatusDotHelper.TaskStatus="{Binding Status}" />
+                                <StackPanel Grid.Column="1" Spacing="2">
+                                    <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <TextBlock Text="{Binding Id}" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                                        <Border Background="{DynamicResource InfoSoftBrush}" CornerRadius="8"
+                                                Padding="6,1" VerticalAlignment="Center"
+                                                IsVisible="{Binding IsWorkflow}">
+                                            <TextBlock Text="{Binding StageBadge}" FontSize="11"
+                                                       Foreground="{DynamicResource InfoBrush}" />
+                                        </Border>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding ExecutionInfo}" FontSize="12"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBlock Text="{Binding DependsText}" FontSize="12"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               IsVisible="{Binding HasDepends}" />
+                                    <TextBlock Text="{Binding Item.Error}" FontSize="12"
+                                               Foreground="{DynamicResource ErrorBrush}" IsVisible="{Binding HasError}"
+                                               TextWrapping="Wrap" />
+                                </StackPanel>
+                                <TextBlock Grid.Column="2" Text="{Binding DurationText}" VerticalAlignment="Center"
+                                           Margin="8,0" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                <Border Grid.Column="3" Padding="8,3" CornerRadius="10"
+                                        Background="{DynamicResource BgSurface2Brush}" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding StatusText}" FontSize="12"
+                                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                                </Border>
+                            </Grid>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <!-- 依赖看板（DagBoardView）：批次含 DAG 依赖时显示，按拓扑层级缩进 -->
+                <Expander Grid.Row="1" Header="依赖看板（DAG）" IsExpanded="True" Margin="0,8,0,0"
+                          IsVisible="{Binding HasDag}">
+                    <ItemsControl ItemsSource="{Binding DagRows}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="models:DagRowViewModel">
+                                <StackPanel Margin="{Binding Indent}" Spacing="2">
+                                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,2">
+                                        <Ellipse Width="9" Height="9" VerticalAlignment="Center"
+                                                 conv:StatusDotHelper.TaskStatus="{Binding Status}" />
+                                        <TextBlock Text="{Binding Id}" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                                        <TextBlock Text="{Binding StatusText}" FontSize="12"
+                                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <TextBlock Text="{Binding DependsText}" FontSize="12"
+                                                   Foreground="{DynamicResource TextMutedBrush}" />
+                                        <TextBlock Text="{Binding BlockedByText}" FontSize="12"
+                                                   Foreground="{DynamicResource WarningBrush}"
+                                                   IsVisible="{Binding IsBlockedByVisible}" />
+                                    </StackPanel>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Expander>
+            </Grid>
         </Border>
 
         <!-- 详情 + 输出流 + 提示 -->
@@ -173,7 +228,51 @@
                     <TextBlock Text="{Binding SelectedError}" TextWrapping="Wrap"
                                Foreground="{DynamicResource ErrorBrush}" MaxHeight="100" />
 
-                    <TextBlock Text="实时输出流" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <StackPanel Spacing="8" IsVisible="{Binding SelectedIsWorkflow}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <TextBlock Text="工作流阶段（门禁 / 修订循环）" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Text="{Binding SelectedTemplateId, StringFormat='模板：{0}'}" FontSize="12"
+                                   Foreground="{DynamicResource TextMutedBrush}"
+                                   IsVisible="{Binding HasSelectedTemplate}" />
+                    </StackPanel>
+                    <ItemsControl ItemsSource="{Binding SelectedStages}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="models:StageRowViewModel">
+                                <Border Padding="8,6" Margin="0,0,0,6" CornerRadius="6"
+                                        Background="{DynamicResource BgSurface2Brush}">
+                                    <StackPanel Spacing="3">
+                                        <StackPanel Orientation="Horizontal" Spacing="8">
+                                            <Ellipse Width="9" Height="9" VerticalAlignment="Center"
+                                                     conv:StatusDotHelper.TaskStatus="{Binding Status}" />
+                                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                                            <TextBlock Text="{Binding StatusText}" FontSize="12"
+                                                       Foreground="{Binding StatusBrush}" />
+                                            <TextBlock Text="{Binding GateText}" FontSize="12"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                            <TextBlock Text="{Binding LoopText}" FontSize="12"
+                                                       Foreground="{DynamicResource TextMutedBrush}" />
+                                            <TextBlock Text="{Binding ExecutionText}" FontSize="12"
+                                                       Foreground="{DynamicResource TextMutedBrush}" />
+                                        </StackPanel>
+                                        <TextBlock Text="{Binding OutputSummary}" FontSize="12" TextWrapping="Wrap"
+                                                   MaxHeight="80" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        <StackPanel IsVisible="{Binding HasLeftover}" Spacing="2">
+                                            <TextBlock Text="门禁遗留问题：" FontSize="12" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource WarningBrush}" />
+                                            <TextBlock Text="{Binding Leftover}" FontSize="12" TextWrapping="Wrap"
+                                                       MaxHeight="100"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <TextBlock Text="实时输出流" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
                     <ListBox ItemsSource="{Binding OutputLines}" MaxHeight="200" FontSize="12"
                              FontFamily="{DynamicResource FontMono}"
                              Background="{DynamicResource BgSurface2Brush}" BorderThickness="0" />

@@ -36,6 +36,69 @@
                 </StackPanel>
             </Border>
 
+            <!-- 二期：概览（门禁统计 / 模板产物 / diff 提示） -->
+            <Border Padding="12" CornerRadius="6" BorderBrush="{DynamicResource BorderSubtleBrush}"
+                    BorderThickness="1" IsVisible="{Binding HasPhase2}">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="二期概览（工作流 / 门禁 / 模板 / 变更）" FontWeight="SemiBold" />
+                    <TextBlock Text="{Binding Phase2Text}" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <!-- 二期：待人工介入 / 依赖阻塞清单（不计入失败率） -->
+            <Border Padding="12" CornerRadius="6" BorderBrush="{DynamicResource BorderSubtleBrush}"
+                    BorderThickness="1" IsVisible="{Binding HasAttentionTasks}">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="待人工介入 / 依赖阻塞清单（不计入失败率）" FontWeight="SemiBold" />
+                    <ListBox ItemsSource="{Binding AttentionTasks}" MaxHeight="220">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Spacing="2" Margin="0,2">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <TextBlock Text="{Binding TaskId}" FontWeight="SemiBold" />
+                                        <TextBlock Text="{Binding StatusText}" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource WarningBrush}" />
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding BlockedByText}" FontSize="12"
+                                               IsVisible="{Binding HasBlockedBy}"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBlock Text="{Binding Leftover}" FontSize="12" TextWrapping="Wrap"
+                                               IsVisible="{Binding HasLeftover}"
+                                               Foreground="{DynamicResource WarningBrush}" />
+                                    <TextBlock Text="{Binding Error}" FontSize="12" TextWrapping="Wrap"
+                                               Foreground="{DynamicResource ErrorBrush}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
+            </Border>
+
+            <!-- 二期：工作流阶段时间线 -->
+            <Border Padding="12" CornerRadius="6" BorderBrush="{DynamicResource BorderSubtleBrush}"
+                    BorderThickness="1" IsVisible="{Binding HasPhase2}">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="工作流阶段时间线（任务 × 阶段 × 门禁）" FontWeight="SemiBold" />
+                    <ListBox ItemsSource="{Binding StageTimeline}" MaxHeight="260">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="10" Margin="0,2">
+                                    <TextBlock Text="{Binding TaskId}" FontWeight="SemiBold" Width="140"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding StageText}" Width="150"
+                                               TextTrimming="CharacterEllipsis" />
+                                    <TextBlock Text="{Binding StatusText}" Width="90" />
+                                    <TextBlock Text="{Binding GateText, StringFormat='门禁：{0}'}" Width="90" />
+                                    <TextBlock Text="{Binding LoopText, StringFormat='循环 {0}'}" Width="70" />
+                                    <TextBlock Text="{Binding ModelText}" FontSize="12"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
+            </Border>
+
             <Border Padding="12" CornerRadius="6" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
                 <StackPanel Spacing="6">
                     <TextBlock Text="失败任务清单" FontWeight="SemiBold" />

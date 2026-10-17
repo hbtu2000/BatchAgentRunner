@@ -46,12 +46,14 @@
             <SolidColorBrush x:Key="InfoBrush" Color="#2563EB" />
             <SolidColorBrush x:Key="InfoSoftBrush" Color="#E8F0FE" />
 
-            <!-- 任务 5 态 -->
+            <!-- 任务 7 态（一期 5 态 + 二期待人工/依赖阻塞） -->
             <SolidColorBrush x:Key="StatusPendingBrush" Color="#8A95A3" />
             <SolidColorBrush x:Key="StatusRunningBrush" Color="#2563EB" />
             <SolidColorBrush x:Key="StatusDoneBrush" Color="#16A34A" />
             <SolidColorBrush x:Key="StatusFailedBrush" Color="#DC2626" />
             <SolidColorBrush x:Key="StatusInterruptedBrush" Color="#D97706" />
+            <SolidColorBrush x:Key="StatusAttentionBrush" Color="#7C3AED" />
+            <SolidColorBrush x:Key="StatusBlockedBrush" Color="#0E7490" />
 
             <!-- 批级 6 态 -->
             <SolidColorBrush x:Key="BatchIdleBrush" Color="#8A95A3" />
@@ -86,12 +88,14 @@
             <SolidColorBrush x:Key="InfoBrush" Color="#4C8DFF" />
             <SolidColorBrush x:Key="InfoSoftBrush" Color="#1E2C44" />
 
-            <!-- 任务 5 态 -->
+            <!-- 任务 7 态（一期 5 态 + 二期待人工/依赖阻塞） -->
             <SolidColorBrush x:Key="StatusPendingBrush" Color="#6B7686" />
             <SolidColorBrush x:Key="StatusRunningBrush" Color="#4C8DFF" />
             <SolidColorBrush x:Key="StatusDoneBrush" Color="#3FCB6E" />
             <SolidColorBrush x:Key="StatusFailedBrush" Color="#F2655E" />
             <SolidColorBrush x:Key="StatusInterruptedBrush" Color="#F5A623" />
+            <SolidColorBrush x:Key="StatusAttentionBrush" Color="#A78BFA" />
+            <SolidColorBrush x:Key="StatusBlockedBrush" Color="#22D3EE" />
 
             <!-- 批级 6 态 -->
             <SolidColorBrush x:Key="BatchIdleBrush" Color="#6B7686" />
@@ -114,5 +118,6 @@
 
     <!-- ============ 转换器实例 ============ -->
     <conv:EqualsTextConverter x:Key="EqualsTextConverter" />
+    <conv:GreaterThanZeroConverter x:Key="GreaterThanZeroConverter" />
 
 </ResourceDictionary>

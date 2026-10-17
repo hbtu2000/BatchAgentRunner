@@ -19,11 +19,13 @@ public sealed class TaskRowViewModel : ObservableObject
 
     public string StatusText => Item.Status switch
     {
-        TaskStatus.Pending => "待处理",
+        TaskStatus.Pending => Item.DependsOn is { Count: > 0 } ? "待命（等依赖）" : "待处理",
         TaskStatus.Running => "执行中",
         TaskStatus.Done => "完成",
         TaskStatus.Failed => "失败",
         TaskStatus.Interrupted => "已中断",
+        TaskStatus.NeedsAttention => "待人工介入",
+        TaskStatus.Blocked => "依赖阻塞",
         _ => Item.Status.ToString()
     };
 
@@ -37,8 +39,23 @@ public sealed class TaskRowViewModel : ObservableObject
         TaskStatus.Done => new SolidColorBrush(Color.Parse("#1F9D55")),
         TaskStatus.Failed => new SolidColorBrush(Color.Parse("#D93025")),
         TaskStatus.Interrupted => new SolidColorBrush(Color.Parse("#B06000")),
+        TaskStatus.NeedsAttention => new SolidColorBrush(Color.Parse("#7C3AED")),
+        TaskStatus.Blocked => new SolidColorBrush(Color.Parse("#0E7490")),
         _ => new SolidColorBrush(Color.Parse("#8A8F98"))
     };
+
+    /// <summary>是否工作流任务（详情面板切换阶段树展示）。</summary>
+    public bool IsWorkflow => Item.IsWorkflow;
+
+    /// <summary>依赖摘要（DAG 任务列表行内展示）。</summary>
+    public string DependsText => Item.DependsOn is { Count: > 0 }
+        ? "依赖：" + string.Join("、", Item.DependsOn)
+        : string.Empty;
+
+    public bool HasDepends => Item.DependsOn is { Count: > 0 };
+
+    /// <summary>工作流阶段数徽标（非工作流任务为空串）。</summary>
+    public string StageBadge => Item.IsWorkflow ? $"{Item.Workflow!.Stages.Count} 阶段" : string.Empty;
 
     public string ExecutionInfo =>
         string.Join(" · ", new[]
@@ -65,6 +82,10 @@ public sealed class TaskRowViewModel : ObservableObject
         OnPropertyChanged(nameof(DurationText));
         OnPropertyChanged(nameof(RetryText));
         OnPropertyChanged(nameof(HasError));
+        OnPropertyChanged(nameof(IsWorkflow));
+        OnPropertyChanged(nameof(DependsText));
+        OnPropertyChanged(nameof(HasDepends));
+        OnPropertyChanged(nameof(StageBadge));
         OnPropertyChanged(nameof(Item));
     }
 }

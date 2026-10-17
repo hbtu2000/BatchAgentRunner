@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Options;
+using BatchAgentRunner.Core.Scheduling;
 using BatchAgentRunner.Desktop.Models;
 using BatchAgentRunner.Desktop.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -56,6 +57,20 @@ public sealed class ConfigViewModel : ViewModelBase
     private bool _showCliWindow;
     private string _whitelistText = string.Empty;
 
+    // ---------------- 二期配置域（字段） ----------------
+    private int _defaultMaxGateLoops = 3;
+    private bool _enableSessionResume;
+    private bool _markdownInPlaceWriteback;
+    private DependencyFailurePolicy _dependencyFailurePolicy;
+    private int _templateBatchExpansionLimit = 50;
+    private bool _collectDiffs;
+    private string _diffGlobsText = string.Empty;
+    private string _gitRepoPath = string.Empty;
+    private string _gitBaseBranch = string.Empty;
+    private string _gitBranchNaming = "bar/{task_id}-{timestamp}";
+    private string _gitPrTargetBranch = string.Empty;
+    private bool _gitAutoOpenPr;
+
     public ConfigViewModel(EngineHost host)
     {
         _host = host;
@@ -79,6 +94,16 @@ public sealed class ConfigViewModel : ViewModelBase
         });
         AddWorkspaceCommand = new RelayCommand(() => Workspaces.Add(new WorkspaceConfig { Name = "workspace-new" }));
         RemoveWorkspaceCommand = new RelayCommand<WorkspaceConfig>(w => { if (w is not null) Workspaces.Remove(w); });
+
+        AddNotificationRuleCommand = new RelayCommand(() =>
+            NotificationRules.Add(new NotificationRuleEditor(new NotificationRule())));
+        RemoveNotificationRuleCommand = new RelayCommand<NotificationRuleEditor>(r =>
+        {
+            if (r is not null)
+            {
+                NotificationRules.Remove(r);
+            }
+        });
 
         FetchModelsCommand = new AsyncRelayCommand(FetchModelsAsync);
         FetchModelsForAccountCommand = new AsyncRelayCommand<AccountEditor>(FetchModelsForAccountAsync);
@@ -118,6 +143,24 @@ public sealed class ConfigViewModel : ViewModelBase
         StopOnFailure = o.StopOnFailure;
         ShowCliWindow = o.ShowCliWindow;
         WhitelistText = string.Join("\n", o.AutoAnswer.AllowedWhitelist);
+
+        // 二期配置域
+        DefaultMaxGateLoops = o.DefaultMaxGateLoops;
+        EnableSessionResume = o.EnableSessionResume;
+        MarkdownInPlaceWriteback = o.MarkdownInPlaceWriteback;
+        DependencyFailurePolicy = o.DependencyFailurePolicy;
+        TemplateBatchExpansionLimit = o.TemplateBatchExpansionLimit;
+        CollectDiffs = o.CollectDiffs;
+        DiffGlobsText = string.Join("\n", o.DiffTargetGlobs);
+        GitRepoPath = o.Git.RepoPath ?? string.Empty;
+        GitBaseBranch = o.Git.BaseBranch ?? string.Empty;
+        GitBranchNaming = o.Git.BranchNaming ?? "bar/{task_id}-{timestamp}";
+        GitPrTargetBranch = o.Git.PrTargetBranch ?? string.Empty;
+        GitAutoOpenPr = o.Git.AutoOpenPr;
+
+        NotificationRules = new ObservableCollection<NotificationRuleEditor>(
+            o.Notifications.Select(r => new NotificationRuleEditor(r)));
+        OnPropertyChanged(nameof(NotificationRules));
 
         Models = new ObservableCollection<ModelEditor>(o.ModelCandidates.Select(m => new ModelEditor(m)));
         Accounts = new ObservableCollection<AccountEditor>(o.Accounts.Select(a => new AccountEditor(a)));
@@ -439,6 +482,108 @@ public sealed class ConfigViewModel : ViewModelBase
         set => SetProperty(ref _whitelistText, value);
     }
 
+    // ---------------- 二期：工作流与模板域 ----------------
+
+    /// <summary>质量门禁修订循环默认上限（被阶段 MaxLoops 覆盖）。</summary>
+    public int DefaultMaxGateLoops
+    {
+        get => _defaultMaxGateLoops;
+        set => SetProperty(ref _defaultMaxGateLoops, value);
+    }
+
+    /// <summary>启用断点会话恢复（方案 b；不支持时回退一期方案 a）。</summary>
+    public bool EnableSessionResume
+    {
+        get => _enableSessionResume;
+        set => SetProperty(ref _enableSessionResume, value);
+    }
+
+    /// <summary>Markdown 任务文件原地回写（默认 sidecar）。</summary>
+    public bool MarkdownInPlaceWriteback
+    {
+        get => _markdownInPlaceWriteback;
+        set => SetProperty(ref _markdownInPlaceWriteback, value);
+    }
+
+    /// <summary>依赖失败策略（DAG）。</summary>
+    public DependencyFailurePolicy DependencyFailurePolicy
+    {
+        get => _dependencyFailurePolicy;
+        set => SetProperty(ref _dependencyFailurePolicy, value);
+    }
+
+    public IReadOnlyList<DependencyFailurePolicy> DependencyPolicies { get; } =
+        new[]
+        {
+            global::BatchAgentRunner.Core.Scheduling.DependencyFailurePolicy.BlockDependents,
+            global::BatchAgentRunner.Core.Scheduling.DependencyFailurePolicy.AbortBatch,
+            global::BatchAgentRunner.Core.Scheduling.DependencyFailurePolicy.SkipDependents
+        };
+
+    /// <summary>模板展开单批上限（超过则要求确认）。</summary>
+    public int TemplateBatchExpansionLimit
+    {
+        get => _templateBatchExpansionLimit;
+        set => SetProperty(ref _templateBatchExpansionLimit, value);
+    }
+
+    /// <summary>是否采集结果 diff（REQ-017）。</summary>
+    public bool CollectDiffs
+    {
+        get => _collectDiffs;
+        set => SetProperty(ref _collectDiffs, value);
+    }
+
+    /// <summary>diff 采集的受关注文件 glob（每行一条）。</summary>
+    public string DiffGlobsText
+    {
+        get => _diffGlobsText;
+        set => SetProperty(ref _diffGlobsText, value);
+    }
+
+    // ---------------- 二期：通知域 ----------------
+
+    /// <summary>通知规则列表（空 = 不推送）。</summary>
+    public ObservableCollection<NotificationRuleEditor> NotificationRules { get; private set; } = new();
+
+    public IRelayCommand AddNotificationRuleCommand { get; }
+
+    public IRelayCommand<NotificationRuleEditor> RemoveNotificationRuleCommand { get; }
+
+    // ---------------- 二期：版本控制域 ----------------
+
+    public string GitRepoPath
+    {
+        get => _gitRepoPath;
+        set => SetProperty(ref _gitRepoPath, value);
+    }
+
+    public string GitBaseBranch
+    {
+        get => _gitBaseBranch;
+        set => SetProperty(ref _gitBaseBranch, value);
+    }
+
+    /// <summary>自动建分支命名规则（支持 {task_id} / {timestamp} / {date}）。</summary>
+    public string GitBranchNaming
+    {
+        get => _gitBranchNaming;
+        set => SetProperty(ref _gitBranchNaming, value);
+    }
+
+    public string GitPrTargetBranch
+    {
+        get => _gitPrTargetBranch;
+        set => SetProperty(ref _gitPrTargetBranch, value);
+    }
+
+    /// <summary>任务完成后是否自动开 PR（需 gh CLI，不可用时退化为推送分支）。</summary>
+    public bool GitAutoOpenPr
+    {
+        get => _gitAutoOpenPr;
+        set => SetProperty(ref _gitAutoOpenPr, value);
+    }
+
     public string StatusMessage
     {
         get => _statusMessageField;
@@ -623,6 +768,22 @@ public sealed class ConfigViewModel : ViewModelBase
         o.ShowCliWindow = ShowCliWindow;
         o.AutoAnswer.AllowedWhitelist = WhitelistText
             .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+
+        // 二期配置域
+        o.DefaultMaxGateLoops = Math.Max(1, DefaultMaxGateLoops);
+        o.EnableSessionResume = EnableSessionResume;
+        o.MarkdownInPlaceWriteback = MarkdownInPlaceWriteback;
+        o.DependencyFailurePolicy = DependencyFailurePolicy;
+        o.TemplateBatchExpansionLimit = Math.Max(1, TemplateBatchExpansionLimit);
+        o.CollectDiffs = CollectDiffs;
+        o.DiffTargetGlobs = DiffGlobsText
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        o.Git.RepoPath = string.IsNullOrWhiteSpace(GitRepoPath) ? string.Empty : GitRepoPath.Trim();
+        o.Git.BaseBranch = string.IsNullOrWhiteSpace(GitBaseBranch) ? null : GitBaseBranch.Trim();
+        o.Git.BranchNaming = string.IsNullOrWhiteSpace(GitBranchNaming) ? "bar/{task_id}-{timestamp}" : GitBranchNaming.Trim();
+        o.Git.PrTargetBranch = string.IsNullOrWhiteSpace(GitPrTargetBranch) ? null : GitPrTargetBranch.Trim();
+        o.Git.AutoOpenPr = GitAutoOpenPr;
+        o.Notifications = NotificationRules.Select(r => r.Apply()).ToList();
 
         o.ModelCandidates.Clear();
         o.Accounts.Clear();

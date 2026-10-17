@@ -67,6 +67,16 @@ public sealed class BatchEngine
     private readonly Dictionary<string, double> _taskWaitSeconds = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string>? _idSnapshot;
 
+    // ---------------- 二期扩展（全部可选，向后兼容） ----------------
+    private readonly List<NotificationRule> _notifications;
+    private readonly IDiffCollector? _diffCollector;
+    private readonly IGitIntegration? _git;
+    private readonly List<DiffRecord> _diffs = new();
+    private readonly SessionResumePolicy _sessionPolicy;
+    private readonly INotificationDispatcher? _notificationDispatcher;
+    private readonly IMarkdownInPlaceWriter? _markdownWriter;
+    private readonly GateEvaluator _gateEvaluator;
+
     public BatchEngine(
         RunOptions options,
         IAgentCliAdapter adapter,
@@ -75,7 +85,13 @@ public sealed class BatchEngine
         IRunLogger logger,
         IClock? clock = null,
         QuotaErrorClassifier? classifier = null,
-        ICredentialVault? credentialVault = null)
+        ICredentialVault? credentialVault = null,
+        IEnumerable<NotificationRule>? notifications = null,
+        IDiffCollector? diffCollector = null,
+        IGitIntegration? git = null,
+        INotificationDispatcher? notificationDispatcher = null,
+        IMarkdownInPlaceWriter? markdownWriter = null,
+        GateEvaluator? gateEvaluator = null)
     {
         _options = options;
         _adapter = adapter;
@@ -83,6 +99,12 @@ public sealed class BatchEngine
         _cooldownStore = cooldownStore;
         _logger = logger;
         _vault = credentialVault;
+        _notifications = notifications?.ToList() ?? options.Notifications?.ToList() ?? new List<NotificationRule>();
+        _diffCollector = diffCollector;
+        _git = git;
+        _notificationDispatcher = notificationDispatcher;
+        _markdownWriter = markdownWriter;
+        _gateEvaluator = gateEvaluator ?? new GateEvaluator();
         _clock = clock ?? new SystemClock();
         _classifier = classifier ?? new QuotaErrorClassifier();
         _cooldowns = new QuotaCooldownRegistry(_clock, options.DefaultCooldown);
@@ -94,6 +116,7 @@ public sealed class BatchEngine
             InitialBackoff = TimeSpan.FromSeconds(Math.Max(1, options.RateLimitInitialBackoffSeconds))
         };
         _matrix = new DegradationMatrix(options.Accounts, options.ModelCandidates, options.DegradationStrategy);
+        _sessionPolicy = new SessionResumePolicy(options.EnableSessionResume);
     }
 
     // ---------------- 公开状态 ----------------
@@ -212,6 +235,31 @@ public sealed class BatchEngine
                     if (resolved is null)
                     {
                         report.AddError($"任务 {t.Id} 引用的工作空间「{t.Workspace}」不存在（命名空间悬空）");
+                    }
+                }
+
+                // 二期 DAG 预检：环检测（错误，阻止启动）+ 悬空依赖（告警，执行时保守阻断）
+                if (_tasks.Any(t => t.DependsOn is { Count: > 0 }))
+                {
+                    try
+                    {
+                        DagScheduler.TopoSort(_tasks);
+                    }
+                    catch (DagCycleException ex)
+                    {
+                        report.AddError($"任务依赖存在环：{ex.Message}");
+                    }
+
+                    var ids = new HashSet<string>(_tasks.Select(t => t.Id), StringComparer.OrdinalIgnoreCase);
+                    foreach (var t in _tasks.Where(t => t.DependsOn is { Count: > 0 }))
+                    {
+                        foreach (var dep in t.DependsOn!)
+                        {
+                            if (!ids.Contains(dep))
+                            {
+                                report.AddWarning($"任务 {t.Id} 的依赖 {dep} 不存在（悬空依赖，执行时将保守阻断）");
+                            }
+                        }
                     }
                 }
             }
@@ -355,6 +403,23 @@ public sealed class BatchEngine
                 : t.Status is TaskStatus.Pending or TaskStatus.Interrupted)
             .ToList();
 
+        // 二期 DAG：存在任务依赖时按拓扑序派发，保证依赖先于其下游执行；环在加载期快速失败
+        if (queue.Any(t => t.DependsOn is { Count: > 0 }))
+        {
+            try
+            {
+                queue = DagScheduler.TopoSort(queue).ToList();
+            }
+            catch (DagCycleException ex)
+            {
+                SetStatus(BatchStatus.Blocked);
+                RaiseBlocked($"任务依赖存在环：{ex.Message}");
+                await PersistAsync(token).ConfigureAwait(false);
+                Report = BuildReport(startedAt);
+                return Report;
+            }
+        }
+
         SkippedDoneCount = _options.ForceRerun
             ? 0
             : _tasks.Count(t => t.Status is TaskStatus.Done or TaskStatus.Failed);
@@ -418,7 +483,7 @@ public sealed class BatchEngine
             {
                 SetStatus(BatchStatus.Completed);
                 Raise(new BatchEvent(BatchEventKind.BatchCompleted, _clock.Now,
-                    $"批处理完成：成功 {_tasks.Count(t => t.Status == TaskStatus.Done)}，失败 {_tasks.Count(t => t.Status == TaskStatus.Failed)}，中断 {_tasks.Count(t => t.Status == TaskStatus.Interrupted)}")
+                    $"批处理完成：成功 {_tasks.Count(t => t.Status == TaskStatus.Done)}，失败 {_tasks.Count(t => t.Status == TaskStatus.Failed)}，中断 {_tasks.Count(t => t.Status == TaskStatus.Interrupted)}，待人工 {_tasks.Count(t => t.Status == TaskStatus.NeedsAttention)}，阻塞 {_tasks.Count(t => t.Status == TaskStatus.Blocked)}")
                 {
                     BatchStatus = BatchStatus.Completed
                 });
@@ -431,6 +496,18 @@ public sealed class BatchEngine
 
         await PersistAsync(token).ConfigureAwait(false);
         Report = BuildReport(startedAt);
+
+        // 二期：批处理终态通知推送（REQ-018；按规则触发，失败不阻断）
+        await DispatchNotificationsAsync(
+            Status switch
+            {
+                BatchStatus.Completed => NotifyTrigger.BatchCompleted,
+                BatchStatus.Blocked => NotifyTrigger.BatchBlocked,
+                BatchStatus.Terminated => NotifyTrigger.BatchTerminated,
+                _ => (NotifyTrigger?)null
+            },
+            startedAt);
+
         return Report;
     }
 
@@ -498,13 +575,33 @@ public sealed class BatchEngine
 
     private async Task DispatchAsync(List<TaskItem> queue, CancellationToken ct)
     {
-        if (_options.Concurrency <= 1)
+        // 二期：含任务依赖的批次强制串行派发——并发下依赖终态不可预测，串行才能保证 DAG 拓扑序语义
+        var hasDependencies = queue.Any(t => t.DependsOn is { Count: > 0 });
+        if (hasDependencies && _options.Concurrency > 1)
+        {
+            Raise(new BatchEvent(BatchEventKind.Info, _clock.Now,
+                "批次含任务依赖（DAG），已强制串行派发以保证依赖顺序"));
+        }
+
+        if (_options.Concurrency <= 1 || hasDependencies)
         {
             foreach (var task in queue)
             {
                 if (ct.IsCancellationRequested || _stopAfterCurrentTask)
                 {
                     break;
+                }
+
+                // 二期 DAG：依赖未满足时不进入执行，按依赖失败策略处理
+                var verdict = EvaluateDependency(task, out var blockingDep);
+                if (verdict != DependencyVerdict.Satisfied)
+                {
+                    if (!await ApplyDependencyBlockAsync(task, blockingDep, ct).ConfigureAwait(false))
+                    {
+                        break; // 策略=终止整批
+                    }
+
+                    continue; // 已标记 Blocked；其下游轮到时因本任务 Blocked 而逐层阻断
                 }
 
                 var outcome = await ExecuteTaskSafeAsync(task, ct).ConfigureAwait(false);
@@ -516,7 +613,7 @@ public sealed class BatchEngine
         }
         else
         {
-            // 受控并发（REQ-012）：停止派发 → 逐一回收 → 全部落盘
+            // 受控并发（REQ-012）：无依赖批次；停止派发 → 逐一回收 → 全部落盘
             using var semaphore = new SemaphoreSlim(_options.Concurrency);
             var stopDispatch = false;
 
@@ -550,9 +647,37 @@ public sealed class BatchEngine
     /// 单任务执行兜底：引擎自身的未预期异常（如启动进程失败、落盘失败）不允许静默冒泡
     /// 杀死整批（2026-10-16 实测：异常被 UI 吞掉、运行日志无记录、报告不落盘，排障极困难）。
     /// 此处记录 ERROR 日志与事件、任务判失败后继续下一任务；用户取消（OCE）按终止处理。
+    /// 二期扩展（可选）：执行前后采集结果 diff、项目级任务建分支/开 PR、Markdown 原地回写。
     /// </summary>
     private async Task<TaskOutcome> ExecuteTaskSafeAsync(TaskItem task, CancellationToken ct)
     {
+        string? snapshotId = null;
+        if (_diffCollector is not null && _options.CollectDiffs && !ct.IsCancellationRequested)
+        {
+            try
+            {
+                snapshotId = await _diffCollector.SnapshotAsync(task, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.Write("WARN", $"任务 {task.Id} diff 快照失败（已忽略）：{ex.Message}");
+            }
+        }
+
+        // 二期：项目级任务——执行前建分支（尽力而为，失败不阻断任务）
+        var effectiveProject = EffectiveProjectRef(task);
+        if (_git is not null && effectiveProject is not null)
+        {
+            try
+            {
+                await _git.CreateBranchAsync(effectiveProject, task.Id, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.Write("WARN", $"任务 {task.Id} 创建 Git 分支失败（已忽略）：{ex.Message}");
+            }
+        }
+
         TaskOutcome outcome;
         try
         {
@@ -561,7 +686,7 @@ public sealed class BatchEngine
         catch (OperationCanceledException)
         {
             await MarkInterrupted(task, "用户终止，当前任务安全中断");
-            return TaskOutcome.Terminated;
+            outcome = TaskOutcome.Terminated;
         }
         catch (Exception ex)
         {
@@ -577,11 +702,273 @@ public sealed class BatchEngine
                 _logger.Write("ERROR", $"任务 {task.Id} 失败落盘也异常：{persistEx.GetType().Name}：{persistEx.Message}");
             }
 
-            return TaskOutcome.Finished;
+            outcome = TaskOutcome.Finished;
+        }
+
+        // 二期：项目级任务成功后开 PR（尽力而为；需任务/全局显式开启 auto_open_pr）
+        if (_git is not null && effectiveProject is not null && task.Status == TaskStatus.Done
+            && effectiveProject.AutoOpenPr
+            && !string.IsNullOrWhiteSpace(effectiveProject.TaskBranch))
+        {
+            try
+            {
+                await _git.OpenPullRequestAsync(effectiveProject, task.Id, effectiveProject.TaskBranch, null, ct)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.Write("WARN", $"任务 {task.Id} 打开 PR 失败（已忽略）：{ex.Message}");
+            }
+        }
+
+        // 二期：结果 diff 采集
+        if (snapshotId is not null && _diffCollector is not null)
+        {
+            try
+            {
+                var recs = await _diffCollector.CollectAsync(snapshotId, task, ct).ConfigureAwait(false);
+                if (recs.Count > 0)
+                {
+                    lock (_diffs)
+                    {
+                        _diffs.AddRange(recs);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.Write("WARN", $"任务 {task.Id} diff 采集失败（已忽略）：{ex.Message}");
+            }
+        }
+
+        // 二期：Markdown 任务文件原地回写（仅在显式开启且任务文件为 .md 时）
+        if (_markdownWriter is not null && _options.MarkdownInPlaceWriteback && IsMarkdownTaskFile())
+        {
+            try
+            {
+                await _markdownWriter.WriteBackAsync(_options.TaskFilePath, task, ct).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger.Write("WARN", $"任务 {task.Id} Markdown 原回写失败（已忽略）：{ex.Message}");
+            }
         }
 
         return outcome;
     }
+
+    // ---------------- 二期：工作流执行 ----------------
+
+    /// <summary>
+    /// 二期：工作流任务执行（多阶段顺序驱动 + 质量门禁 + 修订循环）。
+    /// 委托给自包含的 <see cref="WorkflowExecutor"/>（其内部复用一期降级矩阵/免费时段/额度冷却/兜底语义），
+    /// 引擎只负责落盘与终态映射，不改动一期单指令执行路径。
+    /// </summary>
+    private async Task<TaskOutcome> ExecuteWorkflowAsync(TaskItem task, CancellationToken ct)
+    {
+        var outcome = await new WorkflowExecutor(BuildWorkflowContext()).RunAsync(task, ct).ConfigureAwait(false);
+
+        task.Status = outcome.FinalStatus;
+        task.Result = Truncate(outcome.Result, _options.ResultMaxKB * 1024);
+        task.Error = outcome.Error;
+        task.StageResults = outcome.StageResults;
+        task.ModelUsed = outcome.ModelUsed;
+        task.AccountUsed = outcome.AccountUsed;
+        task.ExpertUsed = outcome.ExpertUsed;
+        task.FallbackUsed = outcome.FallbackUsed;
+        task.FallbackCost = outcome.FallbackCost;
+        task.Finish(outcome.FinalStatus, _clock.Now);
+
+        RaiseTaskChanged(task);
+        _logger.WriteTaskFinished(task.Id, outcome.FinalStatus, task.DurationSeconds, task.RetryCount);
+        Raise(new BatchEvent(BatchEventKind.TaskFinished, _clock.Now,
+            $"工作流任务 {task.Id} 结束：{outcome.FinalStatus}", task.Id) { Task = task });
+
+        await PersistAsync(CancellationToken.None).ConfigureAwait(false);
+
+        if (outcome.FinalStatus == TaskStatus.NeedsAttention)
+        {
+            await DispatchNotificationsAsync(NotifyTrigger.NeedsAttention, null, outcome.Error).ConfigureAwait(false);
+        }
+
+        return outcome.FinalStatus switch
+        {
+            TaskStatus.Interrupted => TaskOutcome.Terminated,
+            TaskStatus.Failed => _options.StopOnFailure ? TaskOutcome.StopBatch : TaskOutcome.Finished,
+            _ => TaskOutcome.Finished // Done / NeedsAttention / Blocked 均不影响后续任务派发
+        };
+    }
+
+    /// <summary>构造工作流执行上下文（把引擎的一期内核能力注入二期执行器）。</summary>
+    private WorkflowEngineContext BuildWorkflowContext() => new()
+    {
+        Options = _options,
+        Adapter = _adapter,
+        Matrix = _matrix,
+        Evaluator = _evaluator,
+        Cooldowns = _cooldowns,
+        Classifier = _classifier,
+        Clock = _clock,
+        Logger = _logger,
+        GateEvaluator = _gateEvaluator,
+        OnEvent = Raise,
+        OnTaskChanged = RaiseTaskChanged,
+        Persist = () => PersistAsync(CancellationToken.None),
+        TrackUsage = (account, model, usage) =>
+        {
+            TrackUsage(account, model, usage);
+            return Task.CompletedTask;
+        },
+        EnsureCredential = _vault is not null ? EnsureLiveCredentialAsync : null,
+        SessionPolicy = _sessionPolicy,
+        DefaultMaxGateLoops = _options.DefaultMaxGateLoops
+    };
+
+    // ---------------- 二期：DAG 依赖 ----------------
+
+    /// <summary>依赖判定结果。</summary>
+    private enum DependencyVerdict
+    {
+        /// <summary>依赖已满足，可以执行。</summary>
+        Satisfied,
+        /// <summary>依赖未成功（失败/阻塞/悬空），本任务应被阻断或终止整批。</summary>
+        Blocked,
+        /// <summary>依赖尚未到达终态（串行拓扑序下不出现，保守按阻断处理）。</summary>
+        Wait
+    }
+
+    /// <summary>
+    /// 判定任务依赖是否满足（二期 DAG）。策略=忽略依赖失败时恒返回 <see cref="DependencyVerdict.Satisfied"/>。
+    /// </summary>
+    private DependencyVerdict EvaluateDependency(TaskItem task, out string? blockingDep)
+    {
+        blockingDep = null;
+        if (task.DependsOn is not { Count: > 0 })
+        {
+            return DependencyVerdict.Satisfied;
+        }
+
+        if (_options.DependencyFailurePolicy == DependencyFailurePolicy.SkipDependents)
+        {
+            return DependencyVerdict.Satisfied; // 忽略依赖失败，下游照常执行
+        }
+
+        var statusById = new Dictionary<string, TaskStatus>(StringComparer.OrdinalIgnoreCase);
+        foreach (var t in _tasks)
+        {
+            statusById[t.Id] = t.Status;
+        }
+
+        var blockOnNeedsAttention = _options.DependencyFailurePolicy == DependencyFailurePolicy.BlockDependents;
+        var wait = false;
+        foreach (var dep in task.DependsOn)
+        {
+            if (!statusById.TryGetValue(dep, out var st))
+            {
+                blockingDep = dep; // 悬空依赖：保守阻断
+                return DependencyVerdict.Blocked;
+            }
+
+            if (st is TaskStatus.Failed or TaskStatus.Blocked)
+            {
+                blockingDep = dep;
+                return DependencyVerdict.Blocked;
+            }
+
+            if (st == TaskStatus.NeedsAttention && blockOnNeedsAttention)
+            {
+                blockingDep = dep;
+                return DependencyVerdict.Blocked;
+            }
+
+            if (st is not (TaskStatus.Done or TaskStatus.Failed or TaskStatus.Interrupted
+                or TaskStatus.NeedsAttention or TaskStatus.Blocked))
+            {
+                wait = true; // 依赖尚未到达终态
+            }
+        }
+
+        return wait ? DependencyVerdict.Wait : DependencyVerdict.Satisfied;
+    }
+
+    /// <summary>
+    /// 依赖未满足时按策略处理本任务。返回 <c>false</c> 表示应终止整批派发。
+    /// 默认策略（阻断下游）：把本任务标记 Blocked，其下游轮到时因本任务 Blocked 而逐层阻断。
+    /// </summary>
+    private async Task<bool> ApplyDependencyBlockAsync(TaskItem task, string? blockingDep, CancellationToken ct)
+    {
+        var reason = $"依赖任务 {blockingDep ?? "（未知）"} 未成功，本任务被阻断";
+
+        if (_options.DependencyFailurePolicy == DependencyFailurePolicy.AbortBatch)
+        {
+            task.Status = TaskStatus.Blocked;
+            task.Error = reason;
+            task.Finish(TaskStatus.Blocked, _clock.Now);
+            RaiseTaskChanged(task);
+            await PersistAsync(CancellationToken.None).ConfigureAwait(false);
+            SetStatus(BatchStatus.Blocked);
+            RaiseBlocked($"任务 {task.Id} {reason}，按依赖失败策略终止整批", task.Id);
+            return false;
+        }
+
+        task.Status = TaskStatus.Blocked;
+        task.Error = reason;
+        task.Finish(TaskStatus.Blocked, _clock.Now);
+        RaiseTaskChanged(task);
+        _logger.WriteTaskFinished(task.Id, TaskStatus.Blocked, task.DurationSeconds, task.RetryCount);
+        Raise(new BatchEvent(BatchEventKind.TaskFinished, _clock.Now,
+            $"任务 {task.Id} {reason}", task.Id) { Task = task });
+        await PersistAsync(CancellationToken.None).ConfigureAwait(false);
+        return true;
+    }
+
+    // ---------------- 二期：通知推送 ----------------
+
+    /// <summary>
+    /// 按通知规则推送（REQ-018）。未注入分发器、无规则或 trigger 为 null 时为空操作；
+    /// 推送失败只记日志，绝不阻断批处理。
+    /// </summary>
+    private async Task DispatchNotificationsAsync(NotifyTrigger? trigger, DateTimeOffset? batchStartedAt = null,
+        string? message = null)
+    {
+        if (trigger is null || _notificationDispatcher is null || _notifications.Count == 0)
+        {
+            return;
+        }
+
+        var now = _clock.Now;
+        var context = new NotificationContext
+        {
+            Trigger = trigger.Value,
+            BatchName = string.IsNullOrWhiteSpace(_options.TaskFilePath)
+                ? "批处理"
+                : Path.GetFileNameWithoutExtension(_options.TaskFilePath),
+            BatchStatus = Status,
+            Total = _tasks.Count,
+            Done = _tasks.Count(t => t.Status == TaskStatus.Done),
+            Failed = _tasks.Count(t => t.Status == TaskStatus.Failed),
+            NeedsAttention = _tasks.Count(t => t.Status == TaskStatus.NeedsAttention),
+            Blocked = _tasks.Count(t => t.Status == TaskStatus.Blocked),
+            DurationSeconds = batchStartedAt.HasValue
+                ? Math.Round((now - batchStartedAt.Value).TotalSeconds, 3)
+                : 0,
+            Message = message
+        };
+
+        try
+        {
+            await _notificationDispatcher.DispatchAsync(_notifications, context, default).ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            _logger.Write("WARN", $"通知推送失败（已忽略）：{ex.Message}");
+        }
+    }
+
+    /// <summary>任务文件是否为 Markdown（决定二期原地回写是否适用）。</summary>
+    private bool IsMarkdownTaskFile() =>
+        !string.IsNullOrWhiteSpace(_options.TaskFilePath) &&
+        _options.TaskFilePath.EndsWith(".md", StringComparison.OrdinalIgnoreCase);
 
     private async Task<TaskOutcome> ExecuteTaskAsync(TaskItem task, CancellationToken ct)
     {
@@ -605,6 +992,12 @@ public sealed class BatchEngine
         RaiseTaskChanged(task);
         _logger.WriteTaskStarted(task.Id, null, null, _options.Expert.ToString(), task.Workspace);
         Raise(new BatchEvent(BatchEventKind.TaskStarted, _clock.Now, $"开始执行任务 {task.Id}", task.Id) { Task = task });
+
+        // 二期：工作流任务走 WorkflowExecutor（多阶段 + 门禁 + 修订循环），复用一期降级/额度/冷却内核
+        if (task.IsWorkflow)
+        {
+            return await ExecuteWorkflowAsync(task, taskCts.Token).ConfigureAwait(false);
+        }
 
         AgentCombo? combo = null;
         var retrySameCombo = false;
@@ -849,8 +1242,10 @@ public sealed class BatchEngine
         await _waitGate.WaitAsync(ct).ConfigureAwait(false);
         try
         {
-            SetStatus(BatchStatus.Waiting);
+            // 先清取消标记再置 Waiting 状态：避免取消请求落在「已置状态、未清标记」的窗口内被误清
+            // （界面轮询到 Waiting 后立刻点取消，若此时标记尚未清零，取消会丢失导致批处理跑完而非转阻塞）
             _waitingCancelled = false;
+            SetStatus(BatchStatus.Waiting);
             var waitStart = _clock.Now;
 
             Raise(new BatchEvent(BatchEventKind.BatchWaiting, _clock.Now,
@@ -1079,6 +1474,9 @@ public sealed class BatchEngine
         _logger.WriteTaskFinished(task.Id, TaskStatus.Failed, task.DurationSeconds, task.RetryCount);
         RaiseTaskChanged(task);
         await PersistAsync(CancellationToken.None);
+
+        // 二期：任务失败通知（REQ-018；按规则触发，失败不阻断）
+        await DispatchNotificationsAsync(NotifyTrigger.TaskFailed, null, error);
     }
 
     private async Task MarkInterrupted(TaskItem task, string reason)
@@ -1399,6 +1797,8 @@ public sealed class BatchEngine
             Failed = _tasks.Count(t => t.Status == TaskStatus.Failed),
             Interrupted = _tasks.Count(t => t.Status == TaskStatus.Interrupted),
             Pending = _tasks.Count(t => t.Status == TaskStatus.Pending),
+            NeedsAttention = _tasks.Count(t => t.Status == TaskStatus.NeedsAttention),
+            Blocked = _tasks.Count(t => t.Status == TaskStatus.Blocked),
             SkippedAlreadyDone = SkippedDoneCount,
             StartedAt = startedAt,
             FinishedAt = finishedAt,
@@ -1423,7 +1823,138 @@ public sealed class BatchEngine
                     Model = t.ModelUsed, Account = t.AccountUsed
                 }).ToList(),
             WindowWaitSeconds = Math.Round(_windowWaitSeconds, 1),
-            CooldownWaitSeconds = Math.Round(_cooldownWaitSeconds, 1)
+            CooldownWaitSeconds = Math.Round(_cooldownWaitSeconds, 1),
+            Diffs = _diffs.ToList(),
+            Tasks = _tasks.Select(t => new TaskReportEntry
+            {
+                TaskId = t.Id,
+                Status = t.Status,
+                DependsOn = t.DependsOn is null ? null : new List<string>(t.DependsOn),
+                BlockedBy = ComputeBlockedBy(t),
+                Error = t.Error,
+                Leftover = ComputeLeftover(t),
+                StageResults = t.StageResults is null ? null : new List<StageResult>(t.StageResults),
+                TemplateId = t.TemplateVars?.TemplateId,
+                DurationSeconds = t.DurationSeconds,
+                ModelUsed = t.ModelUsed,
+                AccountUsed = t.AccountUsed
+            }).ToList()
         };
+    }
+
+    /// <summary>
+    /// 生效的项目级 Git 配置（二期）：任务级 <see cref="TaskItem.ProjectRef"/> 优先，
+    /// 空字段用全局 <see cref="RunOptions.Git"/> 兜底；任务无 ProjectRef 但全局配置了仓库时按全局合成。
+    /// 全局仓库路径为空 = 未配置 Git 集成，返回 null（不执行任何 Git 操作）。
+    /// </summary>
+    private ProjectRef? EffectiveProjectRef(TaskItem task)
+    {
+        var git = _options.Git;
+        var globalReady = !string.IsNullOrWhiteSpace(git.RepoPath);
+
+        if (task.ProjectRef is null)
+        {
+            if (!globalReady)
+            {
+                return null;
+            }
+
+            var branch = RenderBranchName(git.BranchNaming, task.Id);
+            return new ProjectRef
+            {
+                RepoPath = git.RepoPath,
+                BaseBranch = git.BaseBranch,
+                TaskBranch = branch,
+                PrTargetBranch = git.PrTargetBranch ?? git.BaseBranch,
+                AutoCreateBranch = true,
+                AutoOpenPr = git.AutoOpenPr
+            };
+        }
+
+        if (!globalReady && string.IsNullOrWhiteSpace(task.ProjectRef.RepoPath))
+        {
+            return null; // 两级都没配仓库
+        }
+
+        var effective = task.ProjectRef.Clone();
+        if (string.IsNullOrWhiteSpace(effective.RepoPath))
+        {
+            effective.RepoPath = git.RepoPath;
+        }
+
+        if (string.IsNullOrWhiteSpace(effective.BaseBranch))
+        {
+            effective.BaseBranch = git.BaseBranch;
+        }
+
+        if (string.IsNullOrWhiteSpace(effective.PrTargetBranch))
+        {
+            effective.PrTargetBranch = git.PrTargetBranch ?? effective.BaseBranch;
+        }
+
+        if (string.IsNullOrWhiteSpace(effective.TaskBranch) && effective.AutoCreateBranch)
+        {
+            effective.TaskBranch = RenderBranchName(
+                string.IsNullOrWhiteSpace(git.BranchNaming) ? "bar/{task_id}-{timestamp}" : git.BranchNaming,
+                task.Id);
+        }
+
+        return effective;
+    }
+
+    /// <summary>渲染分支命名模板：{task_id} / {timestamp}(yyyyMMddHHmmss) / {date}(yyyyMMdd)。</summary>
+    private static string RenderBranchName(string template, string taskId)
+    {
+        var now = DateTimeOffset.Now;
+        return template
+            .Replace("{task_id}", taskId, StringComparison.OrdinalIgnoreCase)
+            .Replace("{timestamp}", now.ToString("yyyyMMddHHmmss"), StringComparison.OrdinalIgnoreCase)
+            .Replace("{date}", now.ToString("yyyyMMdd"), StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>阻断来源：依赖失败（Failed/Blocked）或悬空（不存在）的依赖 Id。</summary>
+    private List<string>? ComputeBlockedBy(TaskItem task)    {
+        if (task.Status != TaskStatus.Blocked || task.DependsOn is not { Count: > 0 })
+        {
+            return null;
+        }
+
+        var byId = _tasks.ToDictionary(t => t.Id, StringComparer.OrdinalIgnoreCase);
+        var sources = new List<string>();
+        foreach (var dep in task.DependsOn)
+        {
+            if (!byId.TryGetValue(dep, out var depTask))
+            {
+                sources.Add($"{dep}（不存在）"); // 悬空依赖
+            }
+            else if (depTask.Status is TaskStatus.Failed or TaskStatus.Blocked)
+            {
+                sources.Add(dep);
+            }
+        }
+
+        return sources.Count > 0 ? sources : null;
+    }
+
+    /// <summary>待人工原因：任务错误，或首个未完成阶段的门禁遗留/产出摘要。</summary>
+    private static string? ComputeLeftover(TaskItem task)
+    {
+        if (!string.IsNullOrWhiteSpace(task.Error))
+        {
+            return task.Error;
+        }
+
+        if (task.StageResults is null)
+        {
+            return null;
+        }
+
+        var pending = task.StageResults.FirstOrDefault(s => s.Status != TaskStatus.Done);
+        if (pending is null)
+        {
+            return null;
+        }
+
+        return pending.GateLeftover ?? pending.OutputSummary ?? $"阶段 {pending.Name ?? pending.StageId} 未完成";
     }
 }

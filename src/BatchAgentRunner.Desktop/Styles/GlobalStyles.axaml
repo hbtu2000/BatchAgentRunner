@@ -70,6 +70,12 @@
     <Style Selector="Ellipse.st-interrupted">
         <Setter Property="Fill" Value="{DynamicResource StatusInterruptedBrush}" />
     </Style>
+    <Style Selector="Ellipse.st-attention">
+        <Setter Property="Fill" Value="{DynamicResource StatusAttentionBrush}" />
+    </Style>
+    <Style Selector="Ellipse.st-blocked">
+        <Setter Property="Fill" Value="{DynamicResource StatusBlockedBrush}" />
+    </Style>
 
     <!-- 批级 6 态（主框架状态胶囊） -->
     <Style Selector="Ellipse.batch-idle">

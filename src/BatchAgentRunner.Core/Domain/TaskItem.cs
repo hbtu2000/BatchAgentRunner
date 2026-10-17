@@ -137,8 +137,47 @@ public sealed class TaskItem : INotifyPropertyChanged
         set => SetField(ref _durationSeconds, value);
     }
 
+    // ---------------- 二期扩展字段（一期不写盘，反序列化忽略未知字段以保证前向兼容） ----------------
+
+    /// <summary>工作流定义（取代单条 Instruction 时设置）。</summary>
+    [JsonPropertyName("workflow")]
+    public WorkflowSpec? Workflow { get; set; }
+
+    /// <summary>任务依赖（DAG）：本任务依赖的任务 Id 列表。</summary>
+    [JsonPropertyName("depends_on")]
+    public List<string>? DependsOn { get; set; }
+
+    /// <summary>项目级任务关联的代码仓库 / 分支（可选）。</summary>
+    [JsonPropertyName("project_ref")]
+    public ProjectRef? ProjectRef { get; set; }
+
+    /// <summary>由模板展开得到的变量实例（溯源用，不参与执行）。</summary>
+    [JsonPropertyName("template_vars")]
+    public TemplateVars? TemplateVars { get; set; }
+
+    /// <summary>该任务门禁/修订循环上限覆盖（全局见 RunOptions）。</summary>
+    [JsonPropertyName("max_loops")]
+    public int? MaxLoops { get; set; }
+
+    /// <summary>分批推进时的批大小覆盖。</summary>
+    [JsonPropertyName("batch_size")]
+    public int? BatchSize { get; set; }
+
+    /// <summary>工作流每个阶段的产出/状态（仅工作流任务）。</summary>
+    [JsonPropertyName("stage_results")]
+    public List<StageResult>? StageResults { get; set; }
+
+    /// <summary>断点恢复会话句柄（CLI 支持时；默认 null = 一期方案 a）。</summary>
+    [JsonPropertyName("session")]
+    public SessionHandle? Session { get; set; }
+
     [JsonIgnore]
-    public bool IsTerminal => Status is TaskStatus.Done or TaskStatus.Failed or TaskStatus.Interrupted;
+    public bool IsWorkflow => Workflow is { Stages.Count: > 0 };
+
+    [JsonIgnore]
+    public bool IsTerminal =>
+        Status is TaskStatus.Done or TaskStatus.Failed or TaskStatus.Interrupted
+            or TaskStatus.NeedsAttention or TaskStatus.Blocked;
 
     /// <summary>结果是否为「部分输出」（中断/超时保留的中间结果）。</summary>
     [JsonIgnore]
@@ -171,7 +210,15 @@ public sealed class TaskItem : INotifyPropertyChanged
         Error = Error,
         StartedAt = StartedAt,
         FinishedAt = FinishedAt,
-        DurationSeconds = DurationSeconds
+        DurationSeconds = DurationSeconds,
+        Workflow = Workflow?.Clone(),
+        DependsOn = DependsOn is null ? null : new List<string>(DependsOn),
+        ProjectRef = ProjectRef?.Clone(),
+        TemplateVars = TemplateVars?.Clone(),
+        MaxLoops = MaxLoops,
+        BatchSize = BatchSize,
+        StageResults = StageResults is null ? null : new List<StageResult>(StageResults),
+        Session = Session?.Clone()
     };
 
     private void SetField<T>(ref T field, T value, [CallerMemberName] string? name = null)

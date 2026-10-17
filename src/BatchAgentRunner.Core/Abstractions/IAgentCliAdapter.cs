@@ -85,4 +85,10 @@ public interface IAgentCliAdapter
     /// 倍率来自官方产品配置缓存（~/.codebuddy/local_storage），CLI 未拉到目录时退化为纯模型名（倍率为 null）。
     /// </summary>
     Task<IReadOnlyList<ModelCatalogEntry>> ListModelCatalogAsync(AccountConfig account, CancellationToken cancellationToken = default);
+
+    /// <summary>
+    /// 该 adapter 是否支持恢复指定会话（二期方案 b，PRD 15.4.6）。
+    /// 默认 <c>false</c>（回退一期方案 a：完整指令重发）。真实 CLI 适配器在 M0 V-8 验证支持后重写。
+    /// </summary>
+    bool CanResume(SessionHandle handle) => false;
 }

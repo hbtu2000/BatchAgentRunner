@@ -64,6 +64,14 @@
                             Command="{Binding NavigateCommand}" CommandParameter="report"
                             conv:StatusDotHelper.NavPage="report"
                             conv:StatusDotHelper.NavActivePage="{Binding ActivePage}" />
+                    <Button Content="变更概览" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            Command="{Binding NavigateCommand}" CommandParameter="diff"
+                            conv:StatusDotHelper.NavPage="diff"
+                            conv:StatusDotHelper.NavActivePage="{Binding ActivePage}" />
+                    <Button Content="模板库" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
+                            Command="{Binding NavigateCommand}" CommandParameter="templates"
+                            conv:StatusDotHelper.NavPage="templates"
+                            conv:StatusDotHelper.NavActivePage="{Binding ActivePage}" />
                 </StackPanel>
 
                 <StackPanel Grid.Row="2" Spacing="6">

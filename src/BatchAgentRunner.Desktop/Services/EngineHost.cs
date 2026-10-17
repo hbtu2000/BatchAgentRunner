@@ -5,11 +5,14 @@ using BatchAgentRunner.Core.Engine;
 using BatchAgentRunner.Core.Events;
 using BatchAgentRunner.Core.Options;
 using BatchAgentRunner.Infrastructure.CredentialVault;
+using BatchAgentRunner.Infrastructure.Diff;
+using BatchAgentRunner.Infrastructure.Git;
 using BatchAgentRunner.Infrastructure.Http;
 using BatchAgentRunner.Infrastructure.Logging;
+using BatchAgentRunner.Infrastructure.Notification;
 using BatchAgentRunner.Infrastructure.Persistence;
-using BatchAgentRunner.Infrastructure.Reporting;
 using BatchAgentRunner.Infrastructure.Platform;
+using BatchAgentRunner.Infrastructure.Reporting;
 using BatchAgentRunner.Infrastructure.TaskFiles;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System.Collections.Generic;
@@ -106,7 +109,12 @@ public sealed class EngineHost : ObservableObject
         }
 
         var engine = new BatchEngine(Options, adapter, _taskFileStore, _cooldownStore, _logger,
-            credentialVault: VaultHost.Vault);
+            credentialVault: VaultHost.Vault,
+            notifications: Options.Notifications,
+            notificationDispatcher: CreateNotificationDispatcher(),
+            diffCollector: Options.CollectDiffs ? new DiffCollector(_logger, Options) : null,
+            git: new LocalGitIntegration(),
+            markdownWriter: new MarkdownInPlaceWriter());
         engine.EventRaised += (_, ev) =>
         {
             if (ev.BatchStatus.HasValue)
@@ -128,6 +136,22 @@ public sealed class EngineHost : ObservableObject
         _engine.InitializeAsync().GetAwaiter().GetResult();
         Status = _engine.Status;
         TasksChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    /// <summary>
+    /// 二期通知分发器（REQ-018）：Desktop 通道转为主界面 toast（经引擎事件广播），
+    /// Webhook / SMTP 走各自 notifier。仅当配置了通知规则时才需要，无规则时不构造也不分发。
+    /// </summary>
+    private INotificationDispatcher CreateNotificationDispatcher()
+    {
+        var notifiers = new List<INotifier>
+        {
+            new DesktopNotifier((title, message) => EventRaised?.Invoke(this,
+                new BatchEvent(BatchEventKind.Info, DateTimeOffset.Now, $"[通知] {title}：{message}"))),
+            new WebhookNotifier(),
+            new SmtpNotifier(_logger)
+        };
+        return new NotificationDispatcher(notifiers);
     }
 
     public async Task SaveConfigAsync()

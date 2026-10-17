@@ -1,0 +1,136 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:BatchAgentRunner.Desktop.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             x:Class="BatchAgentRunner.Desktop.Views.TemplateEditorView"
+             Background="{DynamicResource BgAppBrush}">
+
+    <Design.DataContext>
+        <vm:TemplateEditorViewModel />
+    </Design.DataContext>
+
+    <Grid RowDefinitions="Auto,*,Auto" Margin="12" ColumnDefinitions="300,*">
+
+        <!-- 模板清单 -->
+        <Border Grid.Row="0" Grid.RowSpan="2" Grid.Column="0" Padding="8" Theme="{StaticResource Card}"
+                Margin="0,0,8,0">
+            <Grid RowDefinitions="Auto,*,Auto">
+                <StackPanel Grid.Row="0" Spacing="6" Margin="0,0,0,8">
+                    <TextBlock Text="模板库（内置 S1–S16 + 自定义）" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                    <Button Content="加载模板" Command="{Binding LoadCommand}" HorizontalAlignment="Stretch" />
+                </StackPanel>
+                <ListBox Grid.Row="1" ItemsSource="{Binding Templates}" SelectedItem="{Binding SelectedTemplate}"
+                         Background="Transparent" BorderThickness="0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="vm:TemplateRowViewModel">
+                            <StackPanel Margin="2" Spacing="2">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <TextBlock Text="{Binding Name}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                                    <TextBlock Text="{Binding KindText}" FontSize="11"
+                                               Foreground="{DynamicResource InfoBrush}" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding Id}" FontSize="11"
+                                           Foreground="{DynamicResource TextMutedBrush}" />
+                                <TextBlock Text="{Binding VarSummary}" FontSize="11"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Grid>
+        </Border>
+
+        <!-- 变量编辑 + 预览 -->
+        <Grid Grid.Column="1" RowDefinitions="Auto,Auto,*,Auto">
+            <Border Grid.Row="0" Padding="12" Theme="{StaticResource Card}" Margin="0,0,0,8">
+                <StackPanel Spacing="6">
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="{Binding SelectedTemplate.Name}" FontSize="15" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <TextBlock Text="{Binding SelectedWorkflowText}" FontSize="12"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBlock Text="{Binding SelectedChainText}" FontSize="12"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                    </StackPanel>
+                    <TextBlock Text="{Binding SelectedDescription}" TextWrapping="Wrap" MaxHeight="80"
+                               FontFamily="{DynamicResource FontMono}" FontSize="12"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+            </Border>
+
+            <!-- 变量编辑 -->
+            <Border Grid.Row="1" Padding="12" Theme="{StaticResource Card}" Margin="0,0,0,8">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="变量取值" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <ItemsControl ItemsSource="{Binding VarInputs}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="vm:TemplateVarInputViewModel">
+                                <Grid ColumnDefinitions="110,100,*,*" Margin="0,2">
+                                    <TextBlock Grid.Column="0" Text="{Binding Name}" FontWeight="SemiBold"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                                    <TextBlock Grid.Column="1" Text="{Binding SourceText}" FontSize="12"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextMutedBrush}" />
+                                    <TextBox Grid.Column="2" Text="{Binding Value}" Watermark="取值（默认）"
+                                             Margin="0,0,6,0" />
+                                    <TextBox Grid.Column="3" Text="{Binding ValuesText}"
+                                             Watermark="多值（逗号分隔，做笛卡尔积）" />
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <TextBlock Text="基准目录：" VerticalAlignment="Center"
+                                   Foreground="{DynamicResource TextSecondaryBrush}" />
+                        <TextBox Width="280" Text="{Binding BaseDir}" />
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button Content="展开预览" Classes="primary" Command="{Binding PreviewCommand}" />
+                        <Button Content="生成任务文件" Command="{Binding GenerateCommand}" />
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <!-- 展开预览 -->
+            <Border Grid.Row="2" Padding="8" Theme="{StaticResource Card}" Margin="0,0,0,8">
+                <ListBox ItemsSource="{Binding PreviewTasks}" Background="Transparent" BorderThickness="0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="vm:PreviewTaskRowViewModel">
+                            <StackPanel Margin="2" Spacing="2">
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <TextBlock Text="{Binding Id}" FontWeight="SemiBold"
+                                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                                    <TextBlock Text="{Binding StageText}" FontSize="12"
+                                               Foreground="{DynamicResource InfoBrush}" />
+                                    <TextBlock Text="{Binding DependsText}" FontSize="12"
+                                               Foreground="{DynamicResource TextMutedBrush}"
+                                               IsVisible="{Binding HasDepends}" />
+                                </StackPanel>
+                                <TextBlock Text="{Binding Instruction}" FontSize="12" TextWrapping="Wrap"
+                                           MaxHeight="60" FontFamily="{DynamicResource FontMono}"
+                                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+            <!-- 输出路径 + 状态 -->
+            <StackPanel Grid.Row="3" Spacing="6">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="输出路径：" VerticalAlignment="Center"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <TextBox Text="{Binding OutputPath}" Width="520" />
+                </StackPanel>
+                <TextBlock Text="{Binding StatusMessage}" TextWrapping="Wrap"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+            </StackPanel>
+        </Grid>
+    </Grid>
+</UserControl>

@@ -43,9 +43,9 @@ public class UsabilityTests
     }
 
     private static (BatchEngine Engine, MockAdapter Adapter, FileRunLogger Logger, List<BatchEvent> Events) BuildEngine(
-        RunOptions options, MockAdapter adapter, string dir, DateTimeOffset? now = null)
+        RunOptions options, MockAdapter adapter, string dir, DateTimeOffset? now = null, FakeClock? clock = null)
     {
-        var clock = new FakeClock(now ?? Noon);
+        clock ??= new FakeClock(now ?? Noon);
         adapter.Clock = clock;
         var logger = new FileRunLogger(options.TaskFilePath);
         var engine = new BatchEngine(options, adapter, new TaskFileStore(),
@@ -254,10 +254,22 @@ public class UsabilityTests
 
         var window = new FreeTimeWindow(new TimeOnly(22, 0), new TimeOnly(6, 0));
         var options = Options(taskPath, M("m1", window));
-        var (engine, adapter, logger, events) = BuildEngine(options, new MockAdapter(), dir);
+        // 冻结时钟：等待循环的 DelayAsync 永不完成，引擎确定性地挂起在 Waiting，
+        // 取消必然先于「时间推进到恢复点」到达——消除并行运行下的时序竞态。
+        var (engine, adapter, logger, events) = BuildEngine(options, new MockAdapter(), dir,
+            clock: new FakeClock(Noon) { AutoAdvance = false });
 
         var run = engine.StartAsync(waitIfUnavailable: true);
-        await WaitUntilAsync(() => engine.Status == BatchStatus.Waiting);
+        // 事件驱动等待：BatchWaiting 在引擎线程同步触发即置信，替代轮询瞬时状态
+        var waitingSeen = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        engine.EventRaised += (_, e) =>
+        {
+            if (e.Kind == BatchEventKind.BatchWaiting)
+            {
+                waitingSeen.TrySetResult();
+            }
+        };
+        await waitingSeen.Task.WaitAsync(TimeSpan.FromSeconds(10));
         engine.CancelWaiting();
 
         var report = await run;

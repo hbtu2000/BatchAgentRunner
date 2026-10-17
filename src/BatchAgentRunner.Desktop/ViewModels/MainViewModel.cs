@@ -24,6 +24,8 @@ public sealed class MainViewModel : ViewModelBase
         Report = new ReportViewModel(Host);
         Wizard = new SetupWizardViewModel(Host);
         Login = new LoginViewModel(Host);
+        Diff = new DiffViewModel(Host);
+        Templates = new TemplateEditorViewModel(Host);
 
         // 把「账号登录 / 配置向导 / 高级配置」三个配置入口合并为一个配置中心
         ConfigHub = new ConfigHubViewModel(Login, Wizard, Config);
@@ -58,6 +60,12 @@ public sealed class MainViewModel : ViewModelBase
 
     /// <summary>配置中心：合并「账号登录 / 配置向导 / 高级配置」三个配置入口。</summary>
     public ConfigHubViewModel ConfigHub { get; }
+
+    /// <summary>变更概览（二期 diff 视图，REQ-017）。</summary>
+    public DiffViewModel Diff { get; }
+
+    /// <summary>模板库（二期 REQ-016 模板展开与任务生成）。</summary>
+    public TemplateEditorViewModel Templates { get; }
 
     public ViewModelBase CurrentPage
     {
@@ -107,6 +115,16 @@ public sealed class MainViewModel : ViewModelBase
                 Report.Refresh();
                 CurrentPage = Report;
                 ActivePage = "report";
+                break;
+            case "diff":
+                Diff.Refresh();
+                CurrentPage = Diff;
+                ActivePage = "diff";
+                break;
+            case "templates":
+                _ = Templates.LoadAsync();
+                CurrentPage = Templates;
+                ActivePage = "templates";
                 break;
             default:
                 CurrentPage = Monitor;

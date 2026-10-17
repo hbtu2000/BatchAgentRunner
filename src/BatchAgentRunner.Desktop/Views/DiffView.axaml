@@ -1,0 +1,81 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:vm="using:BatchAgentRunner.Desktop.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="700"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             x:Class="BatchAgentRunner.Desktop.Views.DiffView"
+             Background="{DynamicResource BgAppBrush}">
+
+    <Design.DataContext>
+        <vm:DiffViewModel />
+    </Design.DataContext>
+
+    <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="12">
+
+        <!-- 标题 + 摘要 + 刷新 -->
+        <Border Grid.Row="0" Padding="14" Theme="{StaticResource Card}" Margin="0,0,0,8">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Grid.Column="0" Spacing="2">
+                    <TextBlock Text="变更概览（diff 视图）" FontSize="16" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                    <TextBlock Text="{Binding SummaryText}" TextWrapping="Wrap"
+                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                </StackPanel>
+                <Button Grid.Column="1" Content="刷新" Command="{Binding RefreshCommand}"
+                        VerticalAlignment="Center" />
+            </Grid>
+        </Border>
+
+        <!-- 筛选条 -->
+        <Border Grid.Row="1" Padding="12" Theme="{StaticResource Card}" Margin="0,0,0,8">
+            <StackPanel Orientation="Horizontal" Spacing="12">
+                <CheckBox Content="仅看修改（Modified）" IsChecked="{Binding OnlyModified}"
+                          VerticalAlignment="Center" />
+                <TextBlock Text="阶段筛选：" VerticalAlignment="Center"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                <TextBox Width="180" Text="{Binding StageFilter}"
+                         Watermark="留空 = 全部阶段" />
+                <TextBlock Text="{Binding ReportPathText, StringFormat='报告：{0}'}" FontSize="12"
+                           VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                           Foreground="{DynamicResource TextMutedBrush}" />
+            </StackPanel>
+        </Border>
+
+        <!-- 文件树 + diff 内容 -->
+        <Grid Grid.Row="2" ColumnDefinitions="380,*">
+            <Border Grid.Column="0" Padding="8" Theme="{StaticResource Card}" Margin="0,0,8,0">
+                <ListBox ItemsSource="{Binding Diffs}" SelectedItem="{Binding SelectedDiff}"
+                         Background="Transparent" BorderThickness="0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="vm:DiffRowViewModel">
+                            <StackPanel Orientation="Horizontal" Spacing="8" Margin="2">
+                                <TextBlock Text="{Binding KindText}" FontSize="12" FontWeight="SemiBold"
+                                           Foreground="{Binding KindBrush}" />
+                                <TextBlock Text="{Binding FilePath}" TextTrimming="CharacterEllipsis"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+
+            <Border Grid.Column="1" Padding="8" Theme="{StaticResource Card}">
+                <ListBox ItemsSource="{Binding DiffLines}" FontSize="12"
+                         FontFamily="{DynamicResource FontMono}"
+                         Background="{DynamicResource BgSurface2Brush}" BorderThickness="0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="vm:DiffLineViewModel">
+                            <TextBlock Text="{Binding Text}" Foreground="{Binding Foreground}"
+                                       TextWrapping="NoWrap" />
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </Border>
+        </Grid>
+
+        <TextBlock Grid.Row="3" Margin="0,8,0,0"
+                   Text="diff 采集需在「高级配置 → 工作流」启用，且任务配置了工作空间；记录来自最近一次批处理报告。"
+                   TextWrapping="Wrap" Foreground="{DynamicResource TextMutedBrush}" />
+    </Grid>
+</UserControl>

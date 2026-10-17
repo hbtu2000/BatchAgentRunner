@@ -54,6 +54,8 @@ public class StatusDotHelper : AvaloniaObject
             TaskStatus.Done => "st-done",
             TaskStatus.Failed => "st-failed",
             TaskStatus.Interrupted => "st-interrupted",
+            TaskStatus.NeedsAttention => "st-attention",
+            TaskStatus.Blocked => "st-blocked",
             _ => "st-pending"
         } : "st-pending";
         el.Classes.Clear();

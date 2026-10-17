@@ -364,3 +364,143 @@ public sealed class AccountEditor : ObservableObject
             : null;
     }
 }
+
+/// <summary>
+/// 通知规则编辑器（二期 REQ-018）：把结构化 NotificationRule 映射为可编辑的
+/// 通道 / 触发事件多选 / Webhook / SMTP / 安静时段。
+/// </summary>
+public sealed class NotificationRuleEditor : ObservableObject
+{
+    private NotificationChannel _channel;
+    private bool _batchCompleted = true;
+    private bool _batchBlocked = true;
+    private bool _batchTerminated;
+    private bool _taskFailed;
+    private bool _needsAttention;
+    private string _webhookUrl = string.Empty;
+    private string _smtpHost = string.Empty;
+    private string _smtpPortText = "587";
+    private string _smtpFrom = string.Empty;
+    private string _smtpToText = string.Empty;
+    private string _smtpCredentialRef = string.Empty;
+    private string _quietHours = string.Empty;
+
+    public NotificationRuleEditor(NotificationRule rule)
+    {
+        _channel = rule.Channel;
+        _batchCompleted = rule.Triggers.Contains(NotifyTrigger.BatchCompleted);
+        _batchBlocked = rule.Triggers.Contains(NotifyTrigger.BatchBlocked);
+        _batchTerminated = rule.Triggers.Contains(NotifyTrigger.BatchTerminated);
+        _taskFailed = rule.Triggers.Contains(NotifyTrigger.TaskFailed);
+        _needsAttention = rule.Triggers.Contains(NotifyTrigger.NeedsAttention);
+        _webhookUrl = rule.WebhookUrl ?? string.Empty;
+        _quietHours = rule.QuietHours ?? string.Empty;
+        if (rule.Smtp is { } smtp)
+        {
+            _smtpHost = smtp.Host ?? string.Empty;
+            _smtpPortText = smtp.Port.ToString();
+            _smtpFrom = smtp.From ?? string.Empty;
+            _smtpToText = string.Join(", ", smtp.To);
+            _smtpCredentialRef = smtp.CredentialRef ?? string.Empty;
+        }
+    }
+
+    public NotificationChannel Channel
+    {
+        get => _channel;
+        set
+        {
+            if (SetProperty(ref _channel, value))
+            {
+                OnPropertyChanged(nameof(IsWebhook));
+                OnPropertyChanged(nameof(IsSmtp));
+            }
+        }
+    }
+
+    public IReadOnlyList<NotificationChannel> Channels { get; } =
+        new[] { NotificationChannel.Desktop, NotificationChannel.Webhook, NotificationChannel.Smtp };
+
+    public bool IsWebhook => _channel == NotificationChannel.Webhook;
+
+    public bool IsSmtp => _channel == NotificationChannel.Smtp;
+
+    public bool BatchCompleted { get => _batchCompleted; set => SetProperty(ref _batchCompleted, value); }
+
+    public bool BatchBlocked { get => _batchBlocked; set => SetProperty(ref _batchBlocked, value); }
+
+    public bool BatchTerminated { get => _batchTerminated; set => SetProperty(ref _batchTerminated, value); }
+
+    public bool TaskFailed { get => _taskFailed; set => SetProperty(ref _taskFailed, value); }
+
+    public bool NeedsAttention { get => _needsAttention; set => SetProperty(ref _needsAttention, value); }
+
+    public string WebhookUrl { get => _webhookUrl; set => SetProperty(ref _webhookUrl, value); }
+
+    public string SmtpHost { get => _smtpHost; set => SetProperty(ref _smtpHost, value); }
+
+    public string SmtpPortText { get => _smtpPortText; set => SetProperty(ref _smtpPortText, value); }
+
+    public string SmtpFrom { get => _smtpFrom; set => SetProperty(ref _smtpFrom, value); }
+
+    /// <summary>收件人（逗号或换行分隔多个）。</summary>
+    public string SmtpToText { get => _smtpToText; set => SetProperty(ref _smtpToText, value); }
+
+    /// <summary>SMTP 凭据引用（credential_ref 风格，不存明文密码）。</summary>
+    public string SmtpCredentialRef { get => _smtpCredentialRef; set => SetProperty(ref _smtpCredentialRef, value); }
+
+    /// <summary>安静时段（本地时间 HH:mm-HH:mm），命中则不推送。</summary>
+    public string QuietHours { get => _quietHours; set => SetProperty(ref _quietHours, value); }
+
+    /// <summary>触发事件的人类可读摘要（列表行显示）。</summary>
+    public string TriggersSummary
+    {
+        get
+        {
+            var names = new List<string>();
+            if (_batchCompleted) names.Add("批完成");
+            if (_batchBlocked) names.Add("批阻塞");
+            if (_batchTerminated) names.Add("批终止");
+            if (_taskFailed) names.Add("任务失败");
+            if (_needsAttention) names.Add("待人工");
+            return names.Count > 0 ? string.Join("、", names) : "（未选触发事件）";
+        }
+    }
+
+    /// <summary>写回结构化规则。</summary>
+    public NotificationRule Apply()
+    {
+        var triggers = new List<NotifyTrigger>();
+        if (_batchCompleted) triggers.Add(NotifyTrigger.BatchCompleted);
+        if (_batchBlocked) triggers.Add(NotifyTrigger.BatchBlocked);
+        if (_batchTerminated) triggers.Add(NotifyTrigger.BatchTerminated);
+        if (_taskFailed) triggers.Add(NotifyTrigger.TaskFailed);
+        if (_needsAttention) triggers.Add(NotifyTrigger.NeedsAttention);
+
+        SmtpConfig? smtp = null;
+        if (_channel == NotificationChannel.Smtp && !string.IsNullOrWhiteSpace(_smtpHost))
+        {
+            smtp = new SmtpConfig
+            {
+                Host = _smtpHost.Trim(),
+                Port = int.TryParse(_smtpPortText, out var p) ? p : 587,
+                From = string.IsNullOrWhiteSpace(_smtpFrom) ? null : _smtpFrom.Trim(),
+                To = _smtpToText
+                    .Split(new[] { ',', '\n', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .ToList(),
+                CredentialRef = string.IsNullOrWhiteSpace(_smtpCredentialRef) ? null : _smtpCredentialRef.Trim()
+            };
+        }
+
+        return new NotificationRule
+        {
+            Channel = _channel,
+            Triggers = triggers,
+            WebhookUrl = _channel == NotificationChannel.Webhook && !string.IsNullOrWhiteSpace(_webhookUrl)
+                ? _webhookUrl.Trim()
+                : null,
+            Smtp = smtp,
+            QuietHours = string.IsNullOrWhiteSpace(_quietHours) ? null : _quietHours.Trim()
+        };
+    }
+}

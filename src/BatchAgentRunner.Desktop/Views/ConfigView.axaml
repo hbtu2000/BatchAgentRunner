@@ -437,6 +437,129 @@
                 </ScrollViewer>
             </TabItem>
 
+            <!-- ===================== 标签页 5：工作流与通知（二期） ===================== -->
+            <TabItem Header="工作流与通知">
+                <ScrollViewer>
+                    <StackPanel Spacing="10" Margin="4">
+
+                        <!-- ⑩ 工作流与模板域 -->
+                        <Border Padding="12" CornerRadius="6" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="⑩ 工作流 · 模板 · 依赖（二期）" FontWeight="SemiBold"
+                                           ToolTip.Tip="二期能力总开关与默认参数。工作流任务由「模板编辑器」或任务文件里的 workflow 字段定义。&#10;门禁未过会按「默认门禁最大循环」进入修订循环（阶段可用 max_loops 覆盖）。" />
+                                <WrapPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
+                                        <TextBlock Text="默认门禁最大循环" VerticalAlignment="Center" Width="130" ToolTip.Tip="质量门禁（命令/审查/人工）未通过时的默认修订循环次数。阶段定义里的 max_loops 优先。" />
+                                        <TextBox Text="{Binding DefaultMaxGateLoops}" Width="70" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
+                                        <TextBlock Text="模板展开单批上限" VerticalAlignment="Center" Width="130" ToolTip.Tip="一次模板展开最多生成多少个任务，超过需确认（防止变量笛卡尔积误生成海量任务）。" />
+                                        <TextBox Text="{Binding TemplateBatchExpansionLimit}" Width="70" />
+                                    </StackPanel>
+                                    <StackPanel Orientation="Horizontal" Margin="0,0,16,6">
+                                        <TextBlock Text="依赖失败策略" VerticalAlignment="Center" Width="90" ToolTip.Tip="某个任务失败时，依赖它的下游怎么处理：阻断下游（默认）/ 终止整批 / 忽略失败照常执行。" />
+                                        <ComboBox ItemsSource="{Binding DependencyPolicies}" SelectedItem="{Binding DependencyFailurePolicy}" Width="150" />
+                                    </StackPanel>
+                                </WrapPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="16">
+                                    <CheckBox Content="Markdown 任务文件原地回写" IsChecked="{Binding MarkdownInPlaceWriteback}"
+                                              ToolTip.Tip="勾上 = 状态/结果直接写回 Markdown 任务文件（托管 meta 区块）。不勾 = 写 sidecar「.result.json」（一期行为）。" />
+                                    <CheckBox Content="启用断点会话恢复" IsChecked="{Binding EnableSessionResume}"
+                                              ToolTip.Tip="勾上 = CLI 支持时尝试从中断点恢复会话（不重新发全量指令）。默认关，回退「完整指令重发」的一期行为。" />
+                                    <CheckBox Content="采集结果 diff" IsChecked="{Binding CollectDiffs}"
+                                              ToolTip.Tip="任务前后对工作空间受关注文件做快照对比，生成 unified diff（代码修改类任务的结果视图）。" />
+                                </StackPanel>
+                                <TextBox Text="{Binding DiffGlobsText}" AcceptsReturn="True" Height="54"
+                                         PlaceholderText="diff 受关注文件 glob（每行一条，留空 = 默认源码类后缀），例如：*.cs / *.ts"
+                                         ToolTip.Tip="相对于任务工作空间的 glob。命中文件才会被快照与对比。" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- ⑪ 通知域 -->
+                        <Border Padding="12" CornerRadius="6" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
+                            <StackPanel Spacing="6">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="⑪ 通知推送（二期，默认不推送）" FontWeight="SemiBold" VerticalAlignment="Center"
+                                               ToolTip.Tip="批级终态或任务失败时按规则推送。安静时段命中则不推送（仍写运行日志）。" />
+                                    <Button Content="添加规则" Command="{Binding AddNotificationRuleCommand}" Margin="16,0,0,0" />
+                                </StackPanel>
+                                <ItemsControl ItemsSource="{Binding NotificationRules}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate x:DataType="models:NotificationRuleEditor">
+                                            <Border Padding="8" Margin="0,0,0,6" CornerRadius="4"
+                                                    BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
+                                                <StackPanel Spacing="6">
+                                                    <StackPanel Orientation="Horizontal" Spacing="10">
+                                                        <TextBlock Text="通道" VerticalAlignment="Center" />
+                                                        <ComboBox ItemsSource="{Binding Channels}" SelectedItem="{Binding Channel}" Width="110" />
+                                                        <TextBlock Text="{Binding TriggersSummary}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                                        <Button Content="删除" Command="{Binding $parent[ItemsControl].DataContext.RemoveNotificationRuleCommand}"
+                                                                CommandParameter="{Binding}" HorizontalAlignment="Right" />
+                                                    </StackPanel>
+                                                    <WrapPanel>
+                                                        <CheckBox Content="批完成" IsChecked="{Binding BatchCompleted}" Margin="0,0,12,0" />
+                                                        <CheckBox Content="批阻塞" IsChecked="{Binding BatchBlocked}" Margin="0,0,12,0" />
+                                                        <CheckBox Content="批终止" IsChecked="{Binding BatchTerminated}" Margin="0,0,12,0" />
+                                                        <CheckBox Content="任务失败" IsChecked="{Binding TaskFailed}" Margin="0,0,12,0" />
+                                                        <CheckBox Content="待人工接管" IsChecked="{Binding NeedsAttention}" Margin="0,0,12,0" />
+                                                        <StackPanel Orientation="Horizontal" Margin="0,0,12,0">
+                                                            <TextBlock Text="安静时段" VerticalAlignment="Center" ToolTip.Tip="本地时间 HH:mm-HH:mm，支持跨午夜（如 22:00-06:00）。命中时段不推送。" />
+                                                            <TextBox Text="{Binding QuietHours}" Width="110" PlaceholderText="22:00-06:00" />
+                                                        </StackPanel>
+                                                    </WrapPanel>
+                                                    <StackPanel IsVisible="{Binding IsWebhook}" Spacing="4">
+                                                        <TextBlock Text="Webhook URL" />
+                                                        <TextBox Text="{Binding WebhookUrl}" PlaceholderText="https://example.com/webhook" />
+                                                    </StackPanel>
+                                                    <StackPanel IsVisible="{Binding IsSmtp}" Spacing="4">
+                                                        <TextBlock Text="SMTP（密码走凭据引用，不明文落地）" />
+                                                        <StackPanel Orientation="Horizontal" Spacing="10">
+                                                            <TextBox Text="{Binding SmtpHost}" Width="180" Watermark="smtp.example.com" />
+                                                            <TextBox Text="{Binding SmtpPortText}" Width="60" Watermark="587" />
+                                                            <TextBox Text="{Binding SmtpFrom}" Width="200" Watermark="from@example.com" />
+                                                        </StackPanel>
+                                                        <StackPanel Orientation="Horizontal" Spacing="10">
+                                                            <TextBox Text="{Binding SmtpToText}" Width="300" Watermark="收件人（逗号分隔多个）" />
+                                                            <TextBox Text="{Binding SmtpCredentialRef}" Width="200" Watermark="凭据引用 key" />
+                                                        </StackPanel>
+                                                    </StackPanel>
+                                                </StackPanel>
+                                            </Border>
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                                <TextBlock Text="未添加规则 = 不推送任何通知。" FontSize="11" Foreground="{DynamicResource TextSecondaryBrush}" />
+                            </StackPanel>
+                        </Border>
+
+                        <!-- ⑫ 版本控制域 -->
+                        <Border Padding="12" CornerRadius="6" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
+                            <StackPanel Spacing="6">
+                                <TextBlock Text="⑫ 版本控制（二期项目级任务）" FontWeight="SemiBold"
+                                           ToolTip.Tip="为带 project_ref 的任务自动建分支 / 开 PR。仓库路径留空 = 不启用 Git 集成。&#10;分支命名支持占位符：{task_id} {timestamp}(yyyyMMddHHmmss) {date}(yyyyMMdd)。" />
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <TextBlock Text="仓库路径" VerticalAlignment="Center" />
+                                    <TextBox Text="{Binding GitRepoPath}" Width="320" PlaceholderText="如 D:\repos\my-project（留空 = 不启用）" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <TextBlock Text="基线分支" VerticalAlignment="Center" />
+                                    <TextBox Text="{Binding GitBaseBranch}" Width="140" PlaceholderText="main" />
+                                    <TextBlock Text="PR 目标分支" VerticalAlignment="Center" Margin="16,0,0,0" />
+                                    <TextBox Text="{Binding GitPrTargetBranch}" Width="140" PlaceholderText="留空 = 同基线分支" />
+                                </StackPanel>
+                                <StackPanel Orientation="Horizontal" Spacing="10">
+                                    <TextBlock Text="分支命名规则" VerticalAlignment="Center" />
+                                    <TextBox Text="{Binding GitBranchNaming}" Width="240" />
+                                    <CheckBox Content="完成后自动开 PR" IsChecked="{Binding GitAutoOpenPr}"
+                                              ToolTip.Tip="需要本机安装 gh CLI 并已登录；不可用时退化为「推送分支」并在结果里提示。" />
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
         </TabControl>
 
         <!-- 底部：保存 -->
