@@ -6,6 +6,12 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <!-- 阶段 -1 / P0-15：落地编译期分析，先 warning 不阻断；
+         TreatWarningsAsErrors 转 true 见治理方案阶段 1（§4.9，分批开启）。
+         EnforceCodeStyleInBuild 使 .editorconfig 的 40+ 条规则在构建期执行。 -->
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <AnalysisLevel>latest-recommended</AnalysisLevel>
+    <AnalysisMode>Recommended</AnalysisMode>
     <InvariantGlobalization>true</InvariantGlobalization>
     <EnableDefaultItems>true</EnableDefaultItems>
     <NoWarn>$(NoWarn);CS1591</NoWarn>

@@ -32,6 +32,7 @@ v1.0 的 P0 缺陷清单经本版实测复核**全部仍然成立**（重点复�
 
 ---
 
+
 ### 1.1 P0 — 立即偿还（共 17 项）
 
 #### A 组：正确性 / 安全（10 项，沿用 v1.0，本次实测复核仍成立）
@@ -53,14 +54,16 @@ v1.0 的 P0 缺陷清单经本版实测复核**全部仍然成立**（重点复�
 
 特征：**不修，则 A 组修完下一季度会原样长回来**。合计成本 < 1 人日。
 
+**状态：阶段 −1 已全部完成（2026-10-17）。**
+
 | ID        | 位置                                          | 债务（实测证据）                                                                                                                                                                                                                                                | 影响                                                                               | 成本 | 偿还方式                          |
 | --------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | -- | ----------------------------- |
-| **P0-11** | git 历史                                      | **12 个提交中 10 个提交信息为空**；首提交 `9be9485` 一次性 176 文件 / +22,000 行；`b86c0fe` 单次 63 文件 / +8,487                                                                                                                                                                 | 6 周后**无法追溯任何一次变更的意图**，债务无法归因、churn 分析失效；与自家 `CODE-REVIEW §5.2`「单 PR 聚焦一个关注点」直接冲突 | 极小 | 隔离（commit-msg 钩 + 模板）         |
+| **P0-11** | git 历史                                      | **12 个提交中 10 个提交信息为空**；首提交 `9be9485` 一次性 176 文件 / +22,000 行；`b86c0fe` 单次 63 文件 / +8,487                                                                                                                                                                 | 6 周后**无法追溯任何一次变更的意图**，债务无法归因、churn 分析失效；与自家 `CODE-REVIEW §5.2`「单 PR 聚焦一个关注点」直接冲突 | 极小 | 隔离（commit-msg 钩 + 模板）— ✅ 阶段 −1 已完成 |
 | **P0-12** | `Directory.Build.props`                     | 增量构建报 **0 警告**，`--no-incremental` 全量重建 Core 实测 **36 个 CA2007**（全方案 50+）。CI 若看增量结果会**永远全绿**                                                                                                                                                              | "构建干净"是假象，`TreatWarningsAsErrors` 一旦开启会一次性爆雷                                     | 小  | 重构（先清存量警告，再改 CI 用全量基线）        |
-| **P0-13** | `.gitignore` 末尾 4 行                         | **按日期逐个文件名 ignore**：`/.workbuddy/memory/2026-10-16.md`、`/.workbuddy/memory/2026-10-17.md`… 而非 `.workbuddy/`                                                                                                                                             | 债务**每天都在自动新增**；`/TaskList` 是在 `tasks.xlsx` 已提交**之后**才补的，历史仍在                     | 极小 | 重构（目录级规则 + `git rm --cached`） |
-| **P0-14** | 仓库（实测 `git ls-files`）                       | 10 项产物/隐私已入库：`.playwright-cli/page-*.yml`×2、`.workbuddy/memory/*.md`×2、`.workbuddy/tmp/check_px.py`、`gen_icon2.py`、`.tmp_reflect.ps1`（**含个人绝对路径**）、`models.yaml`（**0 字节**）、`samples/tasks.json.backup-20261015181009`、`TaskList/tasks.xlsx`（**真实运行数据**） | 隐私外泄面 + 仓库膨胀 + 新人 `clone` 后环境被污染                                                 | 小  | 重构（清理 + 净化历史）                 |
-| **P0-15** | `Directory.Build.props:8,11`                | `TreatWarningsAsErrors=false` + `NoWarn CS1591`；无 `EnforceCodeStyleInBuild`、无 `AnalysisLevel`、无 `AnalysisMode`                                                                                                                                          | 公共 API 文档约束被显式关闭；`.editorconfig` 的 40+ 条规则**构建期完全不执行**                           | 极小 | 重构（配置落地，见 §4.2）               |
-| **P0-16** | 仓库根                                         | **无任何 CI**（无 `.github/`，无流水线）；`coverlet.collector` 已引用但无收集管线                                                                                                                                                                                            | 债务与回归**无自动发现机制**，全靠人                                                             | 中  | 补齐（build+test+覆盖率，先只报不阻断）     |
+| **P0-13** | `.gitignore` 末尾 4 行                         | **按日期逐个文件名 ignore**：`/.workbuddy/memory/2026-10-16.md`、`/.workbuddy/memory/2026-10-17.md`… 而非 `.workbuddy/`                                                                                                                                             | 债务**每天都在自动新增**；`/TaskList` 是在 `tasks.xlsx` 已提交**之后**才补的，历史仍在                     | 极小 | 重构（目录级规则 + `git rm --cached`）— ✅ 阶段 −1 已完成 |
+| **P0-14** | 仓库（实测 `git ls-files`）                       | 10 项产物/隐私已入库：`.playwright-cli/page-*.yml`×2、`.workbuddy/memory/*.md`×2、`.workbuddy/tmp/check_px.py`、`gen_icon2.py`、`.tmp_reflect.ps1`（**含个人绝对路径**）、`models.yaml`（**0 字节**）、`samples/tasks.json.backup-20261015181009`、`TaskList/tasks.xlsx`（**真实运行数据**） | 隐私外泄面 + 仓库膨胀 + 新人 `clone` 后环境被污染                                                 | 小  | 重构（清理 + 净化历史）— ✅ 阶段 −1 已完成 |
+| **P0-15** | `Directory.Build.props:8,11`                | `TreatWarningsAsErrors=false` + `NoWarn CS1591`；无 `EnforceCodeStyleInBuild`、无 `AnalysisLevel`、无 `AnalysisMode`                                                                                                                                          | 公共 API 文档约束被显式关闭；`.editorconfig` 的 40+ 条规则**构建期完全不执行**                           | 极小 | 重构（配置落地，见 §4.2）— ✅ 阶段 −1 已完成 |
+| **P0-16** | 仓库根                                         | **无任何 CI**（无 `.github/`，无流水线）；`coverlet.collector` 已引用但无收集管线                                                                                                                                                                                            | 债务与回归**无自动发现机制**，全靠人                                                             | 中  | 补齐（build+test+覆盖率，先只报不阻断）— ✅ 阶段 −1 已完成 |
 | **P0-17** | `tests/BatchAgentRunner.Tests.csproj:22-24` | 测试项目只引用 Core / Infrastructure / Agents，**唯独不引用 Desktop（5,411 行 = src 的 30%）**                                                                                                                                                                           | Desktop **结构上不可测试**，P0-6/P0-7/P1-7 类缺陷无法用测试锁住，只能靠人眼                              | 中  | 重构（补引用 + 首批冒烟测试）              |
 
 > P0-17 说明：Desktop 不是"没写测试"，而是**测试项目根本没有引用它**——即使想写也写不了。这是可测性缺失，不是测试缺失，故列 P0 而非 P1。
@@ -138,6 +141,8 @@ v1.0 的 P0 缺陷清单经本版实测复核**全部仍然成立**（重点复�
 
 > 顺序决策：先做 1–3（当天），再做 4–5（2–3 天）。**在 CI 用全量基线之前，任何"警告清零"的说法都不可信。**
 
+> ✅ **阶段 −1 已于 2026-10-17 完成**（P0-11 / P0-13 / P0-14 / P0-15 / P0-16 全部落地，不占用迭代容量）。详见 §5 执行记录。
+
 ### 阶段 0：止血（第 1 个迭代，A 组 10 项）
 
 9 项互不耦合、可并行、可独立回滚，是整份清单中性价比最高的部分。
@@ -154,7 +159,6 @@ P0-2 进程输出排空（仅做「回调 EOF + TCS 门」，不做 P1-13 的 Ki
 P0-3 命令注入：改 ProcessStartInfo.ArgumentList + 输入校验
 P0-17 Desktop 补测试引用 + 首批冒烟（与上面并行，为阶段 2 铺路）
 ```
-
 
 ### 阶段 1：建网（第 1–2 个迭代，与阶段 0 尾部并行）
 
@@ -383,13 +387,13 @@ P1-19 Desktop 补测试 + 契约收敛
 | ---------------------- | ------------------------------------------------------------ | -------------- |
 | 最大文件行数                 | 1960                                                         | ↓              |
 | 最大方法行数                 | 249                                                          | ↓              |
-| 全量构建警告数                | Core 36（增量显示 0 —— 假象）                                        | 先采集真实值，再 ↓ 至 0 |
+| 全量构建警告数                | 阶段 −1 已启用 `EnforceCodeStyleInBuild` + `--no-incremental` CI，真实值由 CI 采集（Core 实测 29 警告 / 0 错误，见 §5）；增量构建 0 警告是假象 | 先采集真实值，再 ↓ 至 0 |
 | `catch (Exception)` 占比 | 37/69 = 54%                                                  | ↓              |
 | 高危模块零覆盖数               | 7                                                            | ↓ 至 0          |
 | Desktop 测试数            | **0**（且测试项目未引用）                                              | ↑              |
-| 空提交信息数 / 迭代            | 10/12 历史                                                     | → 0 并保持        |
-| 误提交产物数                 | 10                                                           | → 0 并保持        |
-| P0 未偿数                 | 17                                                           | → 0 并保持        |
+| 空提交信息数 / 迭代            | 10/12 历史；阶段 −1 起由 commit-msg 钩强制「非空 + 含改了什么/为什么」 | → 0 并保持        |
+| 误提交产物数                 | 10；阶段 −1 已 `git rm --cached` 并 ignore，当前 0                 | → 0 并保持        |
+| P0 未偿数                 | 17 → 阶段 −1 已完成 5 项（P0-11/13/14/15/16），当前 **12**         | → 0 并保持        |
 | 每迭代**新增**债务数           | 未采集（阶段 −1 起采集）                                               | → 趋 0          |
 | churn 热点 Top3          | `BatchEngine.cs`(4)、`RunOptions.cs`(4)、`ConfigView.axaml`(4) | 热点应随拆分下降       |
 
@@ -398,13 +402,35 @@ P1-19 Desktop 补测试 + 契约收敛
 ### 4.9 引入顺序（避免门禁一次性压垮团队）
 
 ```
-当天   : 提交规范 + gitignore 目录级 + 清产物（阶段 −1 的 1–3）
+当天   : 提交规范 + gitignore 目录级 + 清产物 + 编译期分析 + 最小 CI（阶段 −1 的 1–5，已全部完成 2026-10-17）
 迭代1  : CI（--no-incremental，只报不阻断）+ 格式门禁 + 测试分层 + 盲区补齐
 迭代2  : EnforceCodeStyleInBuild + ArchUnitNET 断言（Core 优先）
 迭代3  : 复杂度阈值按基线标定（先 warning） + 逃逸阀登记
 迭代4  : 复杂度阈值转 error + TreatWarningsAsErrors 分批开启
 持续   : PR 清单 + 20% 预算 + 台账月度复核
 ```
+
+---
+
+## 5. 执行记录（Execution Log）
+
+### 5.1 阶段 −1（2026-10-17，B 组全部，< 1 人日）
+
+| ID     | 落地内容                                                                                              | 验证                                                                       |
+| ------ | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| P0-11  | 新增 `.githooks/commit-msg`（拒绝空消息 / 纯标点 / 缺「改了什么·为什么」/ 正文过短）+ `.gitmessage.txt` 模板；本地 `git config core.hooksPath=.githooks`、`commit.template=.gitmessage.txt` | 对 6 类样例消息做干跑：空/纯标点/无正文/缺为什么均被拒，合规中文消息通过              |
+| P0-13  | `.gitignore` 末尾按日期逐个文件名规则替换为目录级：`.workbuddy/`、`.playwright-cli/`、`/TaskList/`、`*.backup-*`、`/models.yaml`、`/.tmp_reflect.ps1` | `git check-ignore` 对全部 10 项原误提交产物返回 IGNORED                          |
+| P0-14  | `git rm --cached` 清理 10 项误提交产物（含含个人绝对路径的 `.tmp_reflect.ps1`、`TaskList/tasks.xlsx` 真实运行数据等）；文件保留在磁盘并转为 ignore | `git ls-files` 中上述 10 项已不在跟踪列表                                       |
+| P0-15  | `Directory.Build.props` 增加 `EnforceCodeStyleInBuild=true`、`AnalysisLevel=latest-recommended`、`AnalysisMode=Recommended`；`TreatWarningsAsErrors` 保持 `false`（先 warning 不阻断） | `dotnet build --no-incremental` Core：**29 警告 / 0 错误**，CA2007/CA1822/CA1001 等已真实暴露（增量构建曾显示 0） |
+| P0-16  | 新增 `.github/workflows/ci.yml`：`windows-latest` + .NET 10，`dotnet build --no-incremental` + `dotnet test`，**只报告不阻断**          | 工作流文件已就位；门禁转阻断（必需状态检查）留待阶段 1（§4.9）                          |
+
+### 5.2 阶段 −1 的已知边界（交接必读）
+
+1. **钩子是本地生效，非 clone 自动继承**。`core.hooksPath=.githooks` 写入的是本机 `.git/config`。其他 clone / CI runner 默认不跑该钩。新人接入需执行：
+   `git config core.hooksPath .githooks`（或仓库根提供 `tools/setup-hooks.sh` 一键脚本——尚未提供，列为后续）。
+2. **CI 当前只报告、不阻断**。未配置分支保护 / 必需状态检查，故红 CI 不会阻止合并。阶段 1（§4.9）再开启 `TreatWarningsAsErrors` 并将 CI 设为必需。
+3. **P0-12（存量警告清零）不在阶段 −1**。阶段 −1 仅"让警告可见"（P0-15 + P0-16 的 `--no-incremental`），真正清零排在阶段 1。任何"警告已清零"的说法在 CI 全量基线稳定前仍不可信。
+4. **未净化已入库历史**。`git rm --cached` 只把文件移出索引，历史提交中仍含这些产物（隐私面）。彻底净化需 `git filter-repo`，属高风险操作，本阶段未做，登记为后续机会主义项。
 
 ---
 

@@ -361,7 +361,10 @@ MigrationBackup/
 
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
-/TaskList
-/.workbuddy/memory/2026-10-16.md
-/.workbuddy/memory/MEMORY.md
-/.workbuddy/memory/2026-10-17.md
+# 阶段 -1 / P0-13：目录级规则，避免按日期逐个文件名 ignore 导致债务每天自动新增
+/TaskList/
+/.workbuddy/
+/.playwright-cli/
+*.backup-*
+/models.yaml
+/.tmp_reflect.ps1

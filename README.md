@@ -52,10 +52,25 @@ Mock 适配器不调用任何 CLI，用来验证调度逻辑（降级、时段�
 
 ---
 
+## 开发约定（技术债务治理阶段 −1 起生效）
+
+本仓库按 [`docs/TECH-DEBT-技术债务治理方案-v2.0.md`](docs/TECH-DEBT-技术债务治理方案-v2.0.md) 治理。阶段 −1 已落地的「防新增」机制：
+
+- **提交信息门禁**：`.githooks/commit-msg` 拒绝空消息 / 纯标点 / 缺「改了什么·为什么」正文的提交；模板见 `.gitmessage.txt`。
+  新 clone 需先启用钩子（本机已配置，其他环境执行一次）：
+  ```bash
+  git config core.hooksPath .githooks
+  git config commit.template .gitmessage.txt
+  ```
+- **CI（只报告不阻断）**：`.github/workflows/ci.yml` 在 `windows-latest` 上 `dotnet build --no-incremental` + `dotnet test`。注意必须用 `--no-incremental` 全量重建，否则增量构建会掩盖真实警告（P0-12）。CI 尚未设为合并必需检查，门禁转阻断见治理方案阶段 1。
+- **`.gitignore` 目录级规则**：`.workbuddy/`、`/.playwright-cli/`、`/TaskList/`、`*.backup-*`、`/models.yaml`、`/.tmp_reflect.ps1` 等运行产物/隐私不再入库。
+
+---
+
 ## 相关文档
 
-- [`docs/PRD-AI批处理任务调度工具-v1.0.md`](docs/PRD-AI批处理任务调度工具-v1.0.md) — 产品需求
-- [`docs/DESIGN-BatchAgentRunner-v1.0.md`](docs/DESIGN-BatchAgentRunner-v1.0.md) — 技术设计
+- [`docs/PRD-BatchAgentRunner-v2.0.md`](docs/PRD-BatchAgentRunner-v2.0.md) — 产品需求
+- [`docs/DESIGN-BatchAgentRunner-v2.0.md`](docs/DESIGN-BatchAgentRunner-v2.0.md) — 技术设计
 - [`docs/CONFIG-配置项说明.md`](docs/CONFIG-配置项说明.md) — 全配置项速查与常见坑
 - [`docs/用户手册-BatchAgentRunner-v1.0.md`](docs/用户手册-BatchAgentRunner-v1.0.md) — 使用手册
 - [`samples/config.example.json`](samples/config.example.json) — 全字段带注释配置模板

@@ -1,0 +1,39 @@
+name: CI
+
+# 阶段 -1 / P0-16：最小 CI，只报告不阻断。
+#
+# 关键约束（对应 P0-12 的 0 警告假象）：
+#   build 必须 --no-incremental 全量重建，否则增量构建不重跑分析器，
+#   会永远显示 0 警告，掩盖真实债务。
+#
+# “只报告不阻断”指：本工作流尚未作为必需状态检查（branch protection /
+# required status check）接入合并门禁。门禁转阻断见技术债务治理方案
+# 阶段 1（§4.9）。当前即使测试失败，也不会自动阻止 push / PR 合并。
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # 全量重建：必须 --no-incremental，否则复现 P0-12 的 0 警告假象
+      - name: Build (full, no-incremental)
+        run: dotnet build --no-incremental -c Debug
+
+      # 运行既有测试（测试项目当前仅引用 Core/Infrastructure/Agents，
+      # 不含 Desktop —— P0-17 在阶段 0 补齐引用后 Desktop 才会被纳入）。
+      # 阶段 -1 期间为“只报告”：本步失败不阻断合并（无必需状态检查）。
+      - name: Test (report only)
+        run: dotnet test tests/BatchAgentRunner.Tests/BatchAgentRunner.Tests.csproj --no-build --logger "console;verbosity=normal"

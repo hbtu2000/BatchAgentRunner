@@ -1,0 +1,46 @@
+#!/bin/sh
+# 阶段 -1 / P0-11：提交信息门禁
+# 拒绝：① 空主题行；② 纯标点/空白主题行；③ 缺「改了什么」或「为什么」小节；
+#       ④ 正文（改了什么/为什么）过于简短。
+# 目的：关掉“10/12 提交信息为空”的漏水龙头，使债务可归因、churn 可分析。
+# 生效方式：git config core.hooksPath .githooks（本仓库已设置）。
+
+commit_msg_file="$1"
+msg=$(cat "$commit_msg_file")
+
+# 去掉注释行（以 # 开头）与首尾空白，得到实际提交内容
+stripped=$(printf '%s\n' "$msg" | grep -v '^#' | sed -e 's/[[:space:]]*$//' -e 's/^[[:space:]]*//')
+
+# ---- 1) 主题行（第一行）非空且非纯标点/空白 ----
+subject=$(printf '%s\n' "$stripped" | head -n 1)
+if [ -z "$subject" ]; then
+  echo "commit-msg: 主题行为空，已拒绝。请填写 <type>(<scope>): <subject>。" >&2
+  exit 1
+fi
+# 去掉所有 ASCII 空白与标点后若为空，视为“纯标点/空白”，拒绝
+# （中文等非 ASCII 字符不会被 tr 删掉，故中文主题行可正常通过）
+subject_core=$(printf '%s' "$subject" | tr -d '[:space:][:punct:]')
+if [ -z "$subject_core" ]; then
+  echo "commit-msg: 主题行仅含空白或标点，缺少实质内容，已拒绝。" >&2
+  exit 1
+fi
+
+# ---- 2) 正文必须含「改了什么」与「为什么」小节（提交模板已提供）----
+if ! printf '%s\n' "$stripped" | grep -q '改了什么'; then
+  echo "commit-msg: 缺少「改了什么」小节（提交模板已提供），已拒绝。" >&2
+  exit 1
+fi
+if ! printf '%s\n' "$stripped" | grep -q '为什么'; then
+  echo "commit-msg: 缺少「为什么」小节（提交模板已提供），已拒绝。" >&2
+  exit 1
+fi
+
+# ---- 3) 正文（改了什么/为什么）需有实质填写，不能只留占位 ----
+# 取主题行之后的内容，去掉空白后长度需 >= 10 个字符（含中文）
+body=$(printf '%s\n' "$stripped" | tail -n +2 | tr -d '[:space:]')
+if [ ${#body} -lt 10 ]; then
+  echo "commit-msg: 「改了什么/为什么」正文过于简短，请补充实质说明。" >&2
+  exit 1
+fi
+
+exit 0
