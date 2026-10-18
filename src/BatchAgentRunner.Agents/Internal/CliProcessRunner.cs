@@ -113,7 +113,16 @@ public sealed class CliProcessRunner
                 lastOutputAt = DateTimeOffset.Now;
             }
 
-            onOutput?.Invoke(clean);
+            // 输出回调（如运行日志写入）抛出的异常会经 Process.AsyncStreamReader 在新建线程池线程上
+            // re-throw，升级为 AppDomain 未处理异常并终止进程（2026-10-18 实测崩溃根因）。
+            // 任何消费方异常都必须在此吞掉，绝不让其越过 AsyncStreamReader。
+            try
+            {
+                onOutput?.Invoke(clean);
+            }
+            catch
+            {
+            }
         }
 
         // P0-2：异步读取回调收到 null 即表示该流已关闭（EOF）。以此为门，进程退出后必须等两个流

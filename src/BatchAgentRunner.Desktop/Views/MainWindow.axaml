@@ -15,13 +15,14 @@
         <vm:MainViewModel />
     </Design.DataContext>
 
-    <Grid RowDefinitions="Auto,*" ColumnDefinitions="220,*">
+    <!-- 单列布局：顶部状态条 + 顶部导航条 + 内容区（移除左侧 220 导航列，页面更宽） -->
+    <Grid RowDefinitions="Auto,Auto,*">
 
         <!-- 顶部状态条 -->
-        <Border Grid.Row="0" Grid.ColumnSpan="2" Padding="14,10"
+        <Border Grid.Row="0" Padding="14,10"
                 BorderThickness="0,0,0,1" BorderBrush="{DynamicResource BorderSubtleBrush}"
                 Background="{DynamicResource BgSurfaceBrush}">
-            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto">
                 <TextBlock Grid.Column="0" Text="AI 批处理任务调度工具" FontSize="16" FontWeight="SemiBold"
                            VerticalAlignment="Center" Foreground="{DynamicResource TextPrimaryBrush}" />
 
@@ -40,51 +41,46 @@
                            Foreground="{DynamicResource TextMutedBrush}"
                            Text="{Binding ConfigDirectory, StringFormat='配置目录：{0}'}" />
 
+                <TextBlock Grid.Column="4" VerticalAlignment="Center" FontSize="11" Margin="16,0,0,0"
+                           Foreground="{DynamicResource TextMutedBrush}" Text="BatchAgentRunner v1.0" />
+
                 <!-- 主题切换 -->
-                <Button Grid.Column="4" Content="{Binding Theme, StringFormat='主题：{0}'}"
+                <Button Grid.Column="5" Content="{Binding Theme, StringFormat='主题：{0}'}"
                         Command="{Binding ToggleThemeCommand}"
-                        VerticalAlignment="Center" Margin="12,0,0,0" />
+                        VerticalAlignment="Center" Margin="16,0,0,0" />
             </Grid>
         </Border>
 
-        <!-- 左侧导航 -->
-        <Border Grid.Row="1" Grid.Column="0" Padding="10" BorderThickness="0,0,1,0"
-                BorderBrush="{DynamicResource BorderSubtleBrush}" Background="{DynamicResource BgSurfaceBrush}">
-            <Grid RowDefinitions="Auto,*,Auto">
-                <StackPanel Grid.Row="0" Spacing="6">
-                    <Button Content="配置中心" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                            Command="{Binding NavigateCommand}" CommandParameter="confighub"
-                            conv:StatusDotHelper.NavPage="confighub"
-                            conv:StatusDotHelper.NavActivePage="{Binding ActivePage}" />
-                    <Button Content="执行监控" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                            Command="{Binding NavigateCommand}" CommandParameter="monitor"
-                            conv:StatusDotHelper.NavPage="monitor"
-                            conv:StatusDotHelper.NavActivePage="{Binding ActivePage}" />
-                    <Button Content="运行报告" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                            Command="{Binding NavigateCommand}" CommandParameter="report"
-                            conv:StatusDotHelper.NavPage="report"
-                            conv:StatusDotHelper.NavActivePage="{Binding ActivePage}" />
-                    <Button Content="变更概览" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                            Command="{Binding NavigateCommand}" CommandParameter="diff"
-                            conv:StatusDotHelper.NavPage="diff"
-                            conv:StatusDotHelper.NavActivePage="{Binding ActivePage}" />
-                    <Button Content="模板库" HorizontalAlignment="Stretch" HorizontalContentAlignment="Left"
-                            Command="{Binding NavigateCommand}" CommandParameter="templates"
-                            conv:StatusDotHelper.NavPage="templates"
-                            conv:StatusDotHelper.NavActivePage="{Binding ActivePage}" />
-                </StackPanel>
-
-                <StackPanel Grid.Row="2" Spacing="6">
-                    <TextBlock Text="{Binding Theme, StringFormat='当前主题：{0}'}" FontSize="11"
-                               Foreground="{DynamicResource TextMutedBrush}" />
-                    <TextBlock Text="BatchAgentRunner v1.0" FontSize="11"
-                               Foreground="{DynamicResource TextMutedBrush}" />
-                </StackPanel>
-            </Grid>
+        <!-- 顶部导航（原左侧导航上移，释放页面宽度） -->
+        <Border Grid.Row="1" Padding="12,8"
+                BorderThickness="0,0,0,1" BorderBrush="{DynamicResource BorderSubtleBrush}"
+                Background="{DynamicResource BgSurfaceBrush}">
+            <WrapPanel Orientation="Horizontal">
+                <Button Content="配置中心" Margin="0,0,8,0"
+                        Command="{Binding NavigateCommand}" CommandParameter="confighub"
+                        conv:StatusDotHelper.NavPage="confighub"
+                        conv:StatusDotHelper.NavActivePage="{Binding ActivePage}" />
+                <Button Content="执行监控" Margin="0,0,8,0"
+                        Command="{Binding NavigateCommand}" CommandParameter="monitor"
+                        conv:StatusDotHelper.NavPage="monitor"
+                        conv:StatusDotHelper.NavActivePage="{Binding ActivePage}" />
+                <Button Content="运行报告" Margin="0,0,8,0"
+                        Command="{Binding NavigateCommand}" CommandParameter="report"
+                        conv:StatusDotHelper.NavPage="report"
+                        conv:StatusDotHelper.NavActivePage="{Binding ActivePage}" />
+                <Button Content="变更概览" Margin="0,0,8,0"
+                        Command="{Binding NavigateCommand}" CommandParameter="diff"
+                        conv:StatusDotHelper.NavPage="diff"
+                        conv:StatusDotHelper.NavActivePage="{Binding ActivePage}" />
+                <Button Content="模板库" Margin="0,0,8,0"
+                        Command="{Binding NavigateCommand}" CommandParameter="templates"
+                        conv:StatusDotHelper.NavPage="templates"
+                        conv:StatusDotHelper.NavActivePage="{Binding ActivePage}" />
+            </WrapPanel>
         </Border>
 
-        <!-- 内容区 -->
-        <ContentControl Grid.Row="1" Grid.Column="1" Content="{Binding CurrentPage}" />
+        <!-- 内容区（占满整行，宽度更大） -->
+        <ContentControl Grid.Row="2" Content="{Binding CurrentPage}" />
 
     </Grid>
 </Window>

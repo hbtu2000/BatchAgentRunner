@@ -15,6 +15,7 @@ public sealed class FileRunLogger : IRunLogger
 {
     private readonly object _sync = new();
     private readonly StreamWriter _writer;
+    private bool _disposed;
 
     public FileRunLogger(string? taskFilePath = null, string? logDirectory = null)
     {
@@ -102,16 +103,62 @@ public sealed class FileRunLogger : IRunLogger
 
     private void WriteLine(string line)
     {
+        StreamWriter writer;
         lock (_sync)
         {
-            _writer.WriteLine(line);
+            // 释放后到达的延迟写入（CLI 子进程 AsyncStreamReader 在线程池排队）直接丢弃，
+            // 不进入已关闭的 writer，避免抛 ObjectDisposedException
+            // （2026-10-18 实测崩溃根因：Cannot write to a closed TextWriter）。
+            if (_disposed)
+            {
+                return;
+            }
+
+            writer = _writer;
+        }
+
+        // 双重保护：即便在 lock 释放后、Dispose 抢先关闭 writer 的极小窗口内拿到引用，
+        // WriteLine 抛出的 ObjectDisposedException / IOException 也必须在此吞掉，
+        // 否则异常会经 Process.AsyncStreamReader 在新建线程池线程上 re-throw，
+        // 升级为 AppDomain 未处理异常并终止进程。
+        try
+        {
+            writer.WriteLine(line);
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+        catch (IOException)
+        {
         }
     }
 
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         lock (_sync)
         {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            try
+            {
+                _writer.Flush();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (IOException)
+            {
+            }
+
             _writer.Dispose();
         }
     }

@@ -144,6 +144,35 @@ public sealed class DegradationMatrix
         SelectNext(null, now, evaluator);
 
     /// <summary>
+    /// 返回在 <paramref name="currentAccountId"/> 之后、第一个可用且<b>账号不同</b>的组合所属账号 Id
+    /// （REQ-021 并行下统一切换目标）。找不到则返回 null（全部不可用 / 仅当前账号可用）。
+    /// 遍历从当前账号之后绕回序列头部，保证「每个账号至多作为一次切换目标、不无限循环」。
+    /// </summary>
+    public string? NextAvailableAccountId(string? currentAccountId, DateTimeOffset now, AvailabilityEvaluator evaluator)
+    {
+        if (_ordered.Count == 0)
+        {
+            return null;
+        }
+
+        var currentIdx = currentAccountId is null
+            ? -1
+            : _ordered.FindIndex(c => string.Equals(c.Account.Id, currentAccountId, StringComparison.OrdinalIgnoreCase));
+
+        for (var i = 1; i <= _ordered.Count; i++)
+        {
+            var combo = _ordered[(currentIdx + i + _ordered.Count) % _ordered.Count];
+            if (evaluator.Evaluate(combo, now).Available &&
+                !string.Equals(combo.Account.Id, currentAccountId, StringComparison.OrdinalIgnoreCase))
+            {
+                return combo.Account.Id;
+            }
+        }
+
+        return null;
+    }
+
+    /// <summary>
     /// 全部组合中最早的恢复时间点；并列时按遍历顺序取第一个（REQ-003b）。
     /// </summary>
     public RestoreCandidate? EarliestRestore(DateTimeOffset now, AvailabilityEvaluator evaluator)

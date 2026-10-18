@@ -31,7 +31,11 @@ public enum BatchEventKind
     AutoAnswered,
     PreflightFailed,
     StatusChanged,
-    IdSnapshotWarning
+    IdSnapshotWarning,
+    /// <summary>并行下在飞槽位冻结（REQ-021）：在飞任务额度耗尽不即时切换，冻结槽位并进入全局派发暂停。</summary>
+    SlotFrozen,
+    /// <summary>账号切换延后标记（REQ-021）：账号切换延后至当前在飞任务全部结束后统一执行。</summary>
+    AccountSwitchDeferred
 }
 
 /// <summary>
@@ -59,4 +63,10 @@ public sealed record BatchEvent(
     public bool IsDangerous { get; init; }
 
     public string? Detail { get; init; }
+
+    /// <summary>
+    /// 是否为「并发下延后统一切换」（REQ-021）：仅 <see cref="BatchEventKind.AccountSwitched"/>
+    /// 时间线条目可能为真，用于区分并发延后切换与常规任务边界切换。
+    /// </summary>
+    public bool DeferredSwitch { get; init; }
 }

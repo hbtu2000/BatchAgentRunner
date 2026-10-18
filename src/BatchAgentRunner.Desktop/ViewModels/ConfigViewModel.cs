@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Options;
 using BatchAgentRunner.Core.Scheduling;
+using BatchAgentRunner.Desktop.Helpers;
 using BatchAgentRunner.Desktop.Models;
 using BatchAgentRunner.Desktop.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -51,11 +52,23 @@ public sealed class ConfigViewModel : ViewModelBase
     private int _maxTotalMinutes = 60;
     private int _maxWaitMinutes = 60;
     private int _defaultCooldownMinutes = 60;
+    private int _maxWorkspaces = 10;
     private bool _waitForQuotaReset = true;
     private bool _forceRerun;
     private bool _stopOnFailure;
     private bool _showCliWindow;
     private string _whitelistText = string.Empty;
+
+    // ---------------- 安全与交互 / 其它（对齐 MOCKUP 配置中心重设计） ----------------
+    private string _blacklistText = string.Empty;
+    private string _defaultAnswerText = "y";
+    private int _silenceSeconds = 30;
+    private int _choiceDefaultIndex;
+    private int _maxResultKb = 100;
+    private int _backupRetentionCount = 5;
+    private string _activeSection = "quickstart";
+    private bool _saved;
+    private string _readinessSummary = string.Empty;
 
     // ---------------- 二期配置域（字段） ----------------
     private int _defaultMaxGateLoops = 3;
@@ -92,8 +105,8 @@ public sealed class ConfigViewModel : ViewModelBase
             var i = Models.IndexOf(m);
             if (i >= 0 && i < Models.Count - 1) Models.Move(i, i + 1);
         });
-        AddWorkspaceCommand = new RelayCommand(() => Workspaces.Add(new WorkspaceConfig { Name = "workspace-new" }));
-        RemoveWorkspaceCommand = new RelayCommand<WorkspaceConfig>(w => { if (w is not null) Workspaces.Remove(w); });
+        AddWorkspaceCommand = new RelayCommand(AddWorkspace);
+        RemoveWorkspaceCommand = new RelayCommand<WorkspaceConfig>(RemoveWorkspace);
 
         AddNotificationRuleCommand = new RelayCommand(() =>
             NotificationRules.Add(new NotificationRuleEditor(new NotificationRule())));
@@ -107,6 +120,20 @@ public sealed class ConfigViewModel : ViewModelBase
 
         FetchModelsCommand = new AsyncRelayCommand(FetchModelsAsync);
         FetchModelsForAccountCommand = new AsyncRelayCommand<AccountEditor>(FetchModelsForAccountAsync);
+
+        SectionNavigateCommand = new RelayCommand<string>(SectionNavigate);
+        CancelCommand = new RelayCommand(Reload);
+    }
+
+    /// <summary>rail 区段导航：切换激活区段并刷新准备度。</summary>
+    public void SectionNavigate(string? section)
+    {
+        if (!string.IsNullOrEmpty(section))
+        {
+            ActiveSection = section;
+        }
+
+        RefreshReadiness();
     }
 
     /// <summary>
@@ -139,10 +166,17 @@ public sealed class ConfigViewModel : ViewModelBase
         MaxWaitMinutes = o.MaxWaitMinutes;
         DefaultCooldownMinutes = o.DefaultCooldownMinutes;
         WaitForQuotaReset = o.WaitForQuotaReset;
+        MaxWorkspaces = o.MaxWorkspaces;
         ForceRerun = o.ForceRerun;
         StopOnFailure = o.StopOnFailure;
         ShowCliWindow = o.ShowCliWindow;
-        WhitelistText = string.Join("\n", o.AutoAnswer.AllowedWhitelist);
+        WhitelistText = MultiValueText.Join(o.AutoAnswer.AllowedWhitelist);
+        BlacklistText = MultiValueText.Join(o.AutoAnswer.DangerousBlacklist);
+        DefaultAnswerText = o.AutoAnswer.DefaultAnswer ?? "y";
+        SilenceSeconds = o.AutoAnswer.StdinIdleSeconds;
+        ChoiceDefaultIndex = o.AutoAnswer.DefaultChoiceIndex;
+        MaxResultKb = o.ResultMaxKB;
+        BackupRetentionCount = o.BackupRetention;
 
         // 二期配置域
         DefaultMaxGateLoops = o.DefaultMaxGateLoops;
@@ -151,7 +185,7 @@ public sealed class ConfigViewModel : ViewModelBase
         DependencyFailurePolicy = o.DependencyFailurePolicy;
         TemplateBatchExpansionLimit = o.TemplateBatchExpansionLimit;
         CollectDiffs = o.CollectDiffs;
-        DiffGlobsText = string.Join("\n", o.DiffTargetGlobs);
+        DiffGlobsText = MultiValueText.Join(o.DiffTargetGlobs);
         GitRepoPath = o.Git.RepoPath ?? string.Empty;
         GitBaseBranch = o.Git.BaseBranch ?? string.Empty;
         GitBranchNaming = o.Git.BranchNaming ?? "bar/{task_id}-{timestamp}";
@@ -175,6 +209,8 @@ public sealed class ConfigViewModel : ViewModelBase
         OnPropertyChanged(nameof(Models));
         OnPropertyChanged(nameof(Accounts));
         OnPropertyChanged(nameof(Workspaces));
+        OnPropertyChanged(nameof(WorkspaceLimitReached));
+        RefreshReadiness();
     }
 
     /// <summary>模型池模式切换时做安全的单向迁移，避免误切导致数据丢失或双份并存。</summary>
@@ -243,6 +279,33 @@ public sealed class ConfigViewModel : ViewModelBase
 
     public ObservableCollection<WorkspaceConfig> Workspaces { get; private set; } = new();
 
+    // ---------------- 区段导航 + 准备度（MOCKUP 配置中心重设计） ----------------
+
+    /// <summary>当前激活的区段 key（rail 导航：quickstart / accounts / models / tasks / expert / fallback / schedule / safety / shutdown / misc）。</summary>
+    public string ActiveSection
+    {
+        get => _activeSection;
+        set => SetProperty(ref _activeSection, value);
+    }
+
+    public IRelayCommand<string> SectionNavigateCommand { get; }
+
+    /// <summary>登录页 ViewModel（账号与凭据区段内嵌登录 / 凭据管理）。</summary>
+    public LoginViewModel? Login { get; set; }
+
+    /// <summary>配置向导 ViewModel（快速开始区段可重跑引导）。</summary>
+    public SetupWizardViewModel? Wizard { get; set; }
+
+    /// <summary>配置准备度步骤（顶部向导进度条）。</summary>
+    public ObservableCollection<ReadinessStep> ReadinessSteps { get; } = new();
+
+    /// <summary>准备度文案，如「完成 4 / 6 步，可随时运行」。</summary>
+    public string ReadinessSummary
+    {
+        get => _readinessSummary;
+        private set => SetProperty(ref _readinessSummary, value);
+    }
+
     // ---------------- 模型池模式 + 实时可用模型 ----------------
 
     /// <summary>模型池维护方式（共享 / 每账号独立）。切换时自动安全迁移。</summary>
@@ -308,7 +371,13 @@ public sealed class ConfigViewModel : ViewModelBase
     public string TaskFilePath
     {
         get => _taskFilePath;
-        set => SetProperty(ref _taskFilePath, value);
+        set
+        {
+            if (SetProperty(ref _taskFilePath, value))
+            {
+                OnPropertyChanged(nameof(HasTaskFile));
+            }
+        }
     }
 
     public AgentKind AgentKind
@@ -451,6 +520,26 @@ public sealed class ConfigViewModel : ViewModelBase
         set => SetProperty(ref _defaultCooldownMinutes, value);
     }
 
+    /// <summary>命名工作空间数量上限（REQ-019，默认 10）。引擎与预检均以该值为唯一校验准绳，非硬编码。</summary>
+    public int MaxWorkspaces
+    {
+        get => _maxWorkspaces;
+        set
+        {
+            if (SetProperty(ref _maxWorkspaces, value))
+            {
+                OnPropertyChanged(nameof(WorkspaceLimitReached));
+                OnPropertyChanged(nameof(WorkspaceLimitHint));
+            }
+        }
+    }
+
+    /// <summary>工作空间数量是否已抵达配置上限（REQ-019）：用于置灰「新增工作空间」按钮。</summary>
+    public bool WorkspaceLimitReached => Workspaces.Count >= Math.Max(1, MaxWorkspaces);
+
+    /// <summary>工作空间数量提示文本（REQ-019），形如「当前 3 / 上限 10」，供配置页实时展示。</summary>
+    public string WorkspaceLimitHint => $"当前 {Workspaces.Count} / 上限 {Math.Max(1, MaxWorkspaces)}";
+
     /// <summary>额度耗尽时无限等待重置（暂停不计入时长）。</summary>
     public bool WaitForQuotaReset
     {
@@ -481,6 +570,51 @@ public sealed class ConfigViewModel : ViewModelBase
         get => _whitelistText;
         set => SetProperty(ref _whitelistText, value);
     }
+
+    /// <summary>危险操作黑名单（命中即拒绝自动批准并终止任务，PRD 第 8 章）。</summary>
+    public string BlacklistText
+    {
+        get => _blacklistText;
+        set => SetProperty(ref _blacklistText, value);
+    }
+
+    /// <summary>普通确认型交互注入 stdin 的默认内容。</summary>
+    public string DefaultAnswerText
+    {
+        get => _defaultAnswerText;
+        set => SetProperty(ref _defaultAnswerText, value);
+    }
+
+    /// <summary>静默多少秒判定为「在等确认」。</summary>
+    public int SilenceSeconds
+    {
+        get => _silenceSeconds;
+        set => SetProperty(ref _silenceSeconds, value);
+    }
+
+    /// <summary>选择型交互默认选择的选项索引（0-based）。</summary>
+    public int ChoiceDefaultIndex
+    {
+        get => _choiceDefaultIndex;
+        set => SetProperty(ref _choiceDefaultIndex, value);
+    }
+
+    /// <summary>单任务结果大小上限（KB，超出截断并提示全量日志）。</summary>
+    public int MaxResultKb
+    {
+        get => _maxResultKb;
+        set => SetProperty(ref _maxResultKb, value);
+    }
+
+    /// <summary>每次启动前备份份数（0 = 不备份）。</summary>
+    public int BackupRetentionCount
+    {
+        get => _backupRetentionCount;
+        set => SetProperty(ref _backupRetentionCount, value);
+    }
+
+    /// <summary>是否已选择任务文件（准备度 / 快速开始提示用）。</summary>
+    public bool HasTaskFile => !string.IsNullOrWhiteSpace(TaskFilePath);
 
     // ---------------- 二期：工作流与模板域 ----------------
 
@@ -593,6 +727,9 @@ public sealed class ConfigViewModel : ViewModelBase
     // ---------------- 命令 ----------------
 
     public IAsyncRelayCommand SaveCommand { get; }
+
+    /// <summary>取消：放弃未保存的修改并重新从磁盘加载配置。</summary>
+    public IRelayCommand CancelCommand { get; }
 
     public IAsyncRelayCommand BrowseTaskFileCommand { get; }
 
@@ -725,6 +862,39 @@ public sealed class ConfigViewModel : ViewModelBase
         }
     }
 
+    /// <summary>
+    /// 新增工作空间（REQ-019）：已达配置上限时拦截并给出动态提示（提示中的 N 取配置值，非硬编码），
+    /// 不创建超出上限的工作空间。
+    /// </summary>
+    private void AddWorkspace()
+    {
+        var limit = Math.Max(1, MaxWorkspaces);
+        if (Workspaces.Count >= limit)
+        {
+            StatusMessage = $"工作空间数量已达上限（{limit} 个），无法继续新增；如需更多请先在上方调大「工作空间上限」";
+            return;
+        }
+
+        Workspaces.Add(new WorkspaceConfig { Name = $"workspace-new-{Workspaces.Count + 1}" });
+        OnPropertyChanged(nameof(WorkspaceLimitReached));
+        OnPropertyChanged(nameof(WorkspaceLimitHint));
+    }
+
+    /// <summary>
+    /// 删除工作空间（REQ-019）：移除后刷新上限相关 UI（解除新增按钮置灰、更新数量提示）。
+    /// </summary>
+    private void RemoveWorkspace(WorkspaceConfig? w)
+    {
+        if (w is null)
+        {
+            return;
+        }
+
+        Workspaces.Remove(w);
+        OnPropertyChanged(nameof(WorkspaceLimitReached));
+        OnPropertyChanged(nameof(WorkspaceLimitHint));
+    }
+
     private async Task BrowseTaskFileAsync()
     {
         if (PickTaskFile is null)
@@ -771,11 +941,24 @@ public sealed class ConfigViewModel : ViewModelBase
         o.MaxWaitMinutes = Math.Max(0, MaxWaitMinutes);
         o.DefaultCooldownMinutes = Math.Max(1, DefaultCooldownMinutes);
         o.WaitForQuotaReset = WaitForQuotaReset;
+        o.MaxWorkspaces = Math.Max(1, MaxWorkspaces);
+
+        // REQ-019：保存前以配置上限拦截，杜绝静默超出（提示中的 N 取配置值）
+        if (Workspaces.Count > o.MaxWorkspaces)
+        {
+            StatusMessage = $"保存被拦截：工作空间数量（{Workspaces.Count}）已超过上限（{o.MaxWorkspaces}），请精简后再保存";
+            return;
+        }
         o.ForceRerun = ForceRerun;
         o.StopOnFailure = StopOnFailure;
         o.ShowCliWindow = ShowCliWindow;
-        o.AutoAnswer.AllowedWhitelist = WhitelistText
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        o.AutoAnswer.AllowedWhitelist = MultiValueText.Split(WhitelistText, '\n').ToList();
+        o.AutoAnswer.DangerousBlacklist = MultiValueText.Split(BlacklistText, '\n').ToList();
+        o.AutoAnswer.DefaultAnswer = string.IsNullOrWhiteSpace(DefaultAnswerText) ? "y" : DefaultAnswerText;
+        o.AutoAnswer.StdinIdleSeconds = Math.Max(0, SilenceSeconds);
+        o.AutoAnswer.DefaultChoiceIndex = Math.Max(0, ChoiceDefaultIndex);
+        o.ResultMaxKB = Math.Max(0, MaxResultKb);
+        o.BackupRetention = Math.Max(0, BackupRetentionCount);
 
         // 二期配置域
         o.DefaultMaxGateLoops = Math.Max(1, DefaultMaxGateLoops);
@@ -784,8 +967,7 @@ public sealed class ConfigViewModel : ViewModelBase
         o.DependencyFailurePolicy = DependencyFailurePolicy;
         o.TemplateBatchExpansionLimit = Math.Max(1, TemplateBatchExpansionLimit);
         o.CollectDiffs = CollectDiffs;
-        o.DiffTargetGlobs = DiffGlobsText
-            .Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries).ToList();
+        o.DiffTargetGlobs = MultiValueText.Split(DiffGlobsText, '\n').ToList();
         o.Git.RepoPath = string.IsNullOrWhiteSpace(GitRepoPath) ? string.Empty : GitRepoPath.Trim();
         o.Git.BaseBranch = string.IsNullOrWhiteSpace(GitBaseBranch) ? null : GitBaseBranch.Trim();
         o.Git.BranchNaming = string.IsNullOrWhiteSpace(GitBranchNaming) ? "bar/{task_id}-{timestamp}" : GitBranchNaming.Trim();
@@ -825,7 +1007,58 @@ public sealed class ConfigViewModel : ViewModelBase
         await _host.SaveConfigAsync().ConfigureAwait(false);
         _host.RebuildEngine();
 
-        UiThread.Post(() => StatusMessage = $"配置已保存（{DateTime.Now:HH:mm:ss}），引擎已按新配置重建");
+        UiThread.Post(() =>
+        {
+            _saved = true;
+            StatusMessage = $"配置已保存（{DateTime.Now:HH:mm:ss}），引擎已按新配置重建";
+            RefreshReadiness();
+        });
+    }
+
+    /// <summary>刷新配置准备度（顶部向导进度条）。在 Reload / 保存后调用。需在 UI 线程执行（会修改 ReadinessSteps 集合）。</summary>
+    public void RefreshReadiness()
+    {
+        bool doneTool = true; // 执行工具总有默认选型
+        bool doneAccount = (Login is { HasAccounts: true }) || Accounts.Count > 0;
+        bool doneModel = Models.Count > 0 || Accounts.Any(a => a.Models.Count > 0);
+        bool doneTask = HasTaskFile;
+        bool doneWorkspace = Workspaces.Count > 0;
+        bool doneSave = _saved;
+
+        var steps = new (int Num, string Title, bool Done)[]
+        {
+            (1, "执行工具", doneTool),
+            (2, "账号", doneAccount),
+            (3, "模型", doneModel),
+            (4, "任务文件", doneTask),
+            (5, "工作空间", doneWorkspace),
+            (6, "保存", doneSave),
+        };
+
+        // 第一个未完成的步骤即「当前步」
+        int currentNum = Array.FindIndex(steps, s => !s.Done) is var idx && idx >= 0 ? steps[idx].Num : 0;
+
+        if (ReadinessSteps.Count != steps.Length)
+        {
+            ReadinessSteps.Clear();
+            foreach (var s in steps)
+            {
+                ReadinessSteps.Add(new ReadinessStep(s.Num, s.Title));
+            }
+        }
+
+        int doneCount = 0;
+        for (int i = 0; i < steps.Length; i++)
+        {
+            var target = ReadinessSteps[i];
+            target.State = steps[i].Done ? "done" : (steps[i].Num == currentNum ? "current" : "pending");
+            if (steps[i].Done)
+            {
+                doneCount++;
+            }
+        }
+
+        ReadinessSummary = $"完成 {doneCount} / {steps.Length} 步，可随时运行";
     }
 
     private string _statusMessageField = string.Empty;

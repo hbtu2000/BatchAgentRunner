@@ -3,7 +3,7 @@
              xmlns:vm="using:BatchAgentRunner.Desktop.ViewModels"
              xmlns:models="using:BatchAgentRunner.Desktop.Models"
              xmlns:conv="using:BatchAgentRunner.Desktop.Converters"
-             mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="760"
+             mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="760"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              x:Class="BatchAgentRunner.Desktop.Views.MonitorView"
@@ -13,124 +13,250 @@
         <vm:MonitorViewModel />
     </Design.DataContext>
 
-    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" ColumnDefinitions="*,400" Margin="12">
+    <UserControl.Styles>
+        <!-- 工具栏分隔竖线 -->
+        <Style Selector="Border.tb-sep">
+            <Setter Property="Width" Value="1" />
+            <Setter Property="Height" Value="20" />
+            <Setter Property="Background" Value="{DynamicResource BorderStrongBrush}" />
+            <Setter Property="Margin" Value="4,0" />
+        </Style>
 
-        <!-- 总进度 + 状态统计卡 -->
-        <Border Grid.Row="0" Grid.ColumnSpan="2" Padding="14" Theme="{StaticResource Card}" Margin="0,0,0,8">
+        <!-- 筛选 chip（ToggleButton 充当单选胶囊） -->
+        <Style Selector="ToggleButton.chip">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="Padding" Value="10,3" />
+            <Setter Property="CornerRadius" Value="{DynamicResource RadiusPill}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        </Style>
+        <Style Selector="ToggleButton.chip:pointerover">
+            <Setter Property="Background" Value="{DynamicResource BgHoverBrush}" />
+        </Style>
+        <Style Selector="ToggleButton.chip:checked">
+            <Setter Property="Background" Value="{DynamicResource PrimarySoftBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+
+        <!-- 批级状态带：统计胶囊 -->
+        <Style Selector="Border.stat">
+            <Setter Property="Background" Value="{DynamicResource BgSurface2Brush}" />
+            <Setter Property="CornerRadius" Value="{DynamicResource RadiusPill}" />
+            <Setter Property="Padding" Value="3,3,10,3" />
+        </Style>
+        <Style Selector="Ellipse.statdot">
+            <Setter Property="Width" Value="8" />
+            <Setter Property="Height" Value="8" />
+        </Style>
+
+        <!-- 右侧详情 Tab（对齐 mockup：顶部 strip + 选中态主色下边框） -->
+        <Style Selector="TabControl.mon">
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Margin" Value="0" />
+            <Setter Property="Padding" Value="0" />
+        </Style>
+        <Style Selector="TabControl.mon TabItem">
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Padding" Value="12,9" />
+            <Setter Property="Margin" Value="2,0" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="BorderBrush" Value="Transparent" />
+            <Setter Property="BorderThickness" Value="0,0,0,2" />
+        </Style>
+        <Style Selector="TabControl.mon TabItem:pointerover">
+            <Setter Property="Foreground" Value="{DynamicResource TextPrimaryBrush}" />
+        </Style>
+        <Style Selector="TabControl.mon TabItem:selected">
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="BorderBrush" Value="{DynamicResource PrimaryBrush}" />
+        </Style>
+
+        <!-- 实时输出流：标签胶囊（对齐 mockup：工具调用=主色 / 完成=成功 / 切换·额度·提示=警告 / 错误=错误） -->
+        <Style Selector="Border.tag-pill">
+            <Setter Property="Padding" Value="6,0" />
+            <Setter Property="Height" Value="18" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Border.tag-pill TextBlock">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+        <Style Selector="Border.tag-tool">
+            <Setter Property="Background" Value="{DynamicResource PrimarySoftBrush}" />
+        </Style>
+        <Style Selector="Border.tag-tool TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}" />
+        </Style>
+        <Style Selector="Border.tag-ok">
+            <Setter Property="Background" Value="{DynamicResource SuccessSoftBrush}" />
+        </Style>
+        <Style Selector="Border.tag-ok TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource SuccessBrush}" />
+        </Style>
+        <Style Selector="Border.tag-warn">
+            <Setter Property="Background" Value="{DynamicResource WarningSoftBrush}" />
+        </Style>
+        <Style Selector="Border.tag-warn TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource WarningBrush}" />
+        </Style>
+        <Style Selector="Border.tag-err">
+            <Setter Property="Background" Value="{DynamicResource ErrorSoftBrush}" />
+        </Style>
+        <Style Selector="Border.tag-err TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource ErrorBrush}" />
+        </Style>
+        <Style Selector="Border.tag-plain">
+            <Setter Property="Background" Value="{DynamicResource BgSurface2Brush}" />
+        </Style>
+        <Style Selector="Border.tag-plain TextBlock">
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" ColumnDefinitions="*,480" Margin="0">
+
+        <!-- ===================== 批级状态带（合并：进度 + 内联统计胶囊 + 当前任务） ===================== -->
+        <Border Grid.Row="0" Grid.ColumnSpan="2" Padding="14,12" Theme="{StaticResource Card}" Margin="12,12,12,8">
             <StackPanel Spacing="10">
-                <Grid ColumnDefinitions="Auto,*,Auto">
-                    <TextBlock Grid.Column="0" Text="{Binding StatusText}" FontWeight="SemiBold" FontSize="15"
-                               Foreground="{DynamicResource TextPrimaryBrush}" />
-                    <ProgressBar Grid.Column="1" Margin="16,0" Height="14" Minimum="0" Maximum="100"
+                <!-- row1：批次进度 -->
+                <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                    <TextBlock Grid.Column="0" Text="批次进度" FontWeight="SemiBold" FontSize="13"
+                               Foreground="{DynamicResource TextPrimaryBrush}" Margin="0,0,12,0" />
+                    <ProgressBar Grid.Column="1" Height="8" Minimum="0" Maximum="100"
                                  Value="{Binding ProgressPercent}"
-                                 Foreground="{DynamicResource SuccessBrush}" />
-                    <TextBlock Grid.Column="2" Text="{Binding ProgressText}" FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                                 Foreground="{DynamicResource PrimaryBrush}" />
+                    <TextBlock Grid.Column="2" Margin="12,0,0,0" FontSize="12"
+                               Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center">
+                        <Run Text="{Binding ProgressText}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                        <Run Text=" · 预计剩余 " />
+                        <Run Text="{Binding EtaText}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                    </TextBlock>
                 </Grid>
 
-                <!-- 统计卡：大数字（状态色）+ 标签 -->
-                <WrapPanel Orientation="Horizontal">
-                    <Border Theme="{StaticResource Card}" Padding="14,8" Margin="0,0,8,0">
-                        <StackPanel>
-                            <TextBlock Text="{Binding Pending}" FontSize="22" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource StatusPendingBrush}" />
-                            <TextBlock Text="待处理" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                <!-- 统计胶囊（零值淡化） -->
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Border Classes="stat" Opacity="{Binding Running, Converter={StaticResource CountOpacityConverter}}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Ellipse Classes="statdot" Fill="{DynamicResource PrimaryBrush}" />
+                            <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}">
+                                <Run Text="执行中 " /><Run Text="{Binding Running}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            </TextBlock>
                         </StackPanel>
                     </Border>
-                    <Border Theme="{StaticResource Card}" Padding="14,8" Margin="0,0,8,0">
-                        <StackPanel>
-                            <TextBlock Text="{Binding Running}" FontSize="22" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource StatusRunningBrush}" />
-                            <TextBlock Text="执行中" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <Border Classes="stat" Opacity="{Binding Done, Converter={StaticResource CountOpacityConverter}}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Ellipse Classes="statdot" Fill="{DynamicResource SuccessBrush}" />
+                            <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}">
+                                <Run Text="完成 " /><Run Text="{Binding Done}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            </TextBlock>
                         </StackPanel>
                     </Border>
-                    <Border Theme="{StaticResource Card}" Padding="14,8" Margin="0,0,8,0">
-                        <StackPanel>
-                            <TextBlock Text="{Binding Done}" FontSize="22" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource StatusDoneBrush}" />
-                            <TextBlock Text="完成" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <Border Classes="stat" Opacity="{Binding Pending, Converter={StaticResource CountOpacityConverter}}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Ellipse Classes="statdot" Fill="{DynamicResource TextMutedBrush}" />
+                            <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}">
+                                <Run Text="待处理 " /><Run Text="{Binding Pending}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            </TextBlock>
                         </StackPanel>
                     </Border>
-                    <Border Theme="{StaticResource Card}" Padding="14,8" Margin="0,0,8,0">
-                        <StackPanel>
-                            <TextBlock Text="{Binding Failed}" FontSize="22" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource StatusFailedBrush}" />
-                            <TextBlock Text="失败" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <Border Classes="stat" Opacity="{Binding Failed, Converter={StaticResource CountOpacityConverter}}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Ellipse Classes="statdot" Fill="{DynamicResource ErrorBrush}" />
+                            <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}">
+                                <Run Text="失败 " /><Run Text="{Binding Failed}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            </TextBlock>
                         </StackPanel>
                     </Border>
-                    <Border Theme="{StaticResource Card}" Padding="14,8" Margin="0,0,8,0">
-                        <StackPanel>
-                            <TextBlock Text="{Binding Interrupted}" FontSize="22" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource StatusInterruptedBrush}" />
-                            <TextBlock Text="已中断" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <Border Classes="stat" Opacity="{Binding Interrupted, Converter={StaticResource CountOpacityConverter}}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Ellipse Classes="statdot" Fill="{DynamicResource WarningBrush}" />
+                            <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}">
+                                <Run Text="中断 " /><Run Text="{Binding Interrupted}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            </TextBlock>
                         </StackPanel>
                     </Border>
-                    <Border Theme="{StaticResource Card}" Padding="14,8" Margin="0,0,8,0"
-                            IsVisible="{Binding NeedsAttention, Converter={StaticResource GreaterThanZeroConverter}}">
-                        <StackPanel>
-                            <TextBlock Text="{Binding NeedsAttention}" FontSize="22" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource StatusAttentionBrush}" />
-                            <TextBlock Text="待人工介入" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
+                    <Border Classes="stat" Opacity="{Binding Skipped, Converter={StaticResource CountOpacityConverter}}">
+                        <StackPanel Orientation="Horizontal" Spacing="6">
+                            <Ellipse Classes="statdot" Fill="{DynamicResource TextMutedBrush}" />
+                            <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}">
+                                <Run Text="跳过 " /><Run Text="{Binding Skipped}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            </TextBlock>
                         </StackPanel>
                     </Border>
-                    <Border Theme="{StaticResource Card}" Padding="14,8" Margin="0,0,8,0"
-                            IsVisible="{Binding Blocked, Converter={StaticResource GreaterThanZeroConverter}}">
-                        <StackPanel>
-                            <TextBlock Text="{Binding Blocked}" FontSize="22" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource StatusBlockedBrush}" />
-                            <TextBlock Text="依赖阻塞" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
-                        </StackPanel>
-                    </Border>
-                    <Border Theme="{StaticResource Card}" Padding="14,8">
-                        <StackPanel>
-                            <TextBlock Text="{Binding Skipped}" FontSize="22" FontWeight="SemiBold"
-                                       Foreground="{DynamicResource TextMutedBrush}" />
-                            <TextBlock Text="续跑跳过" FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}" />
-                        </StackPanel>
-                    </Border>
-                </WrapPanel>
-
-                <StackPanel Orientation="Horizontal" Spacing="16">
-                    <TextBlock Text="{Binding CurrentTaskText, StringFormat='当前任务：{0}'}"
-                               Foreground="{DynamicResource TextSecondaryBrush}" />
-                    <TextBlock Text="{Binding CurrentComboText, StringFormat='当前账号 + 模型：{0}'}"
-                               Foreground="{DynamicResource TextSecondaryBrush}" />
-                    <TextBlock Text="{Binding CurrentWorkspaceText, StringFormat='当前工作空间：{0}'}"
-                               Foreground="{DynamicResource TextSecondaryBrush}" />
                 </StackPanel>
+
+                <!-- row3：当前任务 / 账号·模型 / 工作空间 -->
+                <StackPanel Orientation="Horizontal" Spacing="24">
+                    <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}">
+                        <Run Text="当前任务 " Foreground="{DynamicResource TextMutedBrush}" /><Run Text="{Binding CurrentTaskText}" />
+                    </TextBlock>
+                    <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}">
+                        <Run Text="账号 · 模型 " Foreground="{DynamicResource TextMutedBrush}" /><Run Text="{Binding CurrentComboText}" FontFamily="{DynamicResource FontMono}" />
+                    </TextBlock>
+                    <TextBlock FontSize="12" Foreground="{DynamicResource TextSecondaryBrush}">
+                        <Run Text="工作空间 " Foreground="{DynamicResource TextMutedBrush}" /><Run Text="{Binding CurrentWorkspaceText}" FontFamily="{DynamicResource FontMono}" />
+                    </TextBlock>
+                </StackPanel>
+
+                <!-- REQ-021：并行下统一切换期间，派发已暂停的醒目提示（在飞全部结束并统一切换后自动隐藏） -->
+                <Border Padding="8,5" CornerRadius="{DynamicResource RadiusPill}"
+                        Background="{DynamicResource BgSurface2Brush}"
+                        BorderBrush="{DynamicResource WarningBrush}" BorderThickness="1"
+                        IsVisible="{Binding DispatchPaused}" Margin="0,6,0,0">
+                    <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <TextBlock Text="⏸" FontSize="13" VerticalAlignment="Center" />
+                        <TextBlock Text="派发已暂停：等待在飞任务结束并统一切换账号（期间不向任何槽位派发新任务）"
+                                   FontSize="12" FontWeight="SemiBold"
+                                   Foreground="{DynamicResource TextPrimaryBrush}" TextWrapping="Wrap" />
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </Border>
 
-        <!-- 操作区 -->
-        <Border Grid.Row="1" Grid.ColumnSpan="2" Padding="12" Theme="{StaticResource Card}" Margin="0,0,0,8">
-            <StackPanel Spacing="8">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <Button Content="加载任务文件" Command="{Binding LoadCommand}" />
-                    <Button Content="启动前预检" Command="{Binding PreflightCommand}" />
-                    <Button Content="开始执行" Classes="primary" Command="{Binding StartCommand}" />
-                    <Button Content="续跑" Command="{Binding ResumeCommand}" />
-                    <Button Content="终止" Classes="danger" Command="{Binding TerminateCommand}" />
-                    <Button Content="终止（等当前任务完成）" Classes="danger" Command="{Binding TerminateAfterCurrentCommand}" />
-                    <Button Content="取消等待" Command="{Binding CancelWaitingCommand}" IsVisible="{Binding IsWaiting}" />
-                    <Button Content="重置全部冷却" Command="{Binding ResetCooldownCommand}" />
-                    <CheckBox Content="强制重跑" IsChecked="{Binding ForceRerun}" VerticalAlignment="Center" />
-                    <CheckBox Content="启动前不可用则等待" IsChecked="{Binding WaitIfUnavailable}"
-                              VerticalAlignment="Center" />
+        <!-- ===================== 工具栏（语义分组，危险操作独立成区） ===================== -->
+        <Border Grid.Row="1" Grid.ColumnSpan="2" Padding="10,8" Theme="{StaticResource Card}" Margin="12,0,12,8">
+            <Grid ColumnDefinitions="*,Auto">
+                <!-- 左侧按钮组：窗口过窄时横向滚动，避免溢出盖住右侧文件路径 -->
+                <ScrollViewer Grid.Column="0" HorizontalScrollBarVisibility="Hidden"
+                              VerticalScrollBarVisibility="Disabled">
+                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Spacing="8">
+                        <Button Content="📂 加载任务文件" Command="{Binding LoadCommand}" />
+                        <Button Content="✓ 启动前预检" Command="{Binding PreflightCommand}" />
+                        <Button Content="▶ 开始执行" Classes="primary" Command="{Binding StartCommand}" />
+                        <Button Content="续跑" Command="{Binding ResumeCommand}" />
+                        <Border Classes="tb-sep" />
+                        <Button Content="■ 终止" Classes="danger-soft" Command="{Binding TerminateCommand}" />
+                        <Button Content="■ 终止（等待当前完成）" Classes="danger" Command="{Binding TerminateAfterCurrentCommand}" />
+                        <Border Classes="tb-sep" />
+                        <Button Content="↻ 重置全部冷却" Command="{Binding ResetCooldownCommand}" />
+                        <Button Content="取消等待" Command="{Binding CancelWaitingCommand}" IsVisible="{Binding IsWaiting}" />
+                        <CheckBox Content="强制重跑" IsChecked="{Binding ForceRerun}" VerticalAlignment="Center" />
+                        <CheckBox Content="启动时不可用则等待" IsChecked="{Binding WaitIfUnavailable}" VerticalAlignment="Center" />
+                    </StackPanel>
+                </ScrollViewer>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center" Margin="12,0,0,0">
+                    <Border Classes="tb-sep" />
+                    <TextBlock Text="{Binding TaskFilePath}" FontSize="12" Foreground="{DynamicResource TextMutedBrush}"
+                               FontFamily="{DynamicResource FontMono}" MaxWidth="260" TextTrimming="CharacterEllipsis"
+                               VerticalAlignment="Center"
+                               ToolTip.Tip="{Binding TaskFilePath}" />
                 </StackPanel>
-                <TextBlock Text="{Binding WaitingText}" FontWeight="SemiBold"
-                           Foreground="{DynamicResource WarningBrush}" IsVisible="{Binding IsWaiting}" />
-                <TextBlock Text="{Binding TaskFilePath, StringFormat='任务文件：{0}'}" FontSize="12"
-                           Foreground="{DynamicResource TextMutedBrush}" />
-            </StackPanel>
+            </Grid>
         </Border>
 
-        <!-- 批级状态引导（Idle 空状态 / Completed 报告入口） -->
-        <Border Grid.Row="2" Grid.ColumnSpan="2" Padding="12" Theme="{StaticResource Card}"
-                Margin="0,0,0,8"
+        <!-- ===================== 批级空状态 / 已完成报告入口 ===================== -->
+        <Border Grid.Row="2" Grid.ColumnSpan="2" Padding="12" Theme="{StaticResource Card}" Margin="12,0,12,8"
                 IsVisible="{Binding StatusText, Converter={StaticResource EqualsTextConverter}, ConverterParameter='空闲|已完成'}">
             <StackPanel Spacing="4">
-                <TextBlock Text="{Binding StatusText}" FontWeight="SemiBold"
-                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                <TextBlock Text="{Binding StatusText}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
                 <TextBlock Text="尚未加载任务。请先在「配置中心 → 高级配置」选择任务文件，或走「配置向导（首次推荐）」后点「加载任务文件」。"
                            TextWrapping="Wrap"
                            IsVisible="{Binding StatusText, Converter={StaticResource EqualsTextConverter}, ConverterParameter=空闲}"
@@ -142,50 +268,83 @@
             </StackPanel>
         </Border>
 
-        <!-- 任务列表 -->
-        <Border Grid.Row="3" Grid.Column="0" Padding="8" Theme="{StaticResource Card}" Margin="0,0,8,0">
-            <Grid RowDefinitions="*,Auto">
-                <ListBox Grid.Row="0" ItemsSource="{Binding Tasks}" SelectedItem="{Binding SelectedTask}"
-                         Background="Transparent" BorderThickness="0">
+        <!-- ===================== 左侧：任务列表（带筛选 chip） ===================== -->
+        <Border Grid.Row="3" Grid.Column="0" Padding="0" Theme="{StaticResource Card}" Margin="12,0,8,0">
+            <Grid RowDefinitions="Auto,*,Auto">
+                <!-- 面板头：标题 + 筛选 chip + 提示 -->
+                <Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Margin="12,10">
+                    <TextBlock Grid.Column="0" Text="任务列表" FontSize="14" FontWeight="SemiBold"
+                               Foreground="{DynamicResource TextPrimaryBrush}" VerticalAlignment="Center" />
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6" Margin="10,0,0,0" VerticalAlignment="Center">
+                        <ToggleButton Classes="chip" Content="{Binding Total, StringFormat='全部 {0}'}"
+                                      Command="{Binding SetFilterCommand}" CommandParameter="全部"
+                                      IsChecked="{Binding ActiveFilter, Converter={StaticResource EqualsTextConverter}, ConverterParameter=全部, Mode=OneWay}" />
+                        <ToggleButton Classes="chip" Content="{Binding Running, StringFormat='执行中 {0}'}"
+                                      Command="{Binding SetFilterCommand}" CommandParameter="执行中"
+                                      IsChecked="{Binding ActiveFilter, Converter={StaticResource EqualsTextConverter}, ConverterParameter=执行中, Mode=OneWay}" />
+                        <ToggleButton Classes="chip" Content="{Binding Pending, StringFormat='待处理 {0}'}"
+                                      Command="{Binding SetFilterCommand}" CommandParameter="待处理"
+                                      IsChecked="{Binding ActiveFilter, Converter={StaticResource EqualsTextConverter}, ConverterParameter=待处理, Mode=OneWay}" />
+                        <ToggleButton Classes="chip" Content="{Binding Done, StringFormat='完成 {0}'}"
+                                      Command="{Binding SetFilterCommand}" CommandParameter="完成"
+                                      IsChecked="{Binding ActiveFilter, Converter={StaticResource EqualsTextConverter}, ConverterParameter=完成, Mode=OneWay}" />
+                        <ToggleButton Classes="chip" Content="{Binding Failed, StringFormat='失败 {0}'}"
+                                      Command="{Binding SetFilterCommand}" CommandParameter="失败"
+                                      IsChecked="{Binding ActiveFilter, Converter={StaticResource EqualsTextConverter}, ConverterParameter=失败, Mode=OneWay}" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="2" Text="点击行查看详情" FontSize="12"
+                               Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+                </Grid>
+
+                <!-- 任务列表 -->
+                <ListBox Grid.Row="1" ItemsSource="{Binding VisibleTasks}" SelectedItem="{Binding SelectedTask}"
+                         Background="Transparent" BorderThickness="0" Padding="4">
                     <ListBox.ItemTemplate>
                         <DataTemplate DataType="models:TaskRowViewModel">
-                            <Grid ColumnDefinitions="Auto,*,Auto,Auto" Margin="4">
-                                <Ellipse Grid.Column="0" Width="9" Height="9" VerticalAlignment="Center" Margin="0,0,8,0"
-                                         conv:StatusDotHelper.TaskStatus="{Binding Status}" />
-                                <StackPanel Grid.Column="1" Spacing="2">
-                                    <StackPanel Orientation="Horizontal" Spacing="6">
-                                        <TextBlock Text="{Binding Id}" FontWeight="SemiBold"
-                                                   Foreground="{DynamicResource TextPrimaryBrush}" />
-                                        <Border Background="{DynamicResource InfoSoftBrush}" CornerRadius="8"
-                                                Padding="6,1" VerticalAlignment="Center"
-                                                IsVisible="{Binding IsWorkflow}">
-                                            <TextBlock Text="{Binding StageBadge}" FontSize="11"
-                                                       Foreground="{DynamicResource InfoBrush}" />
-                                        </Border>
+                            <StackPanel Margin="2" Spacing="3">
+                                <Grid ColumnDefinitions="10,*,Auto,Auto,Auto" Margin="8,4">
+                                    <Ellipse Grid.Column="0" Width="9" Height="9" VerticalAlignment="Center" Margin="0,0,8,0"
+                                             conv:StatusDotHelper.TaskStatus="{Binding Status}" />
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2" MinWidth="0">
+                                        <TextBlock Text="{Binding Item.Instruction}" FontSize="13" FontWeight="SemiBold"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis">
+                                            <ToolTip.Tip><TextBlock Text="{Binding Item.Instruction}" /></ToolTip.Tip>
+                                        </TextBlock>
+                                        <TextBlock FontSize="12" Foreground="{DynamicResource TextMutedBrush}"
+                                                   FontFamily="{DynamicResource FontMono}" TextTrimming="CharacterEllipsis">
+                                            <Run Text="{Binding Id}" /><Run Text=" · " Foreground="{DynamicResource BorderStrongBrush}" /><Run Text="{Binding ExecutionInfo}" />
+                                        </TextBlock>
                                     </StackPanel>
-                                    <TextBlock Text="{Binding ExecutionInfo}" FontSize="12"
+                                    <!-- REQ-020：每行显示所属工作空间，便于用户校验「同空间未并行」 -->
+                                    <Border Grid.Column="2" Padding="8,3" CornerRadius="10" VerticalAlignment="Center"
+                                            Background="{DynamicResource BgSurface2Brush}" Margin="10,0,0,0">
+                                        <StackPanel Orientation="Horizontal" Spacing="4">
+                                            <TextBlock Text="空间" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" />
+                                            <TextBlock Text="{Binding Workspace}" FontSize="12" FontWeight="SemiBold"
+                                                       Foreground="{DynamicResource TextSecondaryBrush}" FontFamily="{DynamicResource FontMono}" />
+                                        </StackPanel>
+                                    </Border>
+                                    <TextBlock Grid.Column="3" Text="{Binding DurationText}" VerticalAlignment="Center" Margin="10,0"
+                                               FontSize="12" FontFamily="{DynamicResource FontMono}" TextTrimming="CharacterEllipsis"
                                                Foreground="{DynamicResource TextSecondaryBrush}" />
-                                    <TextBlock Text="{Binding DependsText}" FontSize="12"
-                                               Foreground="{DynamicResource TextMutedBrush}"
-                                               IsVisible="{Binding HasDepends}" />
-                                    <TextBlock Text="{Binding Item.Error}" FontSize="12"
-                                               Foreground="{DynamicResource ErrorBrush}" IsVisible="{Binding HasError}"
-                                               TextWrapping="Wrap" />
-                                </StackPanel>
-                                <TextBlock Grid.Column="2" Text="{Binding DurationText}" VerticalAlignment="Center"
-                                           Margin="8,0" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                <Border Grid.Column="3" Padding="8,3" CornerRadius="10"
-                                        Background="{DynamicResource BgSurface2Brush}" VerticalAlignment="Center">
-                                    <TextBlock Text="{Binding StatusText}" FontSize="12"
-                                               Foreground="{DynamicResource TextPrimaryBrush}" />
-                                </Border>
-                            </Grid>
+                                    <Border Grid.Column="4" Padding="8,3" CornerRadius="10" VerticalAlignment="Center"
+                                            Background="{DynamicResource BgSurface2Brush}">
+                                        <TextBlock Text="{Binding StatusText}" FontSize="12" FontWeight="SemiBold"
+                                                   Foreground="{Binding StatusBrush}" />
+                                    </Border>
+                                </Grid>
+                                <!-- 运行中迷你进度条 -->
+                                <ProgressBar Height="3" Margin="26,0,12,0"
+                                             IsVisible="{Binding Status, Converter={StaticResource EqualsTextConverter}, ConverterParameter=Running}"
+                                             Value="62" Foreground="{DynamicResource PrimaryBrush}"
+                                             Background="{DynamicResource BgSurface2Brush}" />
+                            </StackPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
 
-                <!-- 依赖看板（DagBoardView）：批次含 DAG 依赖时显示，按拓扑层级缩进 -->
-                <Expander Grid.Row="1" Header="依赖看板（DAG）" IsExpanded="True" Margin="0,8,0,0"
+                <!-- 依赖看板（DAG）：批次含 DAG 依赖时显示 -->
+                <Expander Grid.Row="2" Header="依赖看板（DAG）" IsExpanded="True" Margin="8,0,8,8"
                           IsVisible="{Binding HasDag}">
                     <ItemsControl ItemsSource="{Binding DagRows}">
                         <ItemsControl.ItemTemplate>
@@ -212,90 +371,197 @@
             </Grid>
         </Border>
 
-        <!-- 详情 + 输出流 + 提示 -->
-        <Border Grid.Row="3" Grid.Column="1" Padding="8" Theme="{StaticResource Card}">
-            <ScrollViewer>
-                <StackPanel Spacing="8">
-                    <TextBlock Text="任务指令" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
-                    <TextBlock Text="{Binding SelectedInstruction}" TextWrapping="Wrap" MaxHeight="140"
-                               Foreground="{DynamicResource TextPrimaryBrush}" />
+        <!-- ===================== 右侧：Tab 化详情（输出流 / 事件 / 错误 / 阶段） ===================== -->
+        <Border Grid.Row="3" Grid.Column="1" Padding="0" Theme="{StaticResource Card}" Margin="0,0,12,0">
+            <TabControl Classes="mon">
+                <!-- 实时输出流 -->
+                <TabItem Header="实时输出流">
+                    <Grid RowDefinitions="Auto,*">
+                        <!-- 选中任务摘要 -->
+                        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto,Auto,Auto" Margin="12,10"
+                              Background="{DynamicResource BgSurface2Brush}">
+                            <TextBlock Grid.Column="0" Text="{Binding SelectedTask.Item.Instruction}" FontSize="12"
+                                       VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
+                                       Foreground="{DynamicResource TextPrimaryBrush}"
+                                       ToolTip.Tip="{Binding SelectedTask.Item.Instruction}" />
+                            <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="12,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="ID" Foreground="{DynamicResource TextMutedBrush}" />
+                                <TextBlock Text="{Binding SelectedTask.Id}" FontFamily="{DynamicResource FontMono}" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" Margin="12,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="耗时" Foreground="{DynamicResource TextMutedBrush}" />
+                                <TextBlock Text="{Binding SelectedTask.DurationText}" FontFamily="{DynamicResource FontMono}" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="3" Orientation="Horizontal" Spacing="4" Margin="12,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="账号·模型" Foreground="{DynamicResource TextMutedBrush}" />
+                                <TextBlock Text="{Binding SelectedTask.ExecutionInfo}" FontFamily="{DynamicResource FontMono}" Foreground="{DynamicResource TextPrimaryBrush}" />
+                            </StackPanel>
+                            <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="4" Margin="12,0,0,0" VerticalAlignment="Center">
+                                <TextBlock Text="状态" Foreground="{DynamicResource TextMutedBrush}" />
+                                <TextBlock Text="{Binding SelectedTask.StatusText}" FontFamily="{DynamicResource FontMono}" Foreground="{Binding SelectedTask.StatusBrush}" />
+                            </StackPanel>
+                        </Grid>
 
-                    <TextBlock Text="执行结果" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
-                    <TextBlock Text="{Binding SelectedResult}" TextWrapping="Wrap" MaxHeight="220"
-                               Foreground="{DynamicResource TextSecondaryBrush}" />
-
-                    <TextBlock Text="错误信息" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
-                    <TextBlock Text="{Binding SelectedError}" TextWrapping="Wrap"
-                               Foreground="{DynamicResource ErrorBrush}" MaxHeight="100" />
-
-                    <StackPanel Spacing="8" IsVisible="{Binding SelectedIsWorkflow}">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <TextBlock Text="工作流阶段（门禁 / 修订循环）" FontWeight="SemiBold"
-                                   Foreground="{DynamicResource TextPrimaryBrush}" />
-                        <TextBlock Text="{Binding SelectedTemplateId, StringFormat='模板：{0}'}" FontSize="12"
-                                   Foreground="{DynamicResource TextMutedBrush}"
-                                   IsVisible="{Binding HasSelectedTemplate}" />
-                    </StackPanel>
-                    <ItemsControl ItemsSource="{Binding SelectedStages}">
-                        <ItemsControl.ItemTemplate>
-                            <DataTemplate DataType="models:StageRowViewModel">
-                                <Border Padding="8,6" Margin="0,0,0,6" CornerRadius="6"
-                                        Background="{DynamicResource BgSurface2Brush}">
-                                    <StackPanel Spacing="3">
-                                        <StackPanel Orientation="Horizontal" Spacing="8">
-                                            <Ellipse Width="9" Height="9" VerticalAlignment="Center"
-                                                     conv:StatusDotHelper.TaskStatus="{Binding Status}" />
-                                            <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"
-                                                       Foreground="{DynamicResource TextPrimaryBrush}" />
-                                            <TextBlock Text="{Binding StatusText}" FontSize="12"
-                                                       Foreground="{Binding StatusBrush}" />
-                                            <TextBlock Text="{Binding GateText}" FontSize="12"
-                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
-                                            <TextBlock Text="{Binding LoopText}" FontSize="12"
-                                                       Foreground="{DynamicResource TextMutedBrush}" />
-                                            <TextBlock Text="{Binding ExecutionText}" FontSize="12"
-                                                       Foreground="{DynamicResource TextMutedBrush}" />
-                                        </StackPanel>
-                                        <TextBlock Text="{Binding OutputSummary}" FontSize="12" TextWrapping="Wrap"
-                                                   MaxHeight="80" Foreground="{DynamicResource TextSecondaryBrush}" />
-                                        <StackPanel IsVisible="{Binding HasLeftover}" Spacing="2">
-                                            <TextBlock Text="门禁遗留问题：" FontSize="12" FontWeight="SemiBold"
-                                                       Foreground="{DynamicResource WarningBrush}" />
-                                            <TextBlock Text="{Binding Leftover}" FontSize="12" TextWrapping="Wrap"
-                                                       MaxHeight="100"
-                                                       Foreground="{DynamicResource TextSecondaryBrush}" />
-                                        </StackPanel>
-                                    </StackPanel>
-                                </Border>
-                            </DataTemplate>
-                        </ItemsControl.ItemTemplate>
-                    </ItemsControl>
-                </StackPanel>
-
-                <TextBlock Text="实时输出流" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
-                    <ListBox ItemsSource="{Binding OutputLines}" MaxHeight="200" FontSize="12"
-                             FontFamily="{DynamicResource FontMono}"
-                             Background="{DynamicResource BgSurface2Brush}" BorderThickness="0" />
-
-                    <TextBlock Text="事件提示（切换 / 兜底 / 时段 / 冷却 / 危险操作）" FontWeight="SemiBold"
-                               Foreground="{DynamicResource TextPrimaryBrush}" />
-                    <ListBox ItemsSource="{Binding Toasts}" MaxHeight="220" FontSize="12"
-                             Background="{DynamicResource BgSurface2Brush}" BorderThickness="0">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate DataType="models:ToastItem">
-                                <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <TextBlock Text="{Binding TimeText}" Foreground="{DynamicResource TextMutedBrush}" />
-                                    <TextBlock Text="{Binding Message}" TextWrapping="Wrap"
+                        <!-- 指令 + 结果 + 输出流 -->
+                        <ScrollViewer Grid.Row="1" Padding="12">
+                            <StackPanel Spacing="8">
+                                <StackPanel Spacing="4" IsVisible="{Binding HasSelectedTask}">
+                                    <TextBlock Text="任务指令" FontWeight="SemiBold" FontSize="12"
                                                Foreground="{DynamicResource TextPrimaryBrush}" />
+                                    <TextBlock Text="{Binding SelectedInstruction}" TextWrapping="Wrap" FontSize="12"
+                                               Foreground="{DynamicResource TextPrimaryBrush}" MaxHeight="120" />
+                                    <TextBlock Text="执行结果" FontWeight="SemiBold" FontSize="12" Margin="0,4,0,0"
+                                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                                    <TextBlock Text="{Binding SelectedResult}" TextWrapping="Wrap" FontSize="12"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" MaxHeight="160" />
                                 </StackPanel>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </StackPanel>
-            </ScrollViewer>
+
+                                <TextBlock Text="实时输出流" FontWeight="SemiBold" FontSize="12"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <ListBox ItemsSource="{Binding OutputLines}" Background="Transparent" BorderThickness="0"
+                                         Padding="0">
+                                    <ListBox.Styles>
+                                        <Style Selector="ListBoxItem">
+                                            <Setter Property="Padding" Value="0" />
+                                        </Style>
+                                        <Style Selector="ListBoxItem:pointerover">
+                                            <Setter Property="Background" Value="{DynamicResource BgHoverBrush}" />
+                                        </Style>
+                                    </ListBox.Styles>
+                                    <ListBox.ItemTemplate>
+                                        <DataTemplate DataType="models:OutputLineItem">
+                                            <Grid ColumnDefinitions="Auto,Auto,*" Margin="2,1" VerticalAlignment="Center">
+                                                <TextBlock Grid.Column="0" Text="{Binding TimeText}"
+                                                           FontFamily="{DynamicResource FontMono}" FontSize="12"
+                                                           Foreground="{DynamicResource TextMutedBrush}"
+                                                           VerticalAlignment="Center" Margin="0,0,10,0" />
+                                                <Border Grid.Column="1" Classes="tag-pill" Margin="0,0,10,0"
+                                                        conv:OutputTagHelper.TagKind="{Binding Kind}">
+                                                    <TextBlock Text="{Binding TagText}" />
+                                                </Border>
+                                                <TextBlock Grid.Column="2" Text="{Binding Message}"
+                                                           FontFamily="{DynamicResource FontMono}" FontSize="12"
+                                                           VerticalAlignment="Center" TextWrapping="Wrap"
+                                                           Foreground="{Binding Dim, Converter={StaticResource OutputMessageForegroundConverter}}" />
+                                            </Grid>
+                                        </DataTemplate>
+                                    </ListBox.ItemTemplate>
+                                </ListBox>
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </TabItem>
+
+                <!-- 事件提示 -->
+                <TabItem>
+                    <TabItem.Header>
+                        <StackPanel Orientation="Horizontal" Spacing="5">
+                            <TextBlock Text="事件提示" />
+                            <Border Padding="6,0" CornerRadius="{DynamicResource RadiusPill}"
+                                    Background="{DynamicResource PrimarySoftBrush}"
+                                    IsVisible="{Binding Toasts.Count, Converter={StaticResource GreaterThanZeroConverter}}">
+                                <TextBlock Text="{Binding Toasts.Count}" FontSize="11" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource PrimaryBrush}" />
+                            </Border>
+                        </StackPanel>
+                    </TabItem.Header>
+                    <ScrollViewer Padding="12">
+                        <ListBox ItemsSource="{Binding Toasts}" Background="Transparent" BorderThickness="0">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate DataType="models:ToastItem">
+                                    <Grid ColumnDefinitions="Auto,Auto,*" Margin="2">
+                                        <Ellipse Grid.Column="0" Width="8" Height="8" VerticalAlignment="Center" Margin="2,0,4,0"
+                                                 Fill="{Binding LevelBrush}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding TimeText}" FontFamily="{DynamicResource FontMono}"
+                                                   FontSize="12" Foreground="{DynamicResource TextMutedBrush}" VerticalAlignment="Center"
+                                                   Margin="0,0,8,0" />
+                                        <TextBlock Grid.Column="2" Text="{Binding Message}" FontSize="12" TextWrapping="Wrap"
+                                                   Foreground="{DynamicResource TextPrimaryBrush}" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- 错误信息 -->
+                <TabItem Header="错误信息">
+                    <ScrollViewer Padding="12">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="错误信息" FontWeight="SemiBold" FontSize="12"
+                                       Foreground="{DynamicResource TextPrimaryBrush}" />
+                            <TextBlock Text="{Binding SelectedError}" TextWrapping="Wrap" FontSize="12"
+                                       Foreground="{DynamicResource ErrorBrush}"
+                                       IsVisible="{Binding SelectedHasError}" />
+                            <TextBlock Text="当前任务无错误记录。" FontSize="12"
+                                       Foreground="{DynamicResource TextMutedBrush}"
+                                       IsVisible="{Binding SelectedHasError, Converter={StaticResource BoolInvertConverter}}" />
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+
+                <!-- 阶段（仅工作流任务显示） -->
+                <TabItem Header="阶段" IsVisible="{Binding SelectedIsWorkflow}">
+                    <ScrollViewer Padding="12">
+                        <StackPanel Spacing="8" IsVisible="{Binding HasSelectedTemplate}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="工作流阶段（门禁 / 修订循环）" FontWeight="SemiBold"
+                                           Foreground="{DynamicResource TextPrimaryBrush}" />
+                                <TextBlock Text="{Binding SelectedTemplateId, StringFormat='模板：{0}'}" FontSize="12"
+                                           Foreground="{DynamicResource TextMutedBrush}" />
+                            </StackPanel>
+                            <ItemsControl ItemsSource="{Binding SelectedStages}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate DataType="models:StageRowViewModel">
+                                        <Border Padding="8,6" Margin="0,0,0,6" CornerRadius="6"
+                                                Background="{DynamicResource BgSurface2Brush}">
+                                            <StackPanel Spacing="3">
+                                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                                    <Ellipse Width="9" Height="9" VerticalAlignment="Center"
+                                                             conv:StatusDotHelper.TaskStatus="{Binding Status}" />
+                                                    <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource TextPrimaryBrush}" />
+                                                    <TextBlock Text="{Binding StatusText}" FontSize="12"
+                                                               Foreground="{Binding StatusBrush}" />
+                                                    <TextBlock Text="{Binding GateText}" FontSize="12"
+                                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                    <TextBlock Text="{Binding LoopText}" FontSize="12"
+                                                               Foreground="{DynamicResource TextMutedBrush}" />
+                                                    <TextBlock Text="{Binding ExecutionText}" FontSize="12"
+                                                               Foreground="{DynamicResource TextMutedBrush}" />
+                                                </StackPanel>
+                                                <TextBlock Text="{Binding OutputSummary}" FontSize="12" TextWrapping="Wrap"
+                                                           MaxHeight="80" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                <StackPanel IsVisible="{Binding HasLeftover}" Spacing="2">
+                                                    <TextBlock Text="门禁遗留问题：" FontSize="12" FontWeight="SemiBold"
+                                                               Foreground="{DynamicResource WarningBrush}" />
+                                                    <TextBlock Text="{Binding Leftover}" FontSize="12" TextWrapping="Wrap"
+                                                               MaxHeight="100" Foreground="{DynamicResource TextSecondaryBrush}" />
+                                                </StackPanel>
+                                            </StackPanel>
+                                        </Border>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </ScrollViewer>
+                </TabItem>
+            </TabControl>
         </Border>
 
-        <TextBlock Grid.Row="4" Grid.ColumnSpan="2" Margin="0,8,0,0" Text="{Binding StatusMessage}"
-                   TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" />
+        <!-- ===================== 底部状态栏 ===================== -->
+        <Border Grid.Row="4" Grid.ColumnSpan="2" Height="30" Padding="12,0"
+                Background="{DynamicResource BgSurfaceBrush}" BorderThickness="1,0,0,0"
+                BorderBrush="{DynamicResource BorderSubtleBrush}">
+            <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
+                <TextBlock Grid.Column="0" Text="{Binding StatusMessage}" FontSize="12"
+                           Foreground="{DynamicResource TextSecondaryBrush}" />
+                <TextBlock Grid.Column="1" Text="{Binding TaskFilePath}" FontSize="12"
+                           Foreground="{DynamicResource TextMutedBrush}" HorizontalAlignment="Right"
+                           TextTrimming="CharacterEllipsis" Margin="16,0" />
+                <TextBlock Grid.Column="2" Text="BatchAgentRunner v1.0" FontSize="12"
+                           Foreground="{DynamicResource TextMutedBrush}" />
+            </Grid>
+        </Border>
     </Grid>
 </UserControl>

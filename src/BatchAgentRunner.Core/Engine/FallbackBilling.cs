@@ -36,6 +36,12 @@ public interface IFallbackBilling
     /// </summary>
     FallbackSelection? TrySelect(string taskId);
 
+    /// <summary>
+    /// 仅从指定账号的兜底池选取（REQ-021）：并发冻结任务的兜底范围被约束为「原启动账号自身的兜底池、
+    /// 不跨账号」——否则将违背「不切换 Live 凭证」，造成并行下账号混用。其余上限/停用逻辑同 <see cref="TrySelect"/>。
+    /// </summary>
+    FallbackSelection? TrySelectForAccount(string taskId, string accountId);
+
     /// <summary>P0-1 不变量：按 <c>Fallback.MaxCostPerTask</c> 截断实测/估算成本（原 no-op 恒等式已修复）。</summary>
     decimal CapCost(decimal cost);
 
@@ -101,6 +107,53 @@ public sealed class FallbackBilling : IFallbackBilling
 
         // P0-5：兜底成本/用量是跨任务共享状态（Concurrency>1 时并发累加），且「检查上限 → 累加」
         // 属 check-then-act，必须与累加共用同一把锁；事件广播在锁外进行（避免持锁调用订阅方）。
+        string? limitReason = null;
+        lock (_lock)
+        {
+            if (_batchCost + unitPrice > _options.Fallback.MaxCostPerBatch)
+            {
+                limitReason = $"兜底成本已用尽（单批上限 ¥{_options.Fallback.MaxCostPerBatch}），已停用兜底并转为阻塞";
+            }
+            else if (unitPrice > _options.Fallback.MaxCostPerTask)
+            {
+                limitReason = $"兜底单价 ¥{unitPrice} 超出单任务上限 ¥{_options.Fallback.MaxCostPerTask}，已跳过兜底";
+            }
+
+            if (limitReason is not null)
+            {
+                _stoppedByLimit = true;
+            }
+        }
+
+        if (limitReason is not null)
+        {
+            _raise(new BatchEvent(BatchEventKind.Warning, _clock.Now, limitReason, taskId));
+            return null;
+        }
+
+        return new FallbackSelection(account, fallback, unitPrice);
+    }
+
+    public FallbackSelection? TrySelectForAccount(string taskId, string accountId)
+    {
+        if (!_options.Fallback.Enabled)
+        {
+            return null;
+        }
+
+        // REQ-021：仅从「原启动账号自身」的兜底池选取，不得跨账号。
+        var (account, fallback) = _matrixProvider().Accounts
+            .Where(a => a.Enabled && string.Equals(a.Id, accountId, StringComparison.OrdinalIgnoreCase))
+            .SelectMany(a => (a.FallbackModels ?? new List<FallbackModel>()).Select(fb => (Account: a, Fallback: fb)))
+            .FirstOrDefault();
+
+        if (fallback is null)
+        {
+            return null;
+        }
+
+        var unitPrice = fallback.EstimatedUnitPrice ?? 0m;
+
         string? limitReason = null;
         lock (_lock)
         {

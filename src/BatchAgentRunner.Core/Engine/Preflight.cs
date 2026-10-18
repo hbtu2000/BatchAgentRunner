@@ -106,6 +106,22 @@ public sealed class StartupPreflight : IPreflight
                     }
                 }
 
+                // REQ-019：命名工作空间数量上限（以配置值 max_workspaces 为准，非硬编码）
+                var configuredWorkspaces = _options.Workspaces
+                    .Where(w => !string.IsNullOrWhiteSpace(w.Name))
+                    .ToList();
+                if (configuredWorkspaces.Count > _options.MaxWorkspaces)
+                {
+                    var over = configuredWorkspaces
+                        .Skip(_options.MaxWorkspaces)
+                        .Select(w => w.Name)
+                        .ToList();
+                    report.AddError(
+                        $"命名工作空间数量（{configuredWorkspaces.Count}）已超过配置上限（{_options.MaxWorkspaces}）；" +
+                        $"请精简至 {_options.MaxWorkspaces} 个以内再启动。超限条目：" +
+                        string.Join("、", over.Select(n => $"「{n}」")));
+                }
+
                 foreach (var t in loadedTasks.Where(t => !string.IsNullOrWhiteSpace(t.Workspace)))
                 {
                     var resolved = _resolveWorkspace(t.Workspace);
@@ -157,8 +173,9 @@ public sealed class StartupPreflight : IPreflight
         var enabledAccounts = _options.Accounts.Where(a => a.Enabled).ToList();
         if (_vault is not null && _options.Concurrency > 1)
         {
-            // DESIGN §3：同一时刻每个 CLI 只有一个身份，多账号并发切换会互相覆盖 Live
-            report.AddWarning("已启用凭证 Vault：同一时刻每个 CLI 只有一个登录身份，并发 > 1 时多账号切换会互相覆盖，建议 concurrency = 1");
+            // DESIGN §3 / REQ-021：并发 > 1 下同一时刻每个 CLI 只有一个登录身份；
+            // 已由「统一切换（槽位冻结 + 全局派发暂停 + 在飞全部结束后一次切换）」机制保证不混用，故不再建议降为 1。
+            report.AddWarning("已启用凭证 Vault 且并发 > 1：并行任务共用同一活动账号，账号切换将延后至在飞任务全部结束后统一执行（REQ-021）");
         }
 
         if (enabledAccounts.Count == 0)

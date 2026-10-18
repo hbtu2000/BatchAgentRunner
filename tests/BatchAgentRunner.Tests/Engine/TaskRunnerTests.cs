@@ -278,6 +278,7 @@ public class TaskRunnerTests
         public void SetSkippedDoneCount(int count) => SkippedDoneCount = count;
         public void TrackUsage(string account, string model, AgentUsage? usage) { }
         public void AddTimeline(string kind, string message, string? taskId, string? account, string? model) { }
+        public void AddTimeline(string kind, string message, string? taskId, string? account, string? model, bool deferredSwitch) { }
         public void AddWaitSeconds(WaitKind kind, double seconds) { }
         public BatchReport Build(DateTimeOffset startedAt) => new();
     }

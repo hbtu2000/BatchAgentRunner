@@ -149,6 +149,7 @@
 | 断点任务可用兜底模型收尾（每账号独立兜底池） | REQ-004b | `FallbackPolicy`，按「账号顺序 × 账号内兜底池顺序」选取，双重成本上限 |
 | 实时可见、随时可停、停了可续 | REQ-007/008 | Avalonia MVVM + 引擎事件流 + 协作式取消 |
 | 汇总报告、受控并发、失败即停、日志持久化、自动关机 | REQ-011/012/013/014/015 | P1 模块（本设计一并覆盖） |
+| 工作空间数量上限 + 按工作空间串行并发 + 并行下统一账号切换 | REQ-019/020/021 | `RunOptions.MaxWorkspaces` + 调度器工作空间在飞计数与派发守卫（§9.1）+ 槽位冻结/全局派发暂停/统一切换状态机（§9.2） |
 
 #### 1.2 硬约束
 
@@ -268,6 +269,7 @@ enum BatchStatus { Idle, Running, Waiting, Blocked, Terminated, Completed }
 
 - `Waiting` 为**独立批级状态**，启动预检等待与运行中等待同一语义（REQ-003b/004c/010）
 - 运行态**不落任务文件**，随运行日志落盘；冷却记录单独持久化且重启有效
+- REQ-019/020/021 引入的运行态扩展（`MaxWorkspaces`、`InFlightByWorkspace`、`InFlightWorkspaceCount`、`DispatchHalted`、`PendingSwitchTarget`、`FrozenSlots`）均为内存态、不落任务文件，定义与算法见 §9.1 / §9.2
 
 #### 4.3 配置 `RunOptions`（关键默认值对齐 PRD）
 
@@ -283,6 +285,7 @@ enum BatchStatus { Idle, Running, Waiting, Blocked, Terminated, Completed }
 | `MaxWaitMinutes`（最长可等待时长） | 60 | REQ-003b |
 | `DefaultCooldownMinutes`（解析不到重置时间时） | 60 | REQ-004c |
 | `Concurrency` | 1（串行） | REQ-012 |
+| `MaxWorkspaces` | 10 | REQ-019 | 命名工作空间数量上限（JSON 字段 `max_workspaces`）；引擎不设置绝对硬上限，以配置值为唯一校验准绳；配置页建议对 UI 输入范围作合理限制（如 1–100） |
 | `FallbackEnabled` | false | REQ-004b |
 | `ForceRerun` | false | REQ-008 |
 | `StopOnFailure` | false | REQ-013 |
@@ -511,6 +514,8 @@ public record AgentRequest(
 
 `Idle`（空状态引导）· `Running` · `Waiting`（倒计时 + 取消等待，取消转 Blocked）· `Blocked`（提示下一恢复时间点，可续跑）· `Terminated`（可续跑 + 强制重跑）· `Completed`（含失败清单入口）
 
+（附注：REQ-021 新增「派发已暂停（等待在飞任务结束并统一切换账号）」瞬时态提示，不新增批级状态枚举，仅在 `Running` 期间由监控页于「当前任务」区或批级状态栏展示，提示用户为何无新任务启动。）
+
 #### 8.3 数据流
 
 ```
@@ -533,6 +538,76 @@ BatchEngine ──(BatchEvent)──▶ EngineHost(订阅)
 - **单写者**：`TaskFileWriter` 串行队列执行回写，内存状态为事实来源
 - **终止顺序**：停止派发 → 逐一回收子进程 → 全部落盘 → 反馈已终止
 - 界面：「当前任务」展示全部 running 卡片；账号/模型按任务分别展示
+
+#### 9.1 按工作空间串行（REQ-020，精炼 REQ-012）
+
+`REQ-012` 支持可配置并发数（默认 1 串行），并发任务共享「账号 × 模型」可用性视图（§5.1/§5.3）。本小节在其上追加一条**派发粒度约束：工作空间是序列化的基本单位**。完整需求与验收见变更单 REQ-020。
+
+**不变式**
+- 同一工作空间任意时刻至多 1 个 `running` 任务：`InFlightByWorkspace[w] ∈ {0,1}`。
+- 并行度上界 = `min(Concurrency, 分布有 pending/interrupted 待派发任务的不同工作空间数)`；`Concurrency` 因此退化为并行度的**上限**而非保证值（语义对齐 REQ-012「全局在飞上限」，见变更单 REQ-020 开放问题 1）。
+- 每个并行通道绑定一个独立工作空间、互不串扰；并行通道共享同一「当前活动账号」（接力 §9.2）。
+
+**运行态扩展（落在 `BatchEngine` 调度器内存，不落任务文件）**
+- `InFlightByWorkspace: Dictionary<string, bool>`：每个工作空间是否在飞。
+- `InFlightWorkspaceCount`：`InFlightByWorkspace` 中为 `true` 的个数（= 当前并行通道数）。
+
+**派发选择算法（替代 §5.4 主循环中的「下一个 pending 任务」选取，与 §5.4 的单任务执行 loop 正交）**
+```
+DistinctPendingWs = { t.Workspace | t 处于 pending/interrupted 且依赖已满足(DAG) 且未进入 waiting }
+Cap = min(Concurrency, DistinctPendingWs.Count)
+while 存在可派发任务 && !DispatchHalted && InFlightWorkspaceCount < Cap:
+    candidates = { t | t.status ∈ {pending,interrupted}
+                     && !InFlightByWorkspace[t.Workspace]
+                     && 依赖已满足 }
+    if candidates 为空: break
+    pick = candidates.First()              // 同空间内严格 FIFO；多空间间按候选顺序
+    InFlightByWorkspace[pick.Workspace] = true
+    InFlightWorkspaceCount++
+    Dispatch(pick)                          // 后台执行
+    // 槽位释放：任务到达终态 或 进入 waiting/interrupted →
+    //   InFlightByWorkspace[t.Workspace] = false; InFlightWorkspaceCount--
+```
+- 边界：`Concurrency=1` 或仅 1 个工作空间 → 退化为全局串行；`K>Concurrency`（K = 不同工作空间数）→ 仅前 `Concurrency` 个工作空间先跑，其余排队，待槽位释放再补位。有效并行度可能低于 `Concurrency`，属按空间串行的固有代价（变更单 REQ-020 边界情形表）。
+- DAG（`depends_on`）阻塞的任务未被派发，不占工作空间在飞槽位，与上述规则自然兼容（REQ-020 开放问题 2）。
+- REQ-012 既有条款——额度/冷却/时段状态共享、单写者串行回写、终止顺序——**保持不变**。
+
+**界面（监控页）**：「当前任务」卡片增加「所属工作空间」列；配置页并发设置 ToolTip 注明「并发按工作空间串行：同空间始终串行，不同空间可并行」。
+
+#### 9.2 并行下统一账号切换（REQ-021，精炼 REQ-012 + 第3部分 §6）
+
+`Concurrency>1` 时多个 CLI 子进程同时读同一 Live 凭证（第3部分 §3）；若中途即时切换账号，会造成「部分进程旧身份、部分新身份」混用，破坏额度归集与用量统计语义。本小节把账号切换收敛到「当前在飞任务全部结束后」这一边界，引入**槽位冻结 + 全局派发暂停 + 延后统一切换**。完整需求、验收与审查修复见变更单 REQ-021（含 F-1/F-2/F-3/F-4/F-7）。
+
+**运行态扩展（落在调度器内存，不落任务文件）**
+- `DispatchHalted: bool`：全局派发暂停标志（接入 §9.1 派发循环的 `!DispatchHalted` 守卫）。
+- `PendingSwitchTarget: AccountId?`：冻结时记录的「后续任务统一切换目标账号」。
+- `FrozenSlots: HashSet<TaskId>`：处于冻结态（仍在原账号走兜底、未结束）的任务集合。
+
+**切换触发与冻结流程**
+1. **约束前提**：所有在飞任务共享同一「当前活动账号」；任一在飞任务的中途账号需求（额度耗尽晋级下一账号 / AuthExpired 需换账号）**不即时切换**。
+2. 某在飞任务触发切换需求时：
+   - **冻结该在飞槽位**：`FrozenSlots.Add(task.Id)`；该任务继续在**原启动账号**上跑。
+   - **进入全局派发暂停**：`DispatchHalted = true`；见 §9.1 派发循环，`!DispatchHalted` 不满足即不再派发任何新任务——即便其它工作空间的槽位空闲也不再填充，从源头消除切换窗口内「新任务以旧账号启动」的竞态。
+   - **原账号兜底收尾**：在该任务的**原启动账号**上触发付费兜底（REQ-004b）完成本条任务；**兜底仅限于原启动账号自身的 `accounts[].fallback_models` 兜底池，不得跨账号**（否则违背「不切换 Live 凭证」，与 REQ-004b 全局「账号顺序 × 账号内兜底池顺序」选取冲突，见变更单 F-2）——原账号兜底池无可用组合或已超成本上限时，按 REQ-004b 转入 `waiting`/`blocked`。
+   - **记录统一目标账号**：`PendingSwitchTarget = DegradationMatrix.NextAvailable(currentActiveAccount, now)`；因所有在飞共享同一账号，多任务并行冻结只产生唯一目标（见下「目标唯一性」）。
+3. **统一切换**：当**所有在飞任务结束**（在飞数 = 0；已进入 `waiting`/`interrupted` 的任务不计入在飞、不阻塞切换）后，调度器调用**一次**第 3 部分 §6 切换流程（含 ② 保活回写 + ③ 原子覆盖）至 `PendingSwitchTarget`；随后 `DispatchHalted=false`，清空 `FrozenSlots`/`PendingSwitchTarget`，后续任务以目标账号并行派发。调用瞬间无运行中进程，天然满足 §6 ① 前置互斥「无运行中进程才允许切换」。
+
+**目标唯一性**：规则要求「所有在飞任务始终共享同一活动账号」，故任一在飞任务冻结时 `NextAvailable(active)` 均相同 → 多任务并行冻结只产生唯一 `PendingSwitchTarget`，不存在目标冲突。
+
+**降级 / 全不可用**
+- 切换后的目标账号 B 自身亦不可用（模型耗尽或时段外）→ 后续任务在 B 上触发兜底并依降级矩阵标注下一目标（如 C）。
+- **全部账号均不可用**且兜底不可用/超限 → 按 REQ-004b 转入 `waiting`/`blocked`（遵循 REQ-003b 时段规则 / REQ-004c 冷却规则）；整个过程**切换次数上界 = 启用账号数**（每个账号至多作为一次切换目标），**不无限循环切换**。
+- `Concurrency=1` 或仅 1 个工作空间（退化为串行）时，上述机制退化为 §6 的「任务边界切换」，本小节不额外约束。
+
+**手动切换禁用（衔接第 3 部分 §7）**：用户手动「切换到此账号」在 `in-flight>0`（含派发暂停期间）时**禁用**；仅当 `in-flight=0`（含派发暂停自然结束）或串行态可操作，且立即执行（同 §6）并清除 `PendingSwitchTarget`。
+
+**埋点 / 报告（须同步 REQ-011 汇总报告与第 11 章埋点表，见变更单 F-1）**
+- 新增埋点事件：`slot_frozen`（冻结发生，附原账号 / 任务 id）、`account_switch_deferred`（延后标记，附目标账号）。
+- `account_switched` 时间线条目新增布尔属性 `deferred_switch = true`，表示本次为并发下延后统一切换，区分于常规任务边界切换；原 `account_switched` 事件其余语义保持不变。
+
+**一致性**：不影响降级矩阵、额度冷却登记、兜底（除上「原账号兜底池」约束）、凭证快照/Vault；通过 §6 互斥从源头消除并发账号混用竞态。
+
+**风险（吞吐坍塌，见变更单 F-7）**：冻结 → 统一切换窗口内，并行度坍塌为在飞任务（含冻结任务）单独执行，不再派发新任务；若冻结任务长耗时，会显著损失并行度。监控页须在「当前任务」区或批级状态栏展示「派发已暂停（等待在飞任务结束并统一切换账号）」状态（见 §8.2 批级状态视图附注）；「暂停期间仍可在原账号 A 上继续派发同账号新任务」属可选折中，本文暂不采用，待评审。
 
 ---
 
@@ -582,6 +657,9 @@ BatchEngine ──(BatchEvent)──▶ EngineHost(订阅)
 | `MarkdownTaskParser` | `## id` + `- instruction:` 多行合并至下一二级标题；缺失 ID 生成；重复 ID 报错定位 |
 | `TaskFileWriter` | 原子写、备份保留 5 份、sidecar 回写不改动 md 原文 |
 | `BatchEngine`（MockAdapter） | 端到端：额度耗尽自动切换、全矩阵耗尽→兜底、全冷却→waiting→恢复续跑、终止→interrupted→续跑跳过 done、危险操作→failed 不阻塞 |
+| `BatchEngine` 工作空间串行（REQ-020） | MockAdapter：单空间无论 `Concurrency` 多高均串行；多空间并行度 = min(Concurrency, 空间数) 且同空间不出现两个 running；K>Concurrency 时排队补位；DAG 阻塞任务不占槽位 |
+| `BatchEngine` 并行统一切换（REQ-021） | MockAdapter：在飞任务额度耗尽→槽位冻结 + 全局派发暂停 + 原账号兜底完成；其余在飞结束后统一切换一次至目标账号；冻结期间无新进程以旧账号启动；`deferred_switch` 标记正确；全部不可用→waiting/blocked 不无限循环 |
+| 工作空间上限（REQ-019） | 默认 10 时第 11 个新增被拦截；调小配置值后以配置值为准拦截；手工 `config.json` 超限 → 预检告警并拦截启动、不静默截断 |
 
 ---
 
@@ -608,6 +686,7 @@ BatchEngine ──(BatchEvent)──▶ EngineHost(订阅)
 | 回写冲突 | 单写者串行；外部修改仅提示不合并 |
 | 系统时间跳变导致时段误判 | 以 wall-clock 为准，恢复/唤醒后立即重评；时段外跳过不计失败 |
 | 界面刷新延迟 | 事件驱动（非轮询），UI 线程批量合并刷新 |
+| REQ-021 派发暂停吞吐坍塌 | 冻结→统一切换窗口内并行度坍塌为在飞任务单独执行；长耗时冻结任务显著损失并行度 | 监控页明确展示「派发已暂停」状态；如确需缓解可评审「暂停期同账号续派」折中（默认不采用） |
 
 **开放问题（待 M0 或用户确认）：** 单任务超时/总上限/最长等待/默认冷却四个默认值需真实任务校准（PRD 第 16 章）；跨零点时段+星期过滤的极端组合（如 `days` 只含某天且跨零点）以「覆盖任一日命中」为准已在 §4.5 定义。
 
@@ -1383,6 +1462,8 @@ vault\<cli>\<account_id>\
   → ⑤ 发出 AccountSwitched 事件（原账号、新账号、触发原因）
 ```
 
+**并发延后切换（REQ-021，见 §9.2）**：`Concurrency>1` 时账号切换只允许在「全局派发暂停解除、所有在飞任务结束（in-flight=0）」之后调用本流程**一次**（即「统一切换」）。调用瞬间无运行中进程，天然满足 ① 前置互斥；本流程的 ② 保活回写 / ③ 原子覆盖 / ④ 校验步骤不变，仅触发时机由「即时」改为「当前在飞任务全部结束后」。
+
 **保活回写（②）是本设计的灵魂**：把「Live 永远是最被频繁刷新的那份」这个事实，转化为「每次离开某账号时把 Live 还给它」，Vault 里的快照因此始终是各账号最新一次使用时的凭证。
 
 失效兜底：refresh token 若有「闲置天数上限」，久未使用的账号切回时可能 AuthExpired → 预检发现 → 界面提示对该账号重新「引导登录」（流程同第 5 章，覆盖旧快照）。**不做自动续命。**
@@ -1398,6 +1479,7 @@ vault\<cli>\<account_id>\
 | `AuthExpired` 错误分类 | 触发「该账号需重新引导登录」提示 + 停用该账号走既有降级逻辑 |
 | `AccountSwitched` 事件/日志 | 切换成功后发出，日志**只记账号 id 与文件哈希前 8 位，不记凭证内容** |
 | 配置页账号卡 | 新增「引导登录」「切换到此账号」「快照状态（备份时间/最近验证/已失效）」 |
+| 手动「切换到此账号」禁用条件（REQ-021） | `in-flight>0`（含派发暂停期间）禁用；仅 `in-flight=0` 或串行态可操作，立即执行同 §6 并清除 `PendingSwitchTarget` |
 | MockAdapter | 模拟同一套 Vault 流程（假凭证文件），全链路可先行联调 |
 
 ---

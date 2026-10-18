@@ -137,6 +137,21 @@ public sealed class BatchEngine : IBatchEngine
     [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能",
         Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假单任务执行器验证状态机不变量），拒绝向具体类型回退")]
     private readonly ITaskRunner _runner;
+    /// <summary>
+    /// 派发协作者（P1-1 拆分产物 ①，§3.4 <c>ITaskDispatcher</c>）：独占「派发主循环 / 受控并发 / DAG 依赖判定」
+    /// （原 <c>DispatchAsync</c> 全部逻辑），是 P1-1 路线图的最后一个拆分产物。
+    /// </summary>
+    /// <remarks>
+    /// CA1859（§4.7 逃逸阀）：同 <see cref="_fallback"/>——接口字段是拆分后的测试缝。
+    /// </remarks>
+    [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能",
+        Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假派发器验证并发/DAG 不变量），拒绝向具体类型回退")]
+    private readonly ITaskDispatcher _dispatcher;
+    /// <summary>
+    /// 并行调度协调器（REQ-020 / REQ-021）：引擎持有唯一实例，分别注入派发器（读写为飞/暂停/目标）与
+    /// 单任务执行器（在飞任务请求延后切换）。详见 <see cref="DispatchCoordinator"/>。
+    /// </summary>
+    private readonly DispatchCoordinator _coordinator;
 
     public BatchEngine(
         RunOptions options,
@@ -186,8 +201,29 @@ public sealed class BatchEngine : IBatchEngine
             () => _tasks, _clock, _logger);
         _preflight = new StartupPreflight(_options, _taskStore, _fileSystem, _adapter, _clock, _cooldowns,
             Raise, ResolveWorkspacePath, _vault);
+        _coordinator = new DispatchCoordinator();
         _runner = new TaskRunner(BuildTaskRunnerContext());
+        _dispatcher = new TaskDispatcher(BuildTaskDispatcherContext());
     }
+
+    /// <summary>构造派发上下文（把引擎的批处理级协调能力注入 <see cref="ITaskDispatcher"/>，避免反向耦合）。</summary>
+    private TaskDispatcherContext BuildTaskDispatcherContext() => new()
+    {
+        Options = _options,
+        Tasks = _tasks,
+        Clock = _clock,
+        Logger = _logger,
+        RunTask = (task, ct) => _runner.RunSafeAsync(task, ct),
+        EnterWriteGate = EnterWriteGateAsync,
+        Persist = PersistAsync,
+        StopAfterCurrentTask = () => _stopAfterCurrentTask,
+        Raise = Raise,
+        SetStatus = SetStatus,
+        RaiseBlocked = RaiseBlocked,
+        RaiseTaskChanged = RaiseTaskChanged,
+        Coordinator = _coordinator,
+        PerformUnifiedSwitch = SwitchAccountAsync
+    };
 
     /// <summary>构造单任务执行上下文（把引擎的批处理级协调能力注入 <see cref="ITaskRunner"/>，避免反向耦合）。</summary>
     private TaskRunnerContext BuildTaskRunnerContext() => new()
@@ -219,7 +255,9 @@ public sealed class BatchEngine : IBatchEngine
         SetCurrentTaskId = id => _currentTaskId = id,
         WaitForRestore = WaitForRestoreAsync,
         ExecuteWorkflow = ExecuteWorkflowAsync,
-        GetPendingCount = () => _tasks.Count(t => !t.IsTerminal)
+        GetPendingCount = () => _tasks.Count(t => !t.IsTerminal),
+        Coordinator = _coordinator,
+        DeferredAccountSwitchEnabled = _options.Concurrency > 1 && _vault is not null
     };
 
     // ---------------- 公开状态 ----------------
@@ -240,6 +278,18 @@ public sealed class BatchEngine : IBatchEngine
     public BatchReport? Report { get; private set; }
 
     public string? CurrentTaskId => _currentTaskId;
+
+    /// <summary>当前是否存在在飞任务（REQ-021 手动切换禁用闸）。</summary>
+    public bool HasInFlight => _coordinator?.HasInFlight ?? false;
+
+    /// <summary>全局派发是否处于暂停态（REQ-021：任一在飞槽位冻结后进入，统一切换完成前持续）。</summary>
+    public bool IsDispatchHalted => _coordinator?.DispatchHalted ?? false;
+
+    /// <summary>
+    /// 是否允许手动「切换到此账号」（REQ-021 衔接 §7）：<c>Concurrency &gt; 1</c> 且存在在飞任务时禁用；
+    /// 串行态或 <c>in-flight=0</c> 时允许。调用方在触发手动切换前应校验本属性。
+    /// </summary>
+    public bool CanManualSwitchAccount => _options.Concurrency <= 1 || !HasInFlight;
 
     /// <summary>引擎事件（界面与日志订阅）。</summary>
     public event EventHandler<BatchEvent>? EventRaised;
@@ -401,7 +451,10 @@ public sealed class BatchEngine : IBatchEngine
 
         if (Status == BatchStatus.Running)
         {
-            await DispatchAsync(queue, token).ConfigureAwait(false);
+            // REQ-021：并发下所有在飞任务必须共用同一活动账号。派发开始前先把 Live 凭证固定到降级矩阵首选账号，
+            // 保证后续并行任务均以该账号身份运行（中途账号需求由协调器延后到在飞全部结束后统一切换）。
+            await EnsurePreferredLiveAccountAsync(token).ConfigureAwait(false);
+            await _dispatcher.DispatchAsync(queue, token).ConfigureAwait(false);
         }
 
         // 终态判定
@@ -504,78 +557,6 @@ public sealed class BatchEngine : IBatchEngine
         NotifyConfigurationChanged();
     }
 
-    // ---------------- 调度主循环 ----------------
-
-    private async Task DispatchAsync(List<TaskItem> queue, CancellationToken ct)
-    {
-        // 二期：含任务依赖的批次强制串行派发——并发下依赖终态不可预测，串行才能保证 DAG 拓扑序语义
-        var hasDependencies = queue.Any(t => t.DependsOn is { Count: > 0 });
-        if (hasDependencies && _options.Concurrency > 1)
-        {
-            Raise(new BatchEvent(BatchEventKind.Info, _clock.Now,
-                "批次含任务依赖（DAG），已强制串行派发以保证依赖顺序"));
-        }
-
-        if (_options.Concurrency <= 1 || hasDependencies)
-        {
-            foreach (var task in queue)
-            {
-                if (ct.IsCancellationRequested || _stopAfterCurrentTask)
-                {
-                    break;
-                }
-
-                // 二期 DAG：依赖未满足时不进入执行，按依赖失败策略处理
-                var verdict = EvaluateDependency(task, out var blockingDep);
-                if (verdict != DependencyVerdict.Satisfied)
-                {
-                    if (!await ApplyDependencyBlockAsync(task, blockingDep, ct).ConfigureAwait(false))
-                    {
-                        break; // 策略=终止整批
-                    }
-
-                    continue; // 已标记 Blocked；其下游轮到时因本任务 Blocked 而逐层阻断
-                }
-
-                var outcome = await _runner.RunSafeAsync(task, ct).ConfigureAwait(false);
-                if (outcome is TaskOutcome.Blocked or TaskOutcome.Terminated or TaskOutcome.StopBatch)
-                {
-                    break;
-                }
-            }
-        }
-        else
-        {
-            // 受控并发（REQ-012）：无依赖批次；停止派发 → 逐一回收 → 全部落盘
-            using var semaphore = new SemaphoreSlim(_options.Concurrency);
-            var stopDispatch = false;
-
-            var workers = queue.Select(async task =>
-            {
-                await semaphore.WaitAsync(ct).ConfigureAwait(false);
-                try
-                {
-                    if (stopDispatch || ct.IsCancellationRequested || _stopAfterCurrentTask)
-                    {
-                        return;
-                    }
-
-                    var outcome = await _runner.RunSafeAsync(task, ct).ConfigureAwait(false);
-                    if (outcome is TaskOutcome.Blocked or TaskOutcome.Terminated or TaskOutcome.StopBatch)
-                    {
-                        stopDispatch = true;
-                    }
-                }
-                finally
-                {
-                    semaphore.Release();
-                }
-            });
-
-            await Task.WhenAll(workers).ConfigureAwait(false);
-        }
-    }
-
     // ---------------- 二期：工作流执行 ----------------
 
     /// <summary>
@@ -646,113 +627,6 @@ public sealed class BatchEngine : IBatchEngine
         SessionPolicy = _sessionPolicy,
         DefaultMaxGateLoops = _options.DefaultMaxGateLoops
     };
-
-    // ---------------- 二期：DAG 依赖 ----------------
-
-    /// <summary>依赖判定结果。</summary>
-    private enum DependencyVerdict
-    {
-        /// <summary>依赖已满足，可以执行。</summary>
-        Satisfied,
-        /// <summary>依赖未成功（失败/阻塞/悬空），本任务应被阻断或终止整批。</summary>
-        Blocked,
-        /// <summary>依赖尚未到达终态（串行拓扑序下不出现，保守按阻断处理）。</summary>
-        Wait
-    }
-
-    /// <summary>
-    /// 判定任务依赖是否满足（二期 DAG）。策略=忽略依赖失败时恒返回 <see cref="DependencyVerdict.Satisfied"/>。
-    /// </summary>
-    private DependencyVerdict EvaluateDependency(TaskItem task, out string? blockingDep)
-    {
-        blockingDep = null;
-        if (task.DependsOn is not { Count: > 0 })
-        {
-            return DependencyVerdict.Satisfied;
-        }
-
-        if (_options.DependencyFailurePolicy == DependencyFailurePolicy.SkipDependents)
-        {
-            return DependencyVerdict.Satisfied; // 忽略依赖失败，下游照常执行
-        }
-
-        var statusById = new Dictionary<string, TaskStatus>(StringComparer.OrdinalIgnoreCase);
-        foreach (var t in _tasks)
-        {
-            statusById[t.Id] = t.Status;
-        }
-
-        var blockOnNeedsAttention = _options.DependencyFailurePolicy == DependencyFailurePolicy.BlockDependents;
-        var wait = false;
-        foreach (var dep in task.DependsOn)
-        {
-            if (!statusById.TryGetValue(dep, out var st))
-            {
-                blockingDep = dep; // 悬空依赖：保守阻断
-                return DependencyVerdict.Blocked;
-            }
-
-            if (st is TaskStatus.Failed or TaskStatus.Blocked)
-            {
-                blockingDep = dep;
-                return DependencyVerdict.Blocked;
-            }
-
-            if (st == TaskStatus.NeedsAttention && blockOnNeedsAttention)
-            {
-                blockingDep = dep;
-                return DependencyVerdict.Blocked;
-            }
-
-            if (st is not (TaskStatus.Done or TaskStatus.Failed or TaskStatus.Interrupted
-                or TaskStatus.NeedsAttention or TaskStatus.Blocked))
-            {
-                wait = true; // 依赖尚未到达终态
-            }
-        }
-
-        return wait ? DependencyVerdict.Wait : DependencyVerdict.Satisfied;
-    }
-
-    /// <summary>
-    /// 依赖未满足时按策略处理本任务。返回 <c>false</c> 表示应终止整批派发。
-    /// 默认策略（阻断下游）：把本任务标记 Blocked，其下游轮到时因本任务 Blocked 而逐层阻断。
-    /// </summary>
-    private async Task<bool> ApplyDependencyBlockAsync(TaskItem task, string? blockingDep, CancellationToken ct)
-    {
-        var reason = $"依赖任务 {blockingDep ?? "（未知）"} 未成功，本任务被阻断";
-
-        if (_options.DependencyFailurePolicy == DependencyFailurePolicy.AbortBatch)
-        {
-            using (await EnterWriteGateAsync().ConfigureAwait(false)) // P0-4：与落盘序列化互斥
-            {
-                task.Status = TaskStatus.Blocked;
-                task.Error = reason;
-                task.Finish(TaskStatus.Blocked, _clock.Now);
-            }
-
-            RaiseTaskChanged(task);
-            await PersistAsync(CancellationToken.None).ConfigureAwait(false);
-            SetStatus(BatchStatus.Blocked);
-            RaiseBlocked($"任务 {task.Id} {reason}，按依赖失败策略终止整批", task.Id);
-            return false;
-        }
-
-        using (await EnterWriteGateAsync().ConfigureAwait(false)) // P0-4：与落盘序列化互斥
-        {
-            task.Status = TaskStatus.Blocked;
-            task.Error = reason;
-            task.Finish(TaskStatus.Blocked, _clock.Now);
-        }
-
-        RaiseTaskChanged(task);
-        _logger.WriteTaskFinished(task.Id, TaskStatus.Blocked, task.DurationSeconds, task.RetryCount);
-        Raise(new BatchEvent(BatchEventKind.TaskFinished, _clock.Now,
-            $"任务 {task.Id} {reason}", task.Id)
-        { Task = task });
-        await PersistAsync(CancellationToken.None).ConfigureAwait(false);
-        return true;
-    }
 
     // ---------------- 二期：通知推送 ----------------
 
@@ -897,6 +771,13 @@ public sealed class BatchEngine : IBatchEngine
             return true;
         }
 
+        // REQ-021：并发下禁止即时切换 Live 凭证（否则在飞任务会新旧账号混用）；延后切换由协调器统一调度。
+        // 该守护使「当前在运行任务始终共用同一活动账号」，是 REQ-021 切换时机的硬约束前提。
+        if (_options.Concurrency > 1)
+        {
+            return true;
+        }
+
         try
         {
             await _vault.SwitchToAsync(_options.AgentKind, combo.Account.Id, "task-boundary", ct)
@@ -915,6 +796,112 @@ public sealed class BatchEngine : IBatchEngine
                 task.Id, combo.Account.Label));
             return false;
         }
+    }
+
+    /// <summary>
+    /// 并行下统一账号切换（REQ-021）：由 <see cref="DispatchCoordinator"/> 在「当前在飞任务全部结束后」调用一次。
+    /// 执行第 3 部分 §6 凭证切换至目标账号，并记 <see cref="BatchEventKind.AccountSwitched"/>（<c>DeferredSwitch=true</c>）
+    /// 与报告时间线（<c>deferred_switch=true</c>），区分于常规任务边界切换。
+    /// </summary>
+    private async Task SwitchAccountAsync(string targetAccountId, CancellationToken ct)
+    {
+        if (_vault is null)
+        {
+            return;
+        }
+
+        var target = _options.Accounts.FirstOrDefault(a =>
+            string.Equals(a.Id, targetAccountId, StringComparison.OrdinalIgnoreCase));
+        var targetLabel = target?.Label ?? targetAccountId;
+        var current = _vault.CurrentLiveAccount(_options.AgentKind);
+
+        try
+        {
+            await _vault.SwitchToAsync(_options.AgentKind, targetAccountId, "deferred-unified", ct)
+                .ConfigureAwait(false);
+            // REQ-021：目标账号旋转为矩阵首选，后续并行任务自然以目标账号起步（避免 Live 凭证错配）
+            RotateAccountToFront(targetAccountId);
+            RebuildMatrix();
+            Raise(new BatchEvent(BatchEventKind.AccountSwitched, _clock.Now,
+                $"并行下统一切换：{current ?? "（无）"} → {targetLabel}（延后至在飞任务全部结束后）",
+                null, targetLabel)
+            { DeferredSwitch = true });
+            _logger.WriteModelSwitched(current, null, targetAccountId, null, "并发延后统一切换", null);
+            _report.AddTimeline("切换", $"{current ?? "（无）"} → {targetLabel}（并发下延后统一切换）",
+                null, targetLabel, null, deferredSwitch: true);
+        }
+        catch (CredentialVaultException ex)
+        {
+            if (target is not null)
+            {
+                target.Enabled = false;
+            }
+
+            Raise(new BatchEvent(BatchEventKind.Warning, _clock.Now,
+                $"并行下统一切换至 {targetLabel} 失败，已停用并转常规降级：{ex.Message}", null, targetLabel));
+        }
+    }
+
+    /// <summary>
+    /// 并行下在派发开始前把 Live 凭证固定到「首个可用」的降级矩阵账号（REQ-021 前提）：保证后续并行任务均以同一活动账号身份运行。
+    /// 串行态无需此步（由 <see cref="EnsureLiveCredentialAsync"/> 逐任务边界切换）。
+    /// 若该账号非矩阵首选，则旋转账号顺序使其成为首选（后续并行任务自然以它起步）。
+    /// </summary>
+    private async Task EnsurePreferredLiveAccountAsync(CancellationToken ct)
+    {
+        if (_vault is null || _options.Concurrency <= 1)
+        {
+            return;
+        }
+
+        var first = _matrix.SelectFirst(_clock.Now, _evaluator).Combo;
+        if (first is null)
+        {
+            return;
+        }
+
+        var current = _vault.CurrentLiveAccount(_options.AgentKind);
+        if (!string.Equals(current, first.Account.Id, StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                await _vault.SwitchToAsync(_options.AgentKind, first.Account.Id, "preflight", ct)
+                    .ConfigureAwait(false);
+                Raise(new BatchEvent(BatchEventKind.AccountSwitched, _clock.Now,
+                    $"并行启动前固定活动账号：{current ?? "（无）"} → {first.Account.Label}", null, first.Account.Label));
+            }
+            catch (CredentialVaultException ex)
+            {
+                Raise(new BatchEvent(BatchEventKind.Warning, _clock.Now,
+                    $"并行启动前固定活动账号失败：{ex.Message}", null, first.Account.Label));
+            }
+        }
+
+        RotateAccountToFront(first.Account.Id);
+        RebuildMatrix();
+    }
+
+    /// <summary>
+    /// 将指定账号旋转至启用账号列表首位（REQ-021）：统一切换后使目标账号成为降级矩阵首选，
+    /// 后续并行任务自然以目标账号身份起步，避免「切换后仍选回旧账号」导致的 Live 凭证错配。
+    /// </summary>
+    private void RotateAccountToFront(string accountId)
+    {
+        if (_options.Accounts is not { Count: > 1 })
+        {
+            return;
+        }
+
+        var idx = _options.Accounts.FindIndex(a =>
+            string.Equals(a.Id, accountId, StringComparison.OrdinalIgnoreCase));
+        if (idx <= 0)
+        {
+            return;
+        }
+
+        var account = _options.Accounts[idx];
+        _options.Accounts.RemoveAt(idx);
+        _options.Accounts.Insert(0, account);
     }
 
     private void CheckIdSnapshot()

@@ -1,40 +1,205 @@
 <UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:vm="using:BatchAgentRunner.Desktop.ViewModels"
+             xmlns:views="using:BatchAgentRunner.Desktop.Views"
              xmlns:conv="using:BatchAgentRunner.Desktop.Converters"
+             mc:Ignorable="d" d:DesignWidth="1280" d:DesignHeight="840"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              x:Class="BatchAgentRunner.Desktop.Views.ConfigHubView">
 
     <UserControl.Resources>
-        <conv:ActiveTabBackgroundConverter x:Key="TabBg" />
-        <conv:ActiveTabForegroundConverter x:Key="TabFg" />
+        <conv:ReadinessStateToClassConverter x:Key="RdClass" />
+        <conv:RailActiveConverter x:Key="RailActive" />
+        <conv:SectionVisibleConverter x:Key="SectionVisible" />
     </UserControl.Resources>
 
-    <Grid RowDefinitions="Auto,*">
-        <!-- 顶部标签：原先分散的三个配置入口合并于此一处 -->
-        <Border Grid.Row="0" Padding="10,8" BorderThickness="0,0,0,1" BorderBrush="#DDDDDD">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button Content="账号登录（一键，最简单）"
-                        HorizontalContentAlignment="Center" Padding="16,8"
-                        FontWeight="SemiBold"
-                        Background="{Binding ActiveSubview, Converter={StaticResource TabBg}, ConverterParameter=login}"
-                        Foreground="{Binding ActiveSubview, Converter={StaticResource TabFg}, ConverterParameter=login}"
-                        Command="{Binding HubNavigateCommand}" CommandParameter="login" />
-                <Button Content="配置向导（首次推荐）"
-                        HorizontalContentAlignment="Center" Padding="16,8"
-                        FontWeight="SemiBold"
-                        Background="{Binding ActiveSubview, Converter={StaticResource TabBg}, ConverterParameter=wizard}"
-                        Foreground="{Binding ActiveSubview, Converter={StaticResource TabFg}, ConverterParameter=wizard}"
-                        Command="{Binding HubNavigateCommand}" CommandParameter="wizard" />
-                <Button Content="高级配置"
-                        HorizontalContentAlignment="Center" Padding="16,8"
-                        FontWeight="SemiBold"
-                        Background="{Binding ActiveSubview, Converter={StaticResource TabBg}, ConverterParameter=config}"
-                        Foreground="{Binding ActiveSubview, Converter={StaticResource TabFg}, ConverterParameter=config}"
-                        Command="{Binding HubNavigateCommand}" CommandParameter="config" />
-            </StackPanel>
+    <UserControl.Styles>
+        <!-- 准备度步骤指示点 -->
+        <Style Selector="Ellipse.rd-done">
+            <Setter Property="Fill" Value="{DynamicResource SuccessBrush}" />
+        </Style>
+        <Style Selector="Ellipse.rd-current">
+            <Setter Property="Fill" Value="{DynamicResource PrimaryBrush}" />
+        </Style>
+        <Style Selector="Ellipse.rd-pending">
+            <Setter Property="Fill" Value="{DynamicResource TextMutedBrush}" />
+        </Style>
+
+        <!-- rail 导航项 -->
+        <Style Selector="Button.rail-item">
+            <Setter Property="HorizontalContentAlignment" Value="Left" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="10,8" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Foreground" Value="{DynamicResource TextSecondaryBrush}" />
+            <Setter Property="FontWeight" Value="Medium" />
+        </Style>
+        <Style Selector="Button.rail-item:pointerover">
+            <Setter Property="Background" Value="{DynamicResource BgHoverBrush}" />
+        </Style>
+        <Style Selector="Button.rail-item.active">
+            <Setter Property="Background" Value="{DynamicResource PrimarySoftBrush}" />
+            <Setter Property="Foreground" Value="{DynamicResource PrimaryBrush}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style Selector="Button.rail-item:disabled">
+            <Setter Property="Opacity" Value="0.45" />
+        </Style>
+    </UserControl.Styles>
+
+    <Design.DataContext>
+        <vm:ConfigHubViewModel />
+    </Design.DataContext>
+
+    <Grid ColumnDefinitions="212,*" RowDefinitions="Auto,*,Auto">
+
+        <!-- 左：区段 rail（原三个 Tab + 五个 Tab 合并于此，按语义分组） -->
+        <Border Grid.Column="0" Grid.Row="0" Grid.RowSpan="3"
+                BorderThickness="0,0,1,0" BorderBrush="{DynamicResource BorderSubtleBrush}"
+                Background="{DynamicResource BgSurfaceBrush}">
+            <ScrollViewer Padding="10,12">
+                <StackPanel Spacing="2">
+
+                    <TextBlock Text="配置中心" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}"
+                               Margin="8,2,0,8" />
+
+                    <TextBlock Text="入门" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource TextMutedBrush}"
+                               Margin="10,10,0,4" />
+                    <Button conv:ClassHelper.TrackedClasses="{Binding Config.ActiveSection, Converter={StaticResource RailActive}, ConverterParameter=quickstart}"
+                            Command="{Binding Config.SectionNavigateCommand}" CommandParameter="quickstart">
+                        <StackPanel Orientation="Horizontal" Spacing="9">
+                            <Ellipse Width="7" Height="7" Fill="{DynamicResource SuccessBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="快速开始" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <TextBlock Text="核心配置" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource TextMutedBrush}"
+                               Margin="10,12,0,4" />
+                    <Button conv:ClassHelper.TrackedClasses="{Binding Config.ActiveSection, Converter={StaticResource RailActive}, ConverterParameter=accounts}"
+                            Command="{Binding Config.SectionNavigateCommand}" CommandParameter="accounts">
+                        <StackPanel Orientation="Horizontal" Spacing="9">
+                            <Ellipse Width="7" Height="7" Fill="{DynamicResource SuccessBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="账号与凭据" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button conv:ClassHelper.TrackedClasses="{Binding Config.ActiveSection, Converter={StaticResource RailActive}, ConverterParameter=models}"
+                            Command="{Binding Config.SectionNavigateCommand}" CommandParameter="models">
+                        <StackPanel Orientation="Horizontal" Spacing="9">
+                            <Ellipse Width="7" Height="7" Fill="{DynamicResource WarningBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="模型与降级" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button conv:ClassHelper.TrackedClasses="{Binding Config.ActiveSection, Converter={StaticResource RailActive}, ConverterParameter=tasks}"
+                            Command="{Binding Config.SectionNavigateCommand}" CommandParameter="tasks">
+                        <StackPanel Orientation="Horizontal" Spacing="9">
+                            <Ellipse Width="7" Height="7" Fill="{DynamicResource SuccessBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="任务与工作空间" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button conv:ClassHelper.TrackedClasses="{Binding Config.ActiveSection, Converter={StaticResource RailActive}, ConverterParameter=expert}"
+                            Command="{Binding Config.SectionNavigateCommand}" CommandParameter="expert">
+                        <StackPanel Orientation="Horizontal" Spacing="9">
+                            <Ellipse Width="7" Height="7" Fill="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="专家" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button conv:ClassHelper.TrackedClasses="{Binding Config.ActiveSection, Converter={StaticResource RailActive}, ConverterParameter=fallback}"
+                            Command="{Binding Config.SectionNavigateCommand}" CommandParameter="fallback">
+                        <StackPanel Orientation="Horizontal" Spacing="9">
+                            <Ellipse Width="7" Height="7" Fill="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="特殊模型兜底" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                    <TextBlock Text="调度与策略" FontSize="11" FontWeight="Bold" Foreground="{DynamicResource TextMutedBrush}"
+                               Margin="10,12,0,4" />
+                    <Button conv:ClassHelper.TrackedClasses="{Binding Config.ActiveSection, Converter={StaticResource RailActive}, ConverterParameter=schedule}"
+                            Command="{Binding Config.SectionNavigateCommand}" CommandParameter="schedule">
+                        <StackPanel Orientation="Horizontal" Spacing="9">
+                            <Ellipse Width="7" Height="7" Fill="{DynamicResource SuccessBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="调度与重试" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button conv:ClassHelper.TrackedClasses="{Binding Config.ActiveSection, Converter={StaticResource RailActive}, ConverterParameter=safety}"
+                            Command="{Binding Config.SectionNavigateCommand}" CommandParameter="safety">
+                        <StackPanel Orientation="Horizontal" Spacing="9">
+                            <Ellipse Width="7" Height="7" Fill="{DynamicResource WarningBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="安全与交互" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button conv:ClassHelper.TrackedClasses="{Binding Config.ActiveSection, Converter={StaticResource RailActive}, ConverterParameter=shutdown}"
+                            Command="{Binding Config.SectionNavigateCommand}" CommandParameter="shutdown">
+                        <StackPanel Orientation="Horizontal" Spacing="9">
+                            <Ellipse Width="7" Height="7" Fill="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="自动关机" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+                    <Button conv:ClassHelper.TrackedClasses="{Binding Config.ActiveSection, Converter={StaticResource RailActive}, ConverterParameter=misc}"
+                            Command="{Binding Config.SectionNavigateCommand}" CommandParameter="misc">
+                        <StackPanel Orientation="Horizontal" Spacing="9">
+                            <Ellipse Width="7" Height="7" Fill="{DynamicResource TextMutedBrush}" VerticalAlignment="Center" />
+                            <TextBlock Text="其它" VerticalAlignment="Center" />
+                        </StackPanel>
+                    </Button>
+
+                </StackPanel>
+            </ScrollViewer>
         </Border>
 
-        <!-- 子视图内容区：全局 ViewLocator 按 CurrentSubview 渲染对应 View -->
-        <ContentControl Grid.Row="1" Content="{Binding CurrentSubview}" Margin="0" />
+        <!-- 顶部：准备度 / 向导进度（配置向导不再独立成 Tab） -->
+        <Border Grid.Column="1" Grid.Row="0" Padding="20,12" BorderThickness="0,0,0,1"
+                BorderBrush="{DynamicResource BorderSubtleBrush}" Background="{DynamicResource BgSurfaceBrush}">
+            <Grid ColumnDefinitions="*,Auto">
+                <StackPanel Orientation="Horizontal" Spacing="18" VerticalAlignment="Center">
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="配置准备度" FontSize="13" FontWeight="SemiBold" />
+                        <TextBlock Text="{Binding Config.ReadinessSummary}" FontSize="11" Foreground="{DynamicResource TextMutedBrush}" Margin="0,2,0,0" />
+                    </StackPanel>
+                    <ItemsControl ItemsSource="{Binding Config.ReadinessSteps}" VerticalAlignment="Center">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="0" />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate DataType="vm:ReadinessStep">
+                                <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                    <Ellipse Width="16" Height="16" conv:ClassHelper.TrackedClasses="{Binding State, Converter={StaticResource RdClass}}" VerticalAlignment="Center" />
+                                    <TextBlock Text="{Binding Title}" FontSize="11" Margin="5,0,0,0" VerticalAlignment="Center"
+                                               Foreground="{DynamicResource TextSecondaryBrush}" />
+                                    <TextBlock Text="→" FontSize="11" Margin="8,0" VerticalAlignment="Center" Foreground="{DynamicResource TextMutedBrush}"
+                                               IsVisible="{Binding IsDone}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+                <Button Grid.Column="1" Content="重跑向导" Classes="sm"
+                        Command="{Binding Config.Wizard.RestartCommand}"
+                        IsEnabled="{Binding Config.Wizard, Converter={x:Static ObjectConverters.IsNotNull}}" />
+            </Grid>
+        </Border>
+
+        <!-- 内容：配置中心主体（按 ActiveSection 显隐的区段） -->
+        <views:ConfigView Grid.Column="1" Grid.Row="1" DataContext="{Binding Config}" />
+
+        <!-- 底部：单一保存条（消除每个 Tab 各有一套保存的混乱） -->
+        <Border Grid.Column="1" Grid.Row="2" Padding="20,10" BorderThickness="0,1,0,0"
+                BorderBrush="{DynamicResource BorderSubtleBrush}" Background="{DynamicResource BgSurfaceBrush}">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                <StackPanel Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <Ellipse Width="8" Height="8" Fill="{DynamicResource WarningBrush}" VerticalAlignment="Center" />
+                    <TextBlock Text="未保存的修改" FontSize="13" FontWeight="SemiBold" Foreground="{DynamicResource WarningBrush}" VerticalAlignment="Center" />
+                </StackPanel>
+                <TextBlock Grid.Column="1" Text="{Binding Config.StatusMessage}" FontSize="12"
+                           Foreground="{DynamicResource TextSecondaryBrush}" VerticalAlignment="Center" Margin="12,0,0,0"
+                           TextWrapping="Wrap" />
+                <Button Grid.Column="2" Content="取消" Command="{Binding Config.CancelCommand}" Margin="0,0,10,0" />
+                <Button Grid.Column="3" Content="💾 保存配置并重建引擎" Classes="primary" Command="{Binding Config.SaveCommand}" />
+            </Grid>
+        </Border>
+
     </Grid>
 </UserControl>

@@ -119,5 +119,8 @@
     <!-- ============ 转换器实例 ============ -->
     <conv:EqualsTextConverter x:Key="EqualsTextConverter" />
     <conv:GreaterThanZeroConverter x:Key="GreaterThanZeroConverter" />
+    <conv:CountOpacityConverter x:Key="CountOpacityConverter" />
+    <conv:BoolInvertConverter x:Key="BoolInvertConverter" />
+    <conv:OutputMessageForegroundConverter x:Key="OutputMessageForegroundConverter" />
 
 </ResourceDictionary>

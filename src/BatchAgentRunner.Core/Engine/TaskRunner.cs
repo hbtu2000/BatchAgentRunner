@@ -52,6 +52,16 @@ public sealed class TaskRunnerContext
     public Func<RestoreCandidate, string?, CancellationToken, Task<bool>> WaitForRestore { get; init; } = null!;
     public Func<TaskItem, CancellationToken, Task<TaskOutcome>> ExecuteWorkflow { get; init; } = null!;
     public Func<int> GetPendingCount { get; init; } = null!;
+
+    /// <summary>并行调度协调器（REQ-020 / REQ-021）：在飞任务据此请求延后切换（仅并发态启用）。</summary>
+    public DispatchCoordinator? Coordinator { get; init; }
+
+    /// <summary>
+    /// 是否启用「并发下延后账号切换」（REQ-021）：仅当 <c>Concurrency &gt; 1</c> 且启用凭证 Vault 时为真。
+    /// 为真时，在飞任务遇到需切换到不同账号的需求不即时切换，而是冻结槽位 + 全局派发暂停 + 原账号兜底收尾，
+    /// 待在飞全部结束后由协调器统一切换。
+    /// </summary>
+    public bool DeferredAccountSwitchEnabled { get; init; }
 }
 
 /// <summary>默认实现：状态机与辅助方法全部来自构造期注入的上下文，无隐藏静态依赖。</summary>
@@ -139,6 +149,8 @@ public sealed class TaskRunner : ITaskRunner
         var attempts = 0;
         var rateLimitStreak = 0;
         var normalRetries = 0;
+        // REQ-021：本任务启动时所使用的「原账号」（首次选中的组合账号），冻结任务的兜底仅限于该账号自身池。
+        string? originalAccountId = null;
 
         while (true)
         {
@@ -241,11 +253,45 @@ public sealed class TaskRunner : ITaskRunner
 
             if (combo is not null && !ReferenceEquals(next, combo))
             {
+                // REQ-021：并发下（DeferredAccountSwitchEnabled）遇到「需切换到不同账号」的需求，不即时切换 Live 凭证，
+                // 而是冻结在飞槽位 + 全局派发暂停 + 记录统一切换目标，并在原启动账号上走付费兜底完成本条任务
+                // （兜底仅限于原账号自身兜底池，不跨账号，否则违背「不切换 Live 凭证」约束，见变更单 F-2）。
+                if (_ctx.DeferredAccountSwitchEnabled &&
+                    _ctx.Coordinator is not null &&
+                    !string.Equals(next.Account.Id, originalAccountId, StringComparison.OrdinalIgnoreCase))
+                {
+                    _ctx.Coordinator.RequestDeferredSwitch(task.Id, next.Account.Id);
+                    _ctx.Raise(new BatchEvent(BatchEventKind.SlotFrozen, _ctx.Clock.Now,
+                        $"并行执行中，在飞槽位已冻结、进入全局派发暂停；当前在飞任务走付费兜底在原账号 {combo.Account.Label} 完成",
+                        task.Id, combo.Account.Label));
+                    _ctx.Raise(new BatchEvent(BatchEventKind.AccountSwitchDeferred, _ctx.Clock.Now,
+                        $"账号切换已延后至当前在飞任务全部结束后执行（目标：{next.Account.Label}）",
+                        task.Id, next.Account.Label));
+
+                    // 原账号兜底收尾：仅在 originalAccountId 自身兜底池选取（不跨账号）
+                    var fbDone = await TryFallbackOnAccountAsync(task, combo.Account.Id, taskCts.Token).ConfigureAwait(false);
+                    if (fbDone)
+                    {
+                        return TaskOutcome.Finished;
+                    }
+
+                    // 原账号兜底池无可用组合或已超成本上限（REQ-021 / F-2）：转入 waiting/blocked（不计入在飞），
+                    // 释放在飞槽位，待统一切换后由后续任务处理；不阻塞整批。
+                    await MarkInterrupted(task,
+                        $"并行冻结任务的原账号 {combo.Account.Label} 兜底不可用，已转入等待/阻塞，待统一切换后由后续任务处理")
+                        .ConfigureAwait(false);
+                    return TaskOutcome.Finished;
+                }
+
                 RaiseSwitchEvents(combo, next, task.Id);
             }
 
             combo = next;
             attempts++;
+            if (originalAccountId is null)
+            {
+                originalAccountId = combo.Account.Id;
+            }
 
             if (!await EnsureLiveCredentialAsync(task, combo, taskCts.Token).ConfigureAwait(false))
             {
@@ -447,6 +493,68 @@ public sealed class TaskRunner : ITaskRunner
         return (false, cost);
     }
 
+    /// <summary>
+    /// 仅从指定账号兜底池兜底收尾（REQ-021 并发冻结任务）：与 <see cref="TryFallbackAsync"/> 流程一致，
+    /// 但经 <see cref="IFallbackBilling.TrySelectForAccount"/> 限制为「原启动账号自身兜底池、不跨账号」。
+    /// </summary>
+    private async Task<bool> TryFallbackOnAccountAsync(TaskItem task, string accountId, CancellationToken ct)
+    {
+        var selection = _ctx.Fallback.TrySelectForAccount(task.Id, accountId);
+        if (selection is null)
+        {
+            return false;
+        }
+
+        var account = selection.Account;
+        var unitPrice = selection.UnitPrice;
+        var fallbackModel = selection.ToModelCandidate();
+        var combo = new AgentCombo(account, fallbackModel);
+
+        _ctx.Raise(new BatchEvent(BatchEventKind.FallbackUsed, _ctx.Clock.Now,
+            $"免费组合当前不可用，已使用兜底模型 {fallbackModel.Name}（原账号 {account.Label}）收尾当前任务 {task.Id}",
+            task.Id, account.Label, fallbackModel.Name));
+
+        var request = BuildRequest(task, combo, isFallback: true);
+        _ctx.Fallback.RecordModelUsed(fallbackModel.Name);
+
+        var result = await ExecuteWithTimeoutAsync(request, ct).ConfigureAwait(false);
+
+        var cost = result.Usage?.Cost ?? unitPrice;
+        var basis = result.Usage?.Basis ?? CostBasis.Estimated;
+        cost = _ctx.Fallback.CapCost(cost);
+
+        if (result.Succeeded)
+        {
+            _ctx.Fallback.RecordSuccess(cost, basis);
+
+            using (await _ctx.EnterWriteGate().ConfigureAwait(false)) // P0-4：与落盘序列化互斥
+            {
+                task.Status = TaskStatus.Done;
+                task.Result = Truncate(result.Output, _ctx.Options.ResultMaxKB * 1024);
+                task.ModelUsed = fallbackModel.Name;
+                task.AccountUsed = account.Label;
+                task.ExpertUsed = _ctx.Options.Expert.ToString();
+                task.FallbackUsed = true;
+                task.FallbackCost = cost;
+                task.Error = null;
+                task.Finish(TaskStatus.Done, _ctx.Clock.Now);
+            }
+
+            _ctx.Raise(new BatchEvent(BatchEventKind.FallbackUsed, _ctx.Clock.Now,
+                $"兜底完成（原账号）：任务 {task.Id}（花费 ¥{cost:0.####}）",
+                task.Id, account.Label, fallbackModel.Name)
+            { Cost = cost, Task = task });
+            _ctx.Logger.WriteFallbackUsed(task.Id, fallbackModel.Name, cost, basis);
+            _ctx.RaiseTaskChanged(task);
+            await _ctx.Persist(ct).ConfigureAwait(false);
+            return true;
+        }
+
+        _ctx.Fallback.RecordFailure(cost, basis);
+        await FailTask(task, $"兜底模型 {fallbackModel.Name} 执行失败：{result.Failure?.Message ?? "未知错误"}").ConfigureAwait(false);
+        return false;
+    }
+
     // ---------------- 任务状态写入 ----------------
 
     private async Task CompleteTask(TaskItem task, AgentExecutionResult result)
@@ -579,6 +687,14 @@ public sealed class TaskRunner : ITaskRunner
     private async Task<bool> EnsureLiveCredentialAsync(TaskItem task, AgentCombo combo, CancellationToken ct)
     {
         if (_ctx.Vault is null)
+        {
+            return true;
+        }
+
+        // REQ-021：并发下禁止即时切换 Live 凭证（在飞任务会新旧账号混用）。活动账号已由引擎在派发前固定
+        // （EnsurePreferredLiveAccountAsync）与每次统一切换后重建（SwitchAccountAsync 旋转矩阵首选），
+        // 故在飞任务始终共用同一账号，无需、也不允许逐任务切换。
+        if (_ctx.DeferredAccountSwitchEnabled)
         {
             return true;
         }

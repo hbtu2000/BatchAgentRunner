@@ -1,20 +1,19 @@
 using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
 
 namespace BatchAgentRunner.Desktop.ViewModels;
 
 /// <summary>
 /// 配置中心：把原先分散在侧边栏的三个配置入口
-/// （账号登录 / 配置向导 / 高级配置）合并到一处，通过顶部标签切换子视图。
+/// （账号登录 / 配置向导 / 高级配置）合并到一处。新版改为统一的 rail 区段导航 +
+/// 顶部「准备度」进度条 + 内嵌 ConfigView（按区段显隐）+ 底部单一保存条。
+/// 登录页内嵌于「账号与凭据」区段，配置向导作为「快速开始」区段与准备度引导。
 /// </summary>
 public sealed class ConfigHubViewModel : ViewModelBase
 {
     private readonly LoginViewModel _login;
     private readonly SetupWizardViewModel _wizard;
     private readonly ConfigViewModel _config;
-
-    private ViewModelBase _currentSubview;
-    private string _activeSubview = "login";
+    private string _activeSubview = "config";
 
     public ConfigHubViewModel(LoginViewModel login, SetupWizardViewModel wizard, ConfigViewModel config)
     {
@@ -22,11 +21,10 @@ public sealed class ConfigHubViewModel : ViewModelBase
         _wizard = wizard;
         _config = config;
 
-        HubNavigateCommand = new RelayCommand<string>(HubNavigate);
-
-        // 默认进入最易用的「账号登录（一键，最简单）」
-        _currentSubview = _login;
-        _login.Refresh();
+        // 把登录 / 向导注入配置页：账号区段内嵌登录、快速开始区段可重跑向导
+        _config.Login = _login;
+        _config.Wizard = _wizard;
+        _config.RefreshReadiness();
     }
 
     public LoginViewModel Login => _login;
@@ -35,40 +33,18 @@ public sealed class ConfigHubViewModel : ViewModelBase
 
     public ConfigViewModel Config => _config;
 
-    public ViewModelBase CurrentSubview
-    {
-        get => _currentSubview;
-        private set => SetProperty(ref _currentSubview, value);
-    }
-
-    /// <summary>当前激活的子视图 key：login / wizard / config。</summary>
+    /// <summary>当前激活的子视图 key（保留以兼容主窗口导航调用）。</summary>
     public string ActiveSubview
     {
         get => _activeSubview;
         private set => SetProperty(ref _activeSubview, value);
     }
 
-    public IRelayCommand<string> HubNavigateCommand { get; }
-
-    /// <summary>在配置中心内部切换子视图；进入时刷新对应数据。</summary>
+    /// <summary>进入配置中心时刷新配置与准备度。</summary>
     public void HubNavigate(string? sub)
     {
-        switch (sub)
-        {
-            case "wizard":
-                CurrentSubview = _wizard;
-                ActiveSubview = "wizard";
-                break;
-            case "config":
-                _config.Reload(); // 进入高级配置前刷新为最新值
-                CurrentSubview = _config;
-                ActiveSubview = "config";
-                break;
-            default:
-                _login.Refresh();
-                CurrentSubview = _login;
-                ActiveSubview = "login";
-                break;
-        }
+        _config.Reload();
+        _config.RefreshReadiness();
+        ActiveSubview = "config";
     }
 }

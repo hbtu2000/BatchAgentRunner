@@ -25,6 +25,9 @@ public interface IBatchReportBuilder
     /// <summary>追加时间线条目（切换 / 跳过 / 阻塞等）。</summary>
     void AddTimeline(string kind, string message, string? taskId, string? account, string? model);
 
+    /// <summary>追加时间线条目（含 REQ-021 并发延后切换标记）。</summary>
+    void AddTimeline(string kind, string message, string? taskId, string? account, string? model, bool deferredSwitch);
+
     /// <summary>累计等待时长（时段窗口 / 冷却，用于报告的「有效时长」剔除）。</summary>
     void AddWaitSeconds(WaitKind kind, double seconds);
 
@@ -87,6 +90,9 @@ public sealed class BatchReportBuilder : IBatchReportBuilder
     }
 
     public void AddTimeline(string kind, string message, string? taskId, string? account, string? model)
+        => AddTimeline(kind, message, taskId, account, model, false);
+
+    public void AddTimeline(string kind, string message, string? taskId, string? account, string? model, bool deferredSwitch)
     {
         var entry = new TimelineEntry
         {
@@ -95,7 +101,8 @@ public sealed class BatchReportBuilder : IBatchReportBuilder
             Message = message,
             TaskId = taskId,
             Account = account,
-            Model = model
+            Model = model,
+            DeferredSwitch = deferredSwitch
         };
         lock (_statsLock)
         {

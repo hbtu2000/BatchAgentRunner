@@ -1,3 +1,4 @@
+using Avalonia;
 using Avalonia.Threading;
 
 namespace BatchAgentRunner.Desktop.Services;
@@ -19,6 +20,14 @@ public static class UiThread
     {
         ArgumentNullException.ThrowIfNull(action);
 
+        // 无 UI 线程宿主（如单元测试未初始化 Avalonia Application）时降级为同步执行，
+        // 保证业务可测且不崩溃；生产环境 Application 必定已初始化，此分支不会触发（P1-19 测试基座）。
+        if (Application.Current is null)
+        {
+            action();
+            return;
+        }
+
         if (Dispatcher.UIThread.CheckAccess())
         {
             action();
@@ -33,7 +42,7 @@ public static class UiThread
     {
         ArgumentNullException.ThrowIfNull(asyncAction);
 
-        if (Dispatcher.UIThread.CheckAccess())
+        if (Application.Current is null || Dispatcher.UIThread.CheckAccess())
         {
             return asyncAction();
         }

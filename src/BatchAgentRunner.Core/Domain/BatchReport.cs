@@ -170,6 +170,10 @@ public sealed class TimelineEntry
 
     [JsonPropertyName("model")]
     public string? Model { get; set; }
+
+    /// <summary>是否为「并发下延后统一切换」（REQ-021）：区分并发延后切换与常规任务边界切换。</summary>
+    [JsonPropertyName("deferred_switch")]
+    public bool DeferredSwitch { get; set; }
 }
 
 public sealed class FallbackSummary

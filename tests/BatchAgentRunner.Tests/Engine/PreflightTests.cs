@@ -1,3 +1,4 @@
+using System.Linq;
 using BatchAgentRunner.Agents.Adapters;
 using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
@@ -117,6 +118,51 @@ public class PreflightTests
         var outcome = await Build(options, store, fs, new MockAdapter(), new FakeClock()).RunAsync();
 
         Assert.Contains(outcome.Report.Errors, e => e.Contains('环'));
+    }
+
+    // ---------------- REQ-019：命名工作空间数量上限 ----------------
+
+    [Fact]
+    public async Task REQ019_命名工作空间超出配置上限_预检报错并列出超限条目()
+    {
+        var path = "C:/tasks/tasks.json";
+        var options = Options(path, new AccountConfig { Id = "acc1", DisplayName = "账号1" });
+        options.MaxWorkspaces = 10;
+        // 仅命名、无 Path → 跳过目录存在性校验，专注测试「数量上限」契约
+        options.Workspaces = Enumerable.Range(1, 12)
+            .Select(i => new WorkspaceConfig { Name = $"ws-{i}" })
+            .ToList();
+        var store = new InMemoryTaskFileStore
+        {
+            Tasks = new List<TaskItem> { new() { Id = "t1", Instruction = "i" } }
+        };
+        var fs = new FakeFileSystem().WithFile(path);
+
+        var outcome = await Build(options, store, fs, new MockAdapter(), new FakeClock()).RunAsync();
+
+        Assert.Contains(outcome.Report.Errors, e => e.Contains("已超过配置上限") && e.Contains("12") && e.Contains("10"));
+        // 超限条目（第 11、12 个）被明确列出
+        Assert.Contains(outcome.Report.Errors, e => e.Contains("ws-11") && e.Contains("ws-12"));
+    }
+
+    [Fact]
+    public async Task REQ019_命名工作空间等于配置上限_预检通过()
+    {
+        var path = "C:/tasks/tasks.json";
+        var options = Options(path, new AccountConfig { Id = "acc1", DisplayName = "账号1" });
+        options.MaxWorkspaces = 10;
+        options.Workspaces = Enumerable.Range(1, 10)
+            .Select(i => new WorkspaceConfig { Name = $"ws-{i}" })
+            .ToList();
+        var store = new InMemoryTaskFileStore
+        {
+            Tasks = new List<TaskItem> { new() { Id = "t1", Instruction = "i" } }
+        };
+        var fs = new FakeFileSystem().WithFile(path);
+
+        var outcome = await Build(options, store, fs, new MockAdapter(), new FakeClock()).RunAsync();
+
+        Assert.DoesNotContain(outcome.Report.Errors, e => e.Contains("上限"));
     }
 
     /// <summary>最简 Vault 替身：默认无快照，预检即应停用账号（SwitchTo/MarkVerified 不会被执行）。</summary>

@@ -43,6 +43,14 @@
     <Style Selector="Button.danger:pointerover">
         <Setter Property="Background" Value="#B91C1C" />
     </Style>
+    <Style Selector="Button.danger-soft">
+        <Setter Property="Background" Value="{DynamicResource BgSurfaceBrush}" />
+        <Setter Property="Foreground" Value="{DynamicResource ErrorBrush}" />
+        <Setter Property="BorderBrush" Value="{DynamicResource ErrorBrush}" />
+    </Style>
+    <Style Selector="Button.danger-soft:pointerover">
+        <Setter Property="Background" Value="{DynamicResource ErrorSoftBrush}" />
+    </Style>
 
     <!-- 输入框统一描边与焦点环 -->
     <Style Selector="TextBox">

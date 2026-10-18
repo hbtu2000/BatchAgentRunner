@@ -66,6 +66,9 @@ public sealed class TaskRowViewModel : ObservableObject
             string.IsNullOrEmpty(Item.Workspace) ? null : Item.Workspace
         }.Where(x => !string.IsNullOrEmpty(x)));
 
+    /// <summary>所属工作空间（REQ-020 监控：每行展示工作空间，便于校验「同空间未并行」）。</summary>
+    public string Workspace => string.IsNullOrEmpty(Item.Workspace) ? "(默认)" : Item.Workspace;
+
     public string DurationText => Item.DurationSeconds > 0 ? $"{Item.DurationSeconds:0.#}s" : "-";
 
     public string RetryText => Item.RetryCount > 0 ? $"重试 {Item.RetryCount}" : "";
@@ -79,6 +82,7 @@ public sealed class TaskRowViewModel : ObservableObject
         OnPropertyChanged(nameof(Status));
         OnPropertyChanged(nameof(StatusBrush));
         OnPropertyChanged(nameof(ExecutionInfo));
+        OnPropertyChanged(nameof(Workspace));
         OnPropertyChanged(nameof(DurationText));
         OnPropertyChanged(nameof(RetryText));
         OnPropertyChanged(nameof(HasError));
