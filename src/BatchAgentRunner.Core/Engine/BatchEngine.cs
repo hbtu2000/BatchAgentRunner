@@ -32,7 +32,7 @@ public enum TaskOutcome
 /// 实现 <see cref="IDisposable"/> 由宿主在用毕（替换/退出）时释放。引擎为「每次运行一个实例」的
 /// 短生命周期对象（EngineHost 重建引擎时先释放旧实例）。
 /// </remarks>
-public sealed class BatchEngine : IDisposable
+public sealed class BatchEngine : IBatchEngine
 {
     private readonly RunOptions _options;
     private readonly IAgentCliAdapter _adapter;

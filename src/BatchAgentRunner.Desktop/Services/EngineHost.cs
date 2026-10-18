@@ -58,7 +58,7 @@ public sealed class EngineHost : ObservableObject, IDisposable
 
     public RunOptions Options { get; private set; } = JsonConfigStore.CreateSample();
 
-    public BatchEngine? Engine => _engine;
+    public IBatchEngine? Engine => _engine;
 
     public BatchStatus Status
     {

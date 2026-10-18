@@ -2,7 +2,6 @@ using System.Collections.ObjectModel;
 using Avalonia.Media;
 using Avalonia.Threading;
 using BatchAgentRunner.Core.Domain;
-using BatchAgentRunner.Core.Engine;
 using BatchAgentRunner.Core.Events;
 using BatchAgentRunner.Desktop.Models;
 using BatchAgentRunner.Desktop.Services;
