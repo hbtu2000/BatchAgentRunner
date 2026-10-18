@@ -90,6 +90,8 @@ public sealed class BatchEngine : IBatchEngine
     private readonly INotificationDispatcher? _notificationDispatcher;
     private readonly IMarkdownInPlaceWriter? _markdownWriter;
     private readonly GateEvaluator _gateEvaluator;
+    /// <summary>文件系统探测端口（P1-10）：引擎零直接 IO，任务文件/工作空间存在性均经此抽象。</summary>
+    private readonly IFileSystem _fileSystem;
 
     public BatchEngine(
         RunOptions options,
@@ -106,7 +108,8 @@ public sealed class BatchEngine : IBatchEngine
         INotificationDispatcher? notificationDispatcher = null,
         IMarkdownInPlaceWriter? markdownWriter = null,
         GateEvaluator? gateEvaluator = null,
-        IProcessRunner? processRunner = null)
+        IProcessRunner? processRunner = null,
+        IFileSystem? fileSystem = null)
     {
         _options = options;
         _adapter = adapter;
@@ -132,6 +135,7 @@ public sealed class BatchEngine : IBatchEngine
         };
         _matrix = new DegradationMatrix(options.Accounts, options.ModelCandidates, options.DegradationStrategy);
         _sessionPolicy = new SessionResumePolicy(options.EnableSessionResume);
+        _fileSystem = fileSystem ?? new SystemFileSystem();
     }
 
     // ---------------- 公开状态 ----------------
@@ -208,7 +212,7 @@ public sealed class BatchEngine : IBatchEngine
         {
             report.AddError("未选择任务文件");
         }
-        else if (!File.Exists(_options.TaskFilePath))
+        else if (!_fileSystem.FileExists(_options.TaskFilePath))
         {
             report.AddError($"任务文件不存在：{_options.TaskFilePath}");
         }
@@ -238,7 +242,7 @@ public sealed class BatchEngine : IBatchEngine
                 // 工作空间校验（REQ-003a）
                 foreach (var ws in _options.Workspaces.Where(w => w.IsValid))
                 {
-                    if (!Directory.Exists(ws.Path))
+                    if (!_fileSystem.DirectoryExists(ws.Path))
                     {
                         report.AddError($"工作空间「{ws.Name}」目录不存在或无访问权限：{ws.Path}");
                     }
@@ -1604,7 +1608,7 @@ public sealed class BatchEngine : IBatchEngine
     private AgentRequest BuildRequest(TaskItem task, AgentCombo combo, bool isFallback)
     {
         var workspace = ResolveWorkspacePath(task.Workspace ?? _options.DefaultWorkspace)
-                        ?? Directory.GetCurrentDirectory();
+                        ?? _fileSystem.CurrentDirectory;
 
         return new AgentRequest(
             task.Id,

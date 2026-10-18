@@ -30,14 +30,16 @@ public class BatchEngineTests
         new() { Name = name, FreeTimeWindow = window };
 
     private static (BatchEngine Engine, InMemoryTaskFileStore Store, FakeClock Clock, List<BatchEvent> Events) Build(
-        RunOptions options, IAgentCliAdapter adapter, IEnumerable<string> taskIds, DateTimeOffset now)
+        RunOptions options, IAgentCliAdapter adapter, IEnumerable<string> taskIds, DateTimeOffset now,
+        IFileSystem? fileSystem = null)
     {
         var clock = new FakeClock(now);
         var store = new InMemoryTaskFileStore
         {
             Tasks = taskIds.Select(id => new TaskItem { Id = id, Instruction = "指令 " + id }).ToList()
         };
-        var engine = new BatchEngine(options, adapter, store, new InMemoryCooldownStore(), new NullRunLogger(), clock);
+        var engine = new BatchEngine(options, adapter, store, new InMemoryCooldownStore(), new NullRunLogger(), clock,
+            fileSystem: fileSystem);
         if (adapter is MockAdapter mock)
         {
             mock.Clock = clock;
@@ -245,6 +247,74 @@ public class BatchEngineTests
         Assert.True(preflight.AllCombosUnavailable);
         Assert.NotNull(preflight.EarliestRestoreAt);
         Assert.Equal(WaitKind.FreeWindow, preflight.WaitKind);
+    }
+
+    [Fact]
+    public async Task 预检_任务文件存在性走IFileSystem端口()
+    {
+        // P1-10 不变量：任务文件存在性判断必须经注入的 IFileSystem（而非直接碰磁盘），
+        // 因此「真实磁盘不存在、端口报告存在」时预检不得报任务文件缺失。
+        var options = Options(M("m1"));
+        var fake = new FakeFileSystem().WithFile(options.TaskFilePath);
+        var (engine, _, _, _) = Build(options, new MockAdapter(), new[] { "task-001" }, Noon, fake);
+
+        var preflight = await engine.PreflightAsync();
+
+        Assert.DoesNotContain(preflight.Errors, e => e.Contains("任务文件不存在"));
+        Assert.Contains(fake.ProbedFiles, p => p == engine.Options.TaskFilePath);
+    }
+
+    [Fact]
+    public async Task 预检_任务文件经端口报告缺失时给出错误()
+    {
+        // 反向：端口报告不存在（即使磁盘上真有文件）也必须拦截——证明判断确实以端口为准。
+        var realPath = Path.GetTempFileName();
+        try
+        {
+            var options = Options(M("m1"));
+            options.TaskFilePath = realPath;
+            var (engine, _, _, _) = Build(options, new MockAdapter(), new[] { "task-001" }, Noon, new FakeFileSystem());
+
+            var preflight = await engine.PreflightAsync();
+
+            Assert.Contains(preflight.Errors, e => e.Contains("任务文件不存在"));
+        }
+        finally
+        {
+            File.Delete(realPath);
+        }
+    }
+
+    [Fact]
+    public async Task 预检_工作空间存在性走IFileSystem端口()
+    {
+        // P1-10 不变量：工作空间目录存在性同样经 IFileSystem 端口；
+        // 端口报告存在时不得误报（即使该目录在真实磁盘上不存在）。
+        var wsPath = Path.Combine(Path.GetTempPath(), "bar-nonexistent-ws-" + Guid.NewGuid().ToString("N"));
+        var options = Options(M("m1"));
+        options.Workspaces = new List<WorkspaceConfig> { new() { Name = "ws", Path = wsPath } };
+        var fake = new FakeFileSystem().WithFile(options.TaskFilePath).WithDirectory(wsPath);
+        var (engine, _, _, _) = Build(options, new MockAdapter(), new[] { "task-001" }, Noon, fake);
+
+        var preflight = await engine.PreflightAsync();
+
+        Assert.DoesNotContain(preflight.Errors, e => e.Contains("目录不存在"));
+        Assert.Contains(fake.ProbedDirs, d => d == wsPath);
+    }
+
+    [Fact]
+    public async Task 预检_工作空间经端口报告缺失时给出错误()
+    {
+        var wsPath = Path.Combine(Path.GetTempPath(), "bar-nonexistent-ws-" + Guid.NewGuid().ToString("N"));
+        var options = Options(M("m1"));
+        options.Workspaces = new List<WorkspaceConfig> { new() { Name = "ws", Path = wsPath } };
+        // 任务文件经端口报告存在（否则预检在文件检查处提前返回，到不了工作空间校验）。
+        var fake = new FakeFileSystem().WithFile(options.TaskFilePath);
+        var (engine, _, _, _) = Build(options, new MockAdapter(), new[] { "task-001" }, Noon, fake);
+
+        var preflight = await engine.PreflightAsync();
+
+        Assert.Contains(preflight.Errors, e => e.Contains("目录不存在"));
     }
 
     [Fact]

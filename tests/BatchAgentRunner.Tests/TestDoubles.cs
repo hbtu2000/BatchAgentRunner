@@ -103,3 +103,43 @@ public sealed class FakeCliProcessGuard(bool running = false) : ICliProcessGuard
     public bool IsCliRunning(AgentKind cli) => Running;
 }
 
+/// <summary>
+/// 文件系统探测假件（P1-10）：按预设回答存在性，并记录全部探测调用，
+/// 用于验证引擎的存在性判断确实经 <see cref="IFileSystem"/> 端口而非直接碰真实磁盘。
+/// </summary>
+public sealed class FakeFileSystem : IFileSystem
+{
+    private readonly HashSet<string> _existingFiles = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _existingDirs = new(StringComparer.OrdinalIgnoreCase);
+
+    public string CurrentDirectory { get; init; } = Directory.GetCurrentDirectory();
+
+    public List<string> ProbedFiles { get; } = new();
+
+    public List<string> ProbedDirs { get; } = new();
+
+    public FakeFileSystem WithFile(string path)
+    {
+        _existingFiles.Add(path);
+        return this;
+    }
+
+    public FakeFileSystem WithDirectory(string path)
+    {
+        _existingDirs.Add(path);
+        return this;
+    }
+
+    public bool FileExists(string path)
+    {
+        ProbedFiles.Add(path);
+        return _existingFiles.Contains(path);
+    }
+
+    public bool DirectoryExists(string path)
+    {
+        ProbedDirs.Add(path);
+        return _existingDirs.Contains(path);
+    }
+}
+
