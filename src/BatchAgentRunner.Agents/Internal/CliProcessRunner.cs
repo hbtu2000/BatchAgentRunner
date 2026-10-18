@@ -35,11 +35,13 @@ public sealed class CliProcessRunner
 {
     private readonly AutoAnswerPolicy _policy;
     private readonly Action<string>? _log;
+    private readonly IProcessLauncher _launcher;
 
-    public CliProcessRunner(AutoAnswerPolicy policy, Action<string>? log = null)
+    public CliProcessRunner(AutoAnswerPolicy policy, Action<string>? log = null, IProcessLauncher? launcher = null)
     {
         _policy = policy;
         _log = log;
+        _launcher = launcher ?? RealProcessLauncher.Instance;
     }
 
     public async Task<ProcessRunResult> RunAsync(
@@ -83,7 +85,7 @@ public sealed class CliProcessRunner
             }
         }
 
-        using var process = Process.Start(psi);
+        using var process = _launcher.Start(psi);
         if (process is null)
         {
             return new ProcessRunResult(-1, $"无法启动进程：{spec.FileName}", false, false);
@@ -216,7 +218,8 @@ public sealed class CliProcessRunner
                     try
                     {
                         await process.StandardInput.WriteLineAsync(classification.Answer).ConfigureAwait(false);
-                        await process.StandardInput.FlushAsync().ConfigureAwait(false);
+                        // CA2016：向前传播取消令牌——取消语义与 WriteLineAsync 一致（取消即中止本轮交互）
+                        await process.StandardInput.FlushAsync(cancellationToken).ConfigureAwait(false);
                     }
                     catch
                     {
@@ -304,7 +307,7 @@ public sealed class CliProcessRunner
 
         _log?.Invoke($"[窗口模式] 弹出 CLI 窗口执行：{spec.FileName} {spec.Arguments}（应用内实时输出流为空，请以 CLI 窗口为准）");
 
-        using var process = Process.Start(psi);
+        using var process = _launcher.Start(psi);
         if (process is null)
         {
             return new ProcessRunResult(-1, $"无法启动进程：{spec.FileName}", false, false);

@@ -15,6 +15,8 @@ public class TaskFileStoreTests : IDisposable
 
     public void Dispose()
     {
+        // CA1816：SuppressFinalize 让派生类型引入终结器时无需重新实现 IDisposable
+        GC.SuppressFinalize(this);
         try
         {
             Directory.Delete(_root, recursive: true);
@@ -69,7 +71,7 @@ public class TaskFileStoreTests : IDisposable
     }
 
     [Fact]
-    public void JSON_空字符串时间戳可解析为空()
+    public async Task JSON_空字符串时间戳可解析为空()
     {
         var file = Path_("tasks.json");
         File.WriteAllText(file, """
@@ -79,7 +81,7 @@ public class TaskFileStoreTests : IDisposable
         """);
 
         var store = new TaskFileStore();
-        var result = store.LoadAsync(file).Result;
+        var result = await store.LoadAsync(file);
 
         Assert.Single(result.Tasks);
         Assert.Null(result.Tasks[0].StartedAt);
@@ -87,21 +89,21 @@ public class TaskFileStoreTests : IDisposable
     }
 
     [Fact]
-    public void JSON_原地回写并保留字段()
+    public async Task JSON_原地回写并保留字段()
     {
         var file = Path_("tasks.json");
         File.WriteAllText(file, """[{ "id": "t1", "instruction": "x" }]""");
         var store = new TaskFileStore();
 
-        var loaded = store.LoadAsync(file).Result;
+        var loaded = await store.LoadAsync(file);
         loaded.Tasks[0].Status = TaskStatus.Done;
         loaded.Tasks[0].Result = "已完成";
         loaded.Tasks[0].ModelUsed = "m1";
         loaded.Tasks[0].AccountUsed = "acc1";
         loaded.Tasks[0].DurationSeconds = 12.5;
-        store.SaveAsync(file, loaded.Tasks).Wait();
+        await store.SaveAsync(file, loaded.Tasks);
 
-        var reloaded = store.LoadAsync(file).Result;
+        var reloaded = await store.LoadAsync(file);
 
         Assert.Equal(TaskStatus.Done, reloaded.Tasks[0].Status);
         Assert.Equal("已完成", reloaded.Tasks[0].Result);
@@ -111,51 +113,51 @@ public class TaskFileStoreTests : IDisposable
     }
 
     [Fact]
-    public void Markdown_结果写入sidecar且不改动原文()
+    public async Task Markdown_结果写入sidecar且不改动原文()
     {
         var file = Path_("tasks.md");
         var original = "## task-001\n- instruction: hello\n";
         File.WriteAllText(file, original);
         var store = new TaskFileStore();
 
-        var loaded = store.LoadAsync(file).Result;
+        var loaded = await store.LoadAsync(file);
         loaded.Tasks[0].Status = TaskStatus.Done;
         loaded.Tasks[0].Result = "结果";
-        store.SaveAsync(file, loaded.Tasks).Wait();
+        await store.SaveAsync(file, loaded.Tasks);
 
         var sidecar = file + ".result.json";
 
         Assert.True(File.Exists(sidecar));
         Assert.Equal(original, File.ReadAllText(file));
 
-        var reloaded = store.LoadAsync(file).Result;
+        var reloaded = await store.LoadAsync(file);
         Assert.Equal(TaskStatus.Done, reloaded.Tasks[0].Status);
         Assert.Equal("结果", reloaded.Tasks[0].Result);
     }
 
     [Fact]
-    public void 重复ID报错定位()
+    public async Task 重复ID报错定位()
     {
         var file = Path_("dup.json");
         File.WriteAllText(file, """[{ "id": "t1", "instruction": "a" }, { "id": "t1", "instruction": "b" }]""");
 
-        var ex = Assert.Throws<AggregateException>(() => new TaskFileStore().LoadAsync(file).Result);
-        Assert.IsType<TaskFileFormatException>(ex.InnerException);
-        Assert.Contains("重复", ex.InnerException!.Message);
+        // xUnit1031：改 async 测试后异常不再被 AggregateException 包裹，直接断言具体类型
+        var ex = await Assert.ThrowsAsync<TaskFileFormatException>(() => new TaskFileStore().LoadAsync(file));
+        Assert.Contains("重复", ex.Message);
     }
 
     [Fact]
-    public void 非法ID字符报错()
+    public async Task 非法ID字符报错()
     {
         var file = Path_("bad.json");
         File.WriteAllText(file, """[{ "id": "task 001", "instruction": "a" }]""");
 
-        var ex = Assert.Throws<AggregateException>(() => new TaskFileStore().LoadAsync(file).Result);
-        Assert.Contains("非法字符", ex.InnerException!.Message);
+        var ex = await Assert.ThrowsAsync<TaskFileFormatException>(() => new TaskFileStore().LoadAsync(file));
+        Assert.Contains("非法字符", ex.Message);
     }
 
     [Fact]
-    public void 备份保留最近N份()
+    public async Task 备份保留最近N份()
     {
         var file = Path_("backup.json");
         File.WriteAllText(file, "[]");
@@ -164,7 +166,7 @@ public class TaskFileStoreTests : IDisposable
         for (var i = 0; i < 7; i++)
         {
             Thread.Sleep(1100); // 时间戳精确到秒，需错开
-            store.BackupAsync(file, 5).Wait();
+            await store.BackupAsync(file, 5);
         }
 
         var backups = Directory.GetFiles(_root, "backup.json.backup-*");
@@ -172,13 +174,13 @@ public class TaskFileStoreTests : IDisposable
     }
 
     [Fact]
-    public void 原子写_目标文件始终可读()
+    public async Task 原子写_目标文件始终可读()
     {
         var file = Path_("atomic.json");
-        AtomicFileWriter.WriteAsync(file, """[{"id":"t1"}]""").Wait();
+        await AtomicFileWriter.WriteAsync(file, """[{"id":"t1"}]""");
 
         Assert.True(File.Exists(file));
-        Assert.False(Directory.GetFiles(_root, "atomic.json.tmp-*").Any());
+        Assert.Empty(Directory.GetFiles(_root, "atomic.json.tmp-*"));
         Assert.Equal("""[{"id":"t1"}]""".Length, File.ReadAllText(file).Length);
     }
 
@@ -192,7 +194,7 @@ public class TaskFileStoreTests : IDisposable
     }
 
     [Fact]
-    public void Xlsx_解析id指令及中文表头()
+    public async Task Xlsx_解析id指令及中文表头()
     {
         var file = Path_("tasks.xlsx");
         WriteXlsx(file, ws =>
@@ -207,7 +209,7 @@ public class TaskFileStoreTests : IDisposable
         });
 
         var store = new TaskFileStore();
-        var result = store.LoadAsync(file).Result;
+        var result = await store.LoadAsync(file);
 
         Assert.Equal(2, result.Tasks.Count);
         Assert.Equal("task-001", result.Tasks[0].Id);
@@ -218,7 +220,7 @@ public class TaskFileStoreTests : IDisposable
     }
 
     [Fact]
-    public void Xlsx_原地回写并保留结果列()
+    public async Task Xlsx_原地回写并保留结果列()
     {
         var file = Path_("tasks.xlsx");
         WriteXlsx(file, ws =>
@@ -232,14 +234,14 @@ public class TaskFileStoreTests : IDisposable
         });
 
         var store = new TaskFileStore();
-        var loaded = store.LoadAsync(file).Result;
+        var loaded = await store.LoadAsync(file);
         loaded.Tasks[0].Status = TaskStatus.Done;
         loaded.Tasks[0].Result = "已完成";
         loaded.Tasks[0].ModelUsed = "m1";
         loaded.Tasks[0].DurationSeconds = 12.5;
-        store.SaveAsync(file, loaded.Tasks).Wait();
+        await store.SaveAsync(file, loaded.Tasks);
 
-        var reloaded = store.LoadAsync(file).Result;
+        var reloaded = await store.LoadAsync(file);
         Assert.Equal(TaskStatus.Done, reloaded.Tasks[0].Status);
         Assert.Equal("已完成", reloaded.Tasks[0].Result);
         Assert.Equal("m1", reloaded.Tasks[0].ModelUsed);
@@ -256,7 +258,7 @@ public class TaskFileStoreTests : IDisposable
     }
 
     [Fact]
-    public void Xlsx_缺少必要列表头报错()
+    public async Task Xlsx_缺少必要列表头报错()
     {
         var file = Path_("bad.xlsx");
         WriteXlsx(file, ws =>
@@ -265,8 +267,7 @@ public class TaskFileStoreTests : IDisposable
             ws.Cell(2, 1).Value = "无任务";
         });
 
-        var ex = Assert.Throws<AggregateException>(() => new TaskFileStore().LoadAsync(file).Result);
-        Assert.IsType<TaskFileFormatException>(ex.InnerException);
-        Assert.Contains("id", ex.InnerException!.Message);
+        var ex = await Assert.ThrowsAsync<TaskFileFormatException>(() => new TaskFileStore().LoadAsync(file));
+        Assert.Contains("id", ex.Message);
     }
 }

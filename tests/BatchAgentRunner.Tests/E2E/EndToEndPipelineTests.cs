@@ -18,6 +18,7 @@ namespace BatchAgentRunner.Tests.E2E;
 /// 运行日志 / 报告写出）+ 真实 BatchEngine 调度 + MockAdapter 仿真执行，
 /// 全部文件落在测试专属临时目录。用例定义见 tests/docs/01-E2E-TEST-CASES.md。
 /// </summary>
+[Trait("Category", "E2E")]
 public class EndToEndPipelineTests
 {
     // 2026-10-15 是周四；12:00 落在 22:00→06:00 免费时段之外
@@ -30,17 +31,6 @@ public class EndToEndPipelineTests
         var dir = Path.Combine(Path.GetTempPath(), "bar-e2e-" + Guid.NewGuid().ToString("N")[..10]);
         Directory.CreateDirectory(dir);
         return dir;
-    }
-
-    private static string RepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "BatchAgentRunner.slnx")))
-        {
-            dir = dir.Parent!;
-        }
-
-        return dir!.FullName;
     }
 
     private static RunOptions Options(string taskPath, params ModelCandidate[] models) => new()
@@ -401,7 +391,9 @@ public class EndToEndPipelineTests
     public async Task TC_E2E_008_配置全链路_注释模板加载往返无损()
     {
         var dir = NewDir();
-        var templatePath = Path.Combine(RepoRoot(), "samples", "config.example.json");
+        // P2-21/P2-28：配置模板改读嵌入式资源副本，避免依赖磁盘/克隆路径
+        var templatePath = Path.Combine(dir, "config.example.json");
+        File.WriteAllText(templatePath, TestSampleResources.ReadText("config.example.json"));
         var configDir = Path.Combine(dir, "conf");
         Directory.CreateDirectory(configDir);
         File.Copy(templatePath, Path.Combine(configDir, "config.json"));

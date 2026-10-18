@@ -7,5 +7,6 @@
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/BatchAgentRunner.Tests/BatchAgentRunner.Tests.csproj" />
+    <Project Path="tests/BatchAgentRunner.Desktop.Tests/BatchAgentRunner.Desktop.Tests.csproj" />
   </Folder>
 </Solution>

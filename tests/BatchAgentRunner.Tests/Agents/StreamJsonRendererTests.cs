@@ -155,7 +155,7 @@ public class StreamJsonRendererTests
     {
         var r = new StreamJsonRenderer();
         var longText = new string('中', 250);
-        var outLines = r.Feed($"""{{"type":"stream_event","event":{{"delta":{{"text":"{longText}"}}}}}}""");
+        var outLines = r.Feed($"{{\"type\":\"stream_event\",\"event\":{{\"delta\":{{\"text\":\"{longText}\"}}}}}}");
 
         // 超过合并阈值，单个超长 delta 直接刷出（不再等 Flush）
         Assert.Single(outLines);

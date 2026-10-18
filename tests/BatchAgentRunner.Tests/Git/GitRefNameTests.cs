@@ -7,6 +7,7 @@ namespace BatchAgentRunner.Tests.Git;
 /// 不得以可被解析为命令行选项的形式进入子进程（原实现拼接字符串且只用引号包裹，
 /// 可注入 <c>-c core.sshCommand=</c> 之类的 git 配置项实现任意命令执行）。
 /// </summary>
+[Trait("Category", "Invariant")]
 public class GitRefNameTests
 {
     [Theory]

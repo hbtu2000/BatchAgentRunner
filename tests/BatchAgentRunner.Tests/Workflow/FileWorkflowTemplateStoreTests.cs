@@ -11,6 +11,8 @@ public class FileWorkflowTemplateStoreTests : IDisposable
 
     public void Dispose()
     {
+        // CA1816：SuppressFinalize 让派生类型引入终结器时无需重新实现 IDisposable
+        GC.SuppressFinalize(this);
         try { Directory.Delete(_root, recursive: true); } catch { /* 忽略清理失败 */ }
     }
 

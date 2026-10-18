@@ -188,7 +188,7 @@ public class MockVaultE2ETests
         // 重新启用账号后预检通过，且 last_verified_at 更新（DESIGN §7：预检即验证快照有效性）
         engine.Options.Accounts.First(a => a.Id == "acc-b").Enabled = true;
         var preflight = await engine.PreflightAsync();
-        Assert.DoesNotContain(preflight.DisabledAccounts, label => label.Contains("B"));
+        Assert.DoesNotContain(preflight.DisabledAccounts, label => label.Contains('B'));
         Assert.NotNull(env.Vault.GetSnapshot(AgentKind.Mock, "acc-b")!.LastVerifiedAt);
     }
 

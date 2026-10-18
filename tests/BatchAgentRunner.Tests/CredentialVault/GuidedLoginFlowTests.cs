@@ -6,6 +6,7 @@ namespace BatchAgentRunner.Tests.CredentialVault;
 
 /// <summary>引导登录流程测试（DESIGN §5 / §11：清场→拉起→检测→校验→备份）。</summary>
 [Collection("credential-vault")]
+[Trait("Category", "Invariant")]
 public class GuidedLoginFlowTests
 {
     private static readonly DateTimeOffset T1 = At.Local(2026, 10, 15, 14, 0);
@@ -30,7 +31,7 @@ public class GuidedLoginFlowTests
     private sealed record Fixture(GuidedLoginOrchestrator Orchestrator, FileCredentialVault Vault,
         string VaultRoot, string LiveRoot, FakeLauncher Launcher, List<GuidedLoginProgress> Progress);
 
-    private Fixture NewFixture(Action<string> onLaunch, bool cliRunning = false)
+    private static Fixture NewFixture(Action<string> onLaunch, bool cliRunning = false)
     {
         var vaultRoot = Path.Combine(Path.GetTempPath(), "bar-vault-" + Guid.NewGuid().ToString("N")[..10]);
         var liveRoot = Path.Combine(Path.GetTempPath(), "bar-live-" + Guid.NewGuid().ToString("N")[..10]);

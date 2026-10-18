@@ -5,12 +5,15 @@ using Xunit;
 namespace BatchAgentRunner.Tests.TaskFiles;
 
 /// <summary>Markdown 原地回写测试（二期 15.4.7）：托管区哨兵、幂等、不破坏手写指令。</summary>
+[Trait("Category", "Invariant")]
 public class MarkdownInPlaceWriterTests : IDisposable
 {
     private readonly string _dir = Directory.CreateTempSubdirectory("bar-md-").FullName;
 
     public void Dispose()
     {
+        // CA1816：SuppressFinalize 让派生类型引入终结器时无需重新实现 IDisposable
+        GC.SuppressFinalize(this);
         try { Directory.Delete(_dir, recursive: true); } catch { /* 忽略清理失败 */ }
     }
 

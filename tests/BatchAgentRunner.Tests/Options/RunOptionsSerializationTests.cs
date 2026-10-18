@@ -92,11 +92,12 @@ public class RunOptionsSerializationTests
     [Fact]
     public void 仓库内注释模板可被解析()
     {
-        // samples/config.example.json 是交付给用户的全字段模板，必须与代码同步且可加载
-        var path = Path.Combine(FindRepoRoot(), "samples", "config.example.json");
-        Assert.True(File.Exists(path), $"未找到模板文件：{path}");
+        // samples/config.example.json 是交付给用户的全字段模板，必须与代码同步且可加载。
+        // P2-21/P2-28：改为读取嵌入式资源副本（.csproj Link 指向真实 samples 文件，内容同步）。
+        var json = TestSampleResources.ReadText("config.example.json");
+        Assert.False(string.IsNullOrWhiteSpace(json));
 
-        var options = JsonDefaults.Deserialize<RunOptions>(File.ReadAllText(path));
+        var options = JsonDefaults.Deserialize<RunOptions>(json);
 
         Assert.NotNull(options);
         // v1.12：候选/兜底模型池挂在账号下；全局 model_candidates 为兼容字段（模板中为空）
@@ -111,17 +112,5 @@ public class RunOptionsSerializationTests
         Assert.NotEmpty(options.AutoAnswer.AllowedWhitelist);
         Assert.Equal(10, options.TaskTimeoutMinutes);
         Assert.Equal(60, options.DefaultCooldownMinutes);
-    }
-
-    private static string FindRepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "BatchAgentRunner.slnx")))
-        {
-            dir = dir?.Parent;
-        }
-
-        Assert.NotNull(dir);
-        return dir!.FullName;
     }
 }

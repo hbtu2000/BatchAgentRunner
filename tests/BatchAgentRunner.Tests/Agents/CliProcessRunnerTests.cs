@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Text;
 using BatchAgentRunner.Agents.Internal;
 using BatchAgentRunner.Core.Options;
@@ -9,10 +10,33 @@ namespace BatchAgentRunner.Tests.Agents;
 /// CodeBuddy CLI print 模式（-p）在整个执行期间不向 stdout 输出、仅在结束时打印结果，
 /// 「零输出」是常态而非卡死；不得按 stdin 空闲阈值强杀，应交由任务级超时兜底。
 /// </summary>
+[Trait("Category", "Process")]
+[Trait("Category", "Invariant")]
 public class CliProcessRunnerTests
 {
     private static CliProcessRunner CreateRunner(int stdinIdleSeconds = 1) =>
         new(new AutoAnswerPolicy { StdinIdleSeconds = stdinIdleSeconds });
+
+    /// <summary>假启动器：不启动任何进程，直接返回 null（模拟启动失败）。</summary>
+    private sealed class NullProcessLauncher : IProcessLauncher
+    {
+        public Process? Start(ProcessStartInfo startInfo) => null;
+    }
+
+    [Fact]
+    public async Task RunAsync_启动器返回null_返回无法启动进程结果且不进入主循环()
+    {
+        // P2-21：IProcessLauncher 注入缝——无需真实进程即可验证「启动失败」分支
+        var runner = new CliProcessRunner(new AutoAnswerPolicy(), null, new NullProcessLauncher());
+        var spec = new CliLaunchSpec("必然不存在的二进制", "args", Environment.CurrentDirectory);
+
+        var result = await runner.RunAsync(spec, null, TimeSpan.FromSeconds(5), CancellationToken.None);
+
+        Assert.Equal(-1, result.ExitCode);
+        Assert.Contains("无法启动进程", result.Output);
+        Assert.False(result.TimedOut);
+        Assert.False(result.Cancelled);
+    }
 
     [Fact]
     public async Task RunAsync_静默进程超出自空闲阈值_不再误杀_等待自然退出()

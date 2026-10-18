@@ -14,6 +14,8 @@ public class DiffCollectorTests : IDisposable
 
     public void Dispose()
     {
+        // CA1816：SuppressFinalize 让派生类型引入终结器时无需重新实现 IDisposable
+        GC.SuppressFinalize(this);
         try { Directory.Delete(_ws, recursive: true); } catch { /* 忽略清理失败 */ }
     }
 

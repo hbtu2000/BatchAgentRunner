@@ -9,6 +9,7 @@ using Xunit;
 
 namespace BatchAgentRunner.Tests.Engine;
 
+[Trait("Category", "Invariant")]
 public class BatchEngineTests
 {
     private static readonly DateTimeOffset Noon = At.Local(2026, 10, 15, 12, 0);
@@ -478,7 +479,7 @@ public class BatchEngineTests
             try
             {
                 // 放大落盘窗口：并发写一旦存在就必然被观测到
-                await Task.Delay(30, cancellationToken).ConfigureAwait(false);
+                await Task.Delay(30, cancellationToken);
                 _tasks.Clear();
                 _tasks.AddRange(tasks);
                 SaveCount++;
@@ -510,7 +511,7 @@ public class BatchEngineTests
         var store = new ConcurrencyDetectingTaskFileStore(tasks);
         var engine = new BatchEngine(options, adapter, store, new InMemoryCooldownStore(), new NullRunLogger(),
             new FakeClock(Noon));
-        engine.InitializeAsync().Wait();
+        await engine.InitializeAsync();
 
         var report = await engine.StartAsync();
 

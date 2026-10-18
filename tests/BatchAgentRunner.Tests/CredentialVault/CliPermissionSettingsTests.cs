@@ -55,6 +55,8 @@ public class CliPermissionSettingsTests : IDisposable
 
     public void Dispose()
     {
+        // CA1816：SuppressFinalize 让派生类型引入终结器时无需重新实现 IDisposable
+        GC.SuppressFinalize(this);
         if (Directory.Exists(_root))
         {
             Directory.Delete(_root, recursive: true);

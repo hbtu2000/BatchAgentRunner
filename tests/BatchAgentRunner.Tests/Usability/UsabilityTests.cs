@@ -17,6 +17,7 @@ namespace BatchAgentRunner.Tests.Usability;
 /// 文档「5 分钟跑通」/ 终止 / 取消等待 / 重置冷却 / 兜底不误触发。
 /// 与 EndToEndPipelineTests 互补：E2E 验证机制正确性，本套件验证「用户照文档操作能否走通」。
 /// </summary>
+[Trait("Category", "Usability")]
 public class UsabilityTests
 {
     // 2026-10-15 是周四；12:00 落在 22:00→06:00 免费时段之外
@@ -29,17 +30,6 @@ public class UsabilityTests
         var dir = Path.Combine(Path.GetTempPath(), "bar-ux-" + Guid.NewGuid().ToString("N")[..10]);
         Directory.CreateDirectory(dir);
         return dir;
-    }
-
-    private static string RepoRoot()
-    {
-        var dir = new DirectoryInfo(AppContext.BaseDirectory);
-        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "BatchAgentRunner.slnx")))
-        {
-            dir = dir.Parent!;
-        }
-
-        return dir!.FullName;
     }
 
     private static (BatchEngine Engine, MockAdapter Adapter, FileRunLogger Logger, List<BatchEvent> Events) BuildEngine(
@@ -164,17 +154,20 @@ public class UsabilityTests
     public async Task TC_UX_004_文档承诺的样例任务文件_两种格式均可解析()
     {
         var store = new TaskFileStore();
-        var root = RepoRoot();
 
-        // samples/tasks.json（文档 §1.1 第 2 步引用）
-        var json = await store.LoadAsync(Path.Combine(root, "samples", "tasks.json"));
+        // samples/tasks.json（文档 §1.1 第 2 步引用）—— P2-21/P2-28：改读嵌入式资源副本
+        var jsonPath = Path.Combine(NewDir(), "tasks.json");
+        File.WriteAllText(jsonPath, TestSampleResources.ReadText("tasks.json"));
+        var json = await store.LoadAsync(jsonPath);
         Assert.Empty(json.Issues);
         Assert.Equal(2, json.Tasks.Count);
         Assert.All(json.Tasks, t => Assert.Equal(TaskStatus.Pending, t.Status));
         Assert.All(json.Tasks, t => Assert.False(string.IsNullOrWhiteSpace(t.Instruction)));
 
         // samples/tasks.md（文档 §1 声称 .md 只读输入）
-        var md = await store.LoadAsync(Path.Combine(root, "samples", "tasks.md"));
+        var mdPath = Path.Combine(NewDir(), "tasks.md");
+        File.WriteAllText(mdPath, TestSampleResources.ReadText("tasks.md"));
+        var md = await store.LoadAsync(mdPath);
         Assert.Empty(md.Issues);
         Assert.Equal(3, md.Tasks.Count);
         Assert.Equal("task-001", md.Tasks[0].Id);
@@ -188,7 +181,7 @@ public class UsabilityTests
     {
         var dir = NewDir();
         var taskPath = Path.Combine(dir, "tasks.json");
-        File.Copy(Path.Combine(RepoRoot(), "samples", "tasks.json"), taskPath);
+        File.WriteAllText(taskPath, TestSampleResources.ReadText("tasks.json"));
 
         var options = Options(taskPath, M("model-a"));
         var (engine, adapter, logger, events) = BuildEngine(options, new MockAdapter(), dir);

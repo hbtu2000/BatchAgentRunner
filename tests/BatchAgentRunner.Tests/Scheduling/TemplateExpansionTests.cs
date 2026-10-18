@@ -14,7 +14,7 @@ public class StageTemplateRendererTests
         ctx.SetTaskField("instruction", "实现需求");
         ctx.SetStageOutput("draft", "草稿内容");
 
-        var result = new StageTemplateRenderer().Render(
+        var result = StageTemplateRenderer.Render(
             "请用 {var:lang} 完成：{task.instruction}\n参考：{output:draft}", ctx);
 
         Assert.Equal("请用 C# 完成：实现需求\n参考：草稿内容", result.Text);
@@ -27,7 +27,7 @@ public class StageTemplateRendererTests
         var ctx = new WorkflowRenderContext();
         ctx.SetVar("known", "值");
 
-        var result = new StageTemplateRenderer().Render("{var:known} / {var:missing} / {output:nope}", ctx);
+        var result = StageTemplateRenderer.Render("{var:known} / {var:missing} / {output:nope}", ctx);
 
         Assert.Equal("值 / {var:missing} / {output:nope}", result.Text);
         Assert.Contains("{var:missing}", result.Unresolved);
@@ -37,7 +37,7 @@ public class StageTemplateRendererTests
     [Fact]
     public void 空模板_返回空文本()
     {
-        var result = new StageTemplateRenderer().Render(string.Empty, new WorkflowRenderContext());
+        var result = StageTemplateRenderer.Render(string.Empty, new WorkflowRenderContext());
 
         Assert.Equal(string.Empty, result.Text);
     }
@@ -60,7 +60,7 @@ public class TemplateExpanderTests
             }
         };
 
-        var tasks = new TemplateExpander().Expand(template);
+        var tasks = TemplateExpander.Expand(template);
 
         Assert.Equal(4, tasks.Count);
         Assert.Contains(tasks, t => t.Instruction == "为 华东 生成 销售 报告");
@@ -78,7 +78,7 @@ public class TemplateExpanderTests
             Vars = new List<TemplateVarDef> { new() { Name = "name", Default = "X" } }
         };
 
-        var tasks = new TemplateExpander().Expand(template);
+        var tasks = TemplateExpander.Expand(template);
 
         Assert.Single(tasks);
         Assert.Equal("处理 X", tasks[0].Instruction);
@@ -95,7 +95,7 @@ public class TemplateExpanderTests
             ChainDependency = true
         };
 
-        var tasks = new TemplateExpander().Expand(template);
+        var tasks = TemplateExpander.Expand(template);
 
         Assert.Equal(3, tasks.Count);
         Assert.Null(tasks[0].DependsOn);
@@ -114,7 +114,7 @@ public class TemplateExpanderTests
             ChainDependency = false
         };
 
-        var tasks = new TemplateExpander().Expand(template);
+        var tasks = TemplateExpander.Expand(template);
 
         Assert.All(tasks, t => Assert.Null(t.DependsOn));
     }
@@ -138,7 +138,7 @@ public class TemplateExpanderTests
             }
         };
 
-        var tasks = new TemplateExpander().Expand(template);
+        var tasks = TemplateExpander.Expand(template);
 
         var wf = Assert.Single(tasks).Workflow!;
         Assert.Equal("设计 登录模块", wf.Stages[0].InstructionTemplate);
@@ -155,7 +155,7 @@ public class TemplateExpanderTests
             Vars = new List<TemplateVarDef>()
         };
 
-        var tasks = new TemplateExpander().Expand(template);
+        var tasks = TemplateExpander.Expand(template);
 
         var single = Assert.Single(tasks);
         Assert.Equal("固定指令（无变量）", single.Instruction);

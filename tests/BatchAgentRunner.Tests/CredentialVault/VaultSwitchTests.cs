@@ -15,7 +15,7 @@ public class VaultSwitchTests
     private sealed record Fixture(
         FileCredentialVault Vault, string VaultRoot, string LiveRoot, FakeClock Clock, List<string> Audit);
 
-    private Fixture NewVault(bool cliRunning = false)
+    private static Fixture NewVault(bool cliRunning = false)
     {
         var vaultRoot = Path.Combine(Path.GetTempPath(), "bar-vault-" + Guid.NewGuid().ToString("N")[..10]);
         var liveRoot = Path.Combine(Path.GetTempPath(), "bar-live-" + Guid.NewGuid().ToString("N")[..10]);
@@ -31,7 +31,7 @@ public class VaultSwitchTests
 
     private static string LivePath(string liveRoot) => Path.Combine(liveRoot, ".credentials.json");
 
-    private async Task<Fixture> SetupTwoAccounts()
+    private static async Task<Fixture> SetupTwoAccounts()
     {
         var f = NewVault();
         File.WriteAllText(LivePath(f.LiveRoot), "{\"access_token\":\"sk-A\",\"refresh_token\":\"rt-A1\"}");

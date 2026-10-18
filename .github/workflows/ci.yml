@@ -6,9 +6,19 @@ name: CI
 #   build 必须 --no-incremental 全量重建，否则增量构建不重跑分析器，
 #   会永远显示 0 警告，掩盖真实债务。
 #
+# 阶段 1 / P0-12：存量警告已全量清零，TreatWarningsAsErrors=true 生效——
+#   build 步骤出现任何分析器警告即构建失败（错误级）。真正清零前的历史警告
+#   已由阶段 1 逐项修复/登记（见治理方案 §5.4）。
+#
+# 阶段 1 / P2-20（测试分层）：测试按 [Trait("Category", ...)] 分层，
+#   - 快跑（单元）：默认 bucket（无 Category 标记） + Desktop.Tests，CI 主流程跑；
+#   - 慢跑（集成）：Category=E2E / Usability / Process（E2E 管线、可用性旅程、
+#     真实进程 CliProcessRunner）单独跑，便于在慢机器/长超时下隔离。
+#
 # “只报告不阻断”指：本工作流尚未作为必需状态检查（branch protection /
 # required status check）接入合并门禁。门禁转阻断见技术债务治理方案
-# 阶段 1（§4.9）。当前即使测试失败，也不会自动阻止 push / PR 合并。
+# 阶段 1（§4.9，迭代 4）。当前即使测试失败，也不会自动阻止 push / PR 合并；
+# 但 TreatWarningsAsErrors 已让「新增警告」在构建期失败（本地与 CI 均生效）。
 
 on:
   push:
@@ -32,8 +42,14 @@ jobs:
       - name: Build (full, no-incremental)
         run: dotnet build --no-incremental -c Debug
 
-      # 运行既有测试（测试项目当前仅引用 Core/Infrastructure/Agents，
-      # 不含 Desktop —— P0-17 在阶段 0 补齐引用后 Desktop 才会被纳入）。
-      # 阶段 -1 期间为“只报告”：本步失败不阻断合并（无必需状态检查）。
-      - name: Test (report only)
-        run: dotnet test tests/BatchAgentRunner.Tests/BatchAgentRunner.Tests.csproj --no-build --logger "console;verbosity=normal"
+      # 快跑（单元）：排除 E2E / Usability / Process 三个慢/集成 bucket。
+      # Desktop.Tests 无 Category 标记，全部归入快跑。
+      - name: Test (fast, unit) - report only
+        run: |
+          dotnet test tests/BatchAgentRunner.Tests/BatchAgentRunner.Tests.csproj --no-build --filter "Category!=E2E&Category!=Usability&Category!=Process" --logger "console;verbosity=normal"
+          dotnet test tests/BatchAgentRunner.Desktop.Tests/BatchAgentRunner.Desktop.Tests.csproj --no-build --logger "console;verbosity=normal"
+
+      # 慢跑（集成）：仅 E2E / Usability / Process。
+      # 真实进程与文件落盘类测试耗时较长且环境敏感，单独隔离、不拖累单元反馈速度。
+      - name: Test (slow, E2E/Usability/Process) - report only
+        run: dotnet test tests/BatchAgentRunner.Tests/BatchAgentRunner.Tests.csproj --no-build --filter "Category=E2E|Category=Usability|Category=Process" --logger "console;verbosity=normal"

@@ -9,6 +9,7 @@ namespace BatchAgentRunner.Tests.Engine;
 /// P0-10 不变量：自动关机必须先经过可撤销倒计时，任何「一步到位直接关机」的路径都是缺陷。
 /// 这里把 REQ-015 的三条硬约束（仅 Completed 触发 / 倒计时可取消 / 异常不出机）锁成断言。
 /// </summary>
+[Trait("Category", "Invariant")]
 public class AutoShutdownCoordinatorTests
 {
     private sealed class FakeShutdownService : IShutdownService
