@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>执行监控 · 重设计 Mockup v1</title>
+<style>
+/* ===== Design Tokens：与 docs/UI-设计系统-BatchAgentRunner-v1.0.md 对齐 ===== */
+:root{
+  --bg-app:#F5F7FA; --bg-surface:#FFFFFF; --bg-surface-2:#F0F3F7;
+  --bg-hover:#EAF0F7; --bg-active:#DCE7F3;
+  --border-subtle:#E3E8EF; --border-strong:#C7D0DC;
+  --text-primary:#1B2430; --text-secondary:#5A6675; --text-muted:#8A95A3;
+  --color-primary:#2563EB; --color-primary-hover:#1D4FD8; --color-primary-soft:#E8F0FE;
+  --color-success:#16A34A; --color-success-soft:#E6F6EC;
+  --color-warning:#D97706; --color-warning-soft:#FDF0DB;
+  --color-error:#DC2626; --color-error-soft:#FBE8E8;
+  --font-ui:'Segoe UI','Inter',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono','Cascadia Code',Consolas,monospace;
+  --shadow-card:0 1px 2px rgb(16 24 40 / .05),0 1px 3px rgb(16 24 40 / .06);
+  --r-sm:6px; --r-md:8px; --r-lg:10px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#DDE3EB;font-family:var(--font-ui);color:var(--text-primary);
+  display:flex;justify-content:center;padding:24px}
+.app{width:1440px;height:920px;background:var(--bg-app);border-radius:12px;
+  box-shadow:0 12px 40px rgb(16 24 40 / .18);overflow:hidden;display:flex;flex-direction:column}
+
+/* ===== 顶栏 ===== */
+.topbar{height:48px;background:var(--bg-surface);border-bottom:1px solid var(--border-subtle);
+  display:flex;align-items:center;padding:0 16px;gap:12px;flex-shrink:0}
+.logo{width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#2563EB,#7C3AED);
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700}
+.app-title{font-size:14px;font-weight:600}
+.batch-chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+  color:var(--color-primary);background:var(--color-primary-soft);padding:3px 10px;border-radius:999px}
+.batch-chip .dot{width:7px;height:7px;border-radius:50%;background:var(--color-primary);
+  animation:pulse 1.6s infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgb(37 99 235/.35)}50%{box-shadow:0 0 0 5px rgb(37 99 235/0)}}
+.topbar .spacer{flex:1}
+.topbar .meta{font-size:12px;color:var(--text-muted)}
+.theme-btn{font-size:12px;color:var(--text-secondary);border:1px solid var(--border-subtle);
+  background:var(--bg-surface);border-radius:var(--r-sm);padding:4px 10px;cursor:pointer}
+
+/* ===== 批级状态带：原来三块（进度条+统计卡+当前任务行）合一 ===== */
+.statusband{background:var(--bg-surface);border-bottom:1px solid var(--border-subtle);
+  padding:12px 16px 10px;flex-shrink:0}
+.statusband .row1{display:flex;align-items:center;gap:12px}
+.statusband .label{font-size:13px;font-weight:600}
+.progress{flex:1;height:8px;background:var(--bg-surface-2);border-radius:999px;overflow:hidden}
+.progress i{display:block;height:100%;width:18.2%;border-radius:999px;
+  background:linear-gradient(90deg,#2563EB,#3B82F6)}
+.count{font-size:12px;color:var(--text-secondary);font-variant-numeric:tabular-nums}
+.count b{color:var(--text-primary)}
+/* 统计从"六张大卡"压缩为一行内联胶囊，失败/中断=0 时不抢视觉 */
+.stats{display:flex;gap:6px;margin-top:10px}
+.stat{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--text-secondary);
+  background:var(--bg-surface-2);border-radius:999px;padding:3px 10px}
+.stat b{color:var(--text-primary);font-variant-numeric:tabular-nums}
+.stat .dot{width:8px;height:8px;border-radius:50%}
+.stat.done b{color:var(--color-success)} .stat.done .dot{background:var(--color-success)}
+.stat.run  b{color:var(--color-primary)} .stat.run .dot{background:var(--color-primary);animation:pulse 1.6s infinite}
+.stat.fail .dot{background:var(--color-error)} .stat.fail{opacity:.45}
+.stat.zero{opacity:.45}
+.statusband .row3{margin-top:10px;display:flex;gap:24px;font-size:12px;color:var(--text-secondary)}
+.statusband .row3 .k{color:var(--text-muted)}
+.statusband .row3 .v{color:var(--text-primary);font-family:var(--font-mono);font-size:12px}
+
+/* ===== 工具栏：按语义分组，危险操作独立成区 ===== */
+.toolbar{display:flex;align-items:center;gap:8px;padding:10px 16px;flex-shrink:0;flex-wrap:nowrap}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:var(--r-sm);
+  font-size:13px;font-weight:500;border:1px solid var(--border-strong);background:var(--bg-surface);
+  color:var(--text-primary);cursor:pointer}
+.btn:hover{background:var(--bg-hover)}
+.btn.primary{background:var(--color-primary);border-color:var(--color-primary);color:#fff}
+.btn.primary:hover{background:var(--color-primary-hover)}
+.btn.danger{background:var(--color-error);border-color:var(--color-error);color:#fff}
+.btn.danger-soft{background:var(--bg-surface);border-color:var(--color-error);color:var(--color-error)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.tb-sep{width:1px;height:20px;background:var(--border-strong);margin:0 4px}
+.tb-check{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary);cursor:pointer}
+.tb-check input{accent-color:var(--color-primary);width:14px;height:14px}
+.toolbar .spacer{flex:1}
+.file-path{font-size:12px;color:var(--text-muted);font-family:var(--font-mono);
+  max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ===== 主体：左右两栏，每栏内部只保留一个滚动容器 ===== */
+.main{flex:1;display:grid;grid-template-columns:minmax(560px,1fr) 480px;gap:12px;
+  padding:0 16px 12px;min-height:0}
+.panel{background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:var(--r-lg);
+  box-shadow:var(--shadow-card);display:flex;flex-direction:column;min-height:0;overflow:hidden}
+
+/* --- 任务列表面板 --- */
+.panel-head{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border-subtle);flex-shrink:0}
+.panel-head h3{font-size:14px;font-weight:600}
+.filters{display:flex;gap:6px;margin-left:8px}
+.chip{font-size:12px;padding:3px 10px;border-radius:999px;border:1px solid transparent;
+  color:var(--text-secondary);background:transparent;cursor:pointer}
+.chip:hover{background:var(--bg-hover)}
+.chip.on{background:var(--color-primary-soft);color:var(--color-primary);font-weight:600}
+.panel-head .spacer{flex:1}
+.panel-head .hint{font-size:12px;color:var(--text-muted)}
+.tasklist{flex:1;overflow-y:auto;min-height:0}
+.trow{display:grid;grid-template-columns:14px 1fr auto auto;align-items:center;gap:10px;
+  padding:9px 14px;border-bottom:1px solid var(--border-subtle);cursor:pointer}
+.trow:hover{background:var(--bg-hover)}
+.trow.selected{background:var(--bg-active);box-shadow:inset 3px 0 0 var(--color-primary)}
+.tdot{width:10px;height:10px;border-radius:50%}
+.tdot.done{background:var(--color-success)} .tdot.run{background:var(--color-primary);animation:pulse 1.6s infinite}
+.tdot.pend{background:var(--text-muted)} .tdot.fail{background:var(--color-error)}
+.tdot.int{background:var(--color-warning)}
+.tinfo{min-width:0}
+.tinfo .name{font-size:13px;font-weight:600;color:var(--text-primary);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tinfo .meta{font-size:12px;color:var(--text-muted);margin-top:2px;font-family:var(--font-mono);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tinfo .meta .id{color:var(--text-secondary)}
+.tinfo .meta .sep{margin:0 5px;color:var(--border-strong)}
+.tdur{font-size:12px;color:var(--text-secondary);font-variant-numeric:tabular-nums;font-family:var(--font-mono)}
+.badge{font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;min-width:52px;text-align:center}
+.badge.done{background:var(--color-success-soft);color:var(--color-success)}
+.badge.run{background:var(--color-primary-soft);color:var(--color-primary)}
+.badge.pend{background:var(--bg-surface-2);color:var(--text-muted)}
+.badge.fail{background:var(--color-error-soft);color:var(--color-error)}
+.badge.int{background:var(--color-warning-soft);color:var(--color-warning)}
+/* 运行中任务的迷你进度 */
+.mini-bar{grid-column:2/5;height:3px;border-radius:999px;background:var(--bg-surface-2);
+  overflow:hidden;margin-top:2px;width:calc(100% - 34px)}
+.mini-bar i{display:block;height:100%;width:64%;background:var(--color-primary);border-radius:999px}
+
+/* --- 右侧详情：输出流 + 事件 合并为一个 Tab 面板，消灭一条滚动条 --- */
+.tabs{display:flex;align-items:center;gap:2px;padding:6px 10px 0;border-bottom:1px solid var(--border-subtle);flex-shrink:0}
+.tab{font-size:13px;padding:7px 12px;color:var(--text-secondary);border-bottom:2px solid transparent;cursor:pointer}
+.tab.on{color:var(--color-primary);font-weight:600;border-bottom-color:var(--color-primary)}
+.tabs .spacer{flex:1}
+.tabs .icon-btn{font-size:12px;color:var(--text-muted);border:none;background:none;cursor:pointer;padding:4px}
+.sel-summary{display:flex;gap:18px;padding:10px 14px;background:var(--bg-surface-2);
+  border-bottom:1px solid var(--border-subtle);flex-shrink:0}
+.sel-summary .item{font-size:12px}
+.sel-summary .k{color:var(--text-muted);margin-right:4px}
+.sel-summary .v{color:var(--text-primary);font-family:var(--font-mono)}
+.stream{flex:1;overflow-y:auto;min-height:0;padding:10px 14px;font-family:var(--font-mono);font-size:12px;line-height:1.75}
+.line{display:flex;gap:10px;padding:2px 6px;border-radius:4px}
+.line:hover{background:var(--bg-hover)}
+.line .t{color:var(--text-muted);flex-shrink:0}
+.line .tag{flex-shrink:0;font-weight:600;padding:0 6px;border-radius:4px;font-size:11px;height:18px;line-height:18px;align-self:center}
+.tag.tool{background:var(--color-primary-soft);color:var(--color-primary)}
+.tag.ok{background:var(--color-success-soft);color:var(--color-success)}
+.tag.warn{background:var(--color-warning-soft);color:var(--color-warning)}
+.tag.err{background:var(--color-error-soft);color:var(--color-error)}
+.line .msg{color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.line .msg.dim{color:var(--text-secondary)}
+
+/* ===== 底部状态栏 ===== */
+.statusbar{height:28px;background:var(--bg-surface);border-top:1px solid var(--border-subtle);
+  display:flex;align-items:center;gap:16px;padding:0 16px;font-size:12px;color:var(--text-muted);flex-shrink:0}
+.statusbar .ok{color:var(--color-success)}
+.statusbar .spacer{flex:1}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- 顶栏 -->
+  <div class="topbar">
+    <div class="logo">B</div>
+    <div class="app-title">AI 批处理任务调度工具</div>
+    <div class="batch-chip"><span class="dot"></span>运行中</div>
+    <div class="spacer"></div>
+    <div class="meta">配置目录：C:\Users\tuhb\AppData\Local\BatchAgentRunner</div>
+    <button class="theme-btn">主题：浅色</button>
+  </div>
+
+  <!-- 批级状态带（合并原三块区域） -->
+  <div class="statusband">
+    <div class="row1">
+      <span class="label">批次进度</span>
+      <div class="progress"><i></i></div>
+      <span class="count"><b>2</b> / 11 · 预计剩余 ~24 min</span>
+    </div>
+    <div class="stats">
+      <span class="stat run"><span class="dot"></span>执行中 <b>1</b></span>
+      <span class="stat done"><span class="dot"></span>完成 <b>2</b></span>
+      <span class="stat"><span class="dot" style="background:var(--text-muted)"></span>待处理 <b>8</b></span>
+      <span class="stat fail zero"><span class="dot"></span>失败 <b>0</b></span>
+      <span class="stat zero"><span class="dot" style="background:var(--color-warning)"></span>中断 <b>0</b></span>
+      <span class="stat zero"><span class="dot" style="background:var(--text-muted)"></span>跳过 <b>0</b></span>
+    </div>
+    <div class="row3">
+      <span><span class="k">当前任务</span> <span class="v">task-003</span> 为 src/parser.ts 补充单元测试</span>
+      <span><span class="k">账号 · 模型</span> <span class="v">hy4-preview · hy3</span></span>
+      <span><span class="k">工作空间</span> <span class="v">E:\Src\CodeBak\WorkAgent</span></span>
+    </div>
+  </div>
+
+  <!-- 工具栏：语义分组 -->
+  <div class="toolbar">
+    <button class="btn">📂 加载任务文件</button>
+    <button class="btn">✓ 启动前预检</button>
+    <button class="btn" disabled>▶ 开始执行</button>
+    <div class="tb-sep"></div>
+    <button class="btn danger-soft">■ 终止</button>
+    <button class="btn danger">■ 终止（等待当前完成）</button>
+    <div class="tb-sep"></div>
+    <button class="btn">↻ 重置全部冷却</button>
+    <label class="tb-check"><input type="checkbox">强制重跑</label>
+    <label class="tb-check"><input type="checkbox" checked>启动时不可用则等待</label>
+    <div class="spacer"></div>
+    <span class="file-path" title="E:\Src\CodeBak\WorkAgent\TaskList\tasks-2026-10-17-dept.xlsx">tasks-2026-10-17-dept.xlsx</span>
+  </div>
+
+  <!-- 主体两栏 -->
+  <div class="main">
+
+    <!-- 任务列表：唯一的列表滚动容器 -->
+    <div class="panel">
+      <div class="panel-head">
+        <h3>任务列表</h3>
+        <div class="filters">
+          <button class="chip on">全部 11</button>
+          <button class="chip">执行中 1</button>
+          <button class="chip">待处理 8</button>
+          <button class="chip">完成 2</button>
+          <button class="chip">失败 0</button>
+        </div>
+        <div class="spacer"></div>
+        <span class="hint">点击行查看详情</span>
+      </div>
+      <div class="tasklist">
+        <div class="trow">
+          <span class="tdot done"></span>
+          <div class="tinfo"><div class="name">补充 README「快速开始」章节</div><div class="meta"><span class="id">task-001</span><span class="sep">·</span>hy3<span class="sep">·</span>WorkAgent</div></div>
+          <span class="tdur">546.1s</span><span class="badge done">完成</span>
+        </div>
+        <div class="trow selected">
+          <span class="tdot done"></span>
+          <div class="tinfo"><div class="name">修复登录模块空指针缺陷</div><div class="meta"><span class="id">task-002</span><span class="sep">·</span>hy3<span class="sep">·</span>WorkAgent</div></div>
+          <span class="tdur">1786.7s</span><span class="badge done">完成</span>
+        </div>
+        <div class="trow">
+          <span class="tdot run"></span>
+          <div class="tinfo"><div class="name">为 src/parser.ts 补充单元测试</div><div class="meta"><span class="id">task-003</span><span class="sep">·</span>hy4-preview<span class="sep">·</span>hy3</div></div>
+          <span class="tdur">04:12</span><span class="badge run">执行中</span>
+          <div class="mini-bar"><i></i></div>
+        </div>
+        <div class="trow">
+          <span class="tdot pend"></span>
+          <div class="tinfo"><div class="name">重构批处理引擎调度循环</div><div class="meta"><span class="id">task-004</span><span class="sep">·</span>待分配</div></div>
+          <span class="tdur">—</span><span class="badge pend">待处理</span>
+        </div>
+        <div class="trow">
+          <span class="tdot pend"></span>
+          <div class="tinfo"><div class="name">接入多账号凭证切换</div><div class="meta"><span class="id">task-005</span><span class="sep">·</span>待分配</div></div>
+          <span class="tdur">—</span><span class="badge pend">待处理</span>
+        </div>
+        <div class="trow">
+          <span class="tdot pend"></span>
+          <div class="tinfo"><div class="name">实现 Markdown 任务文件原地回写</div><div class="meta"><span class="id">task-006</span><span class="sep">·</span>待分配</div></div>
+          <span class="tdur">—</span><span class="badge pend">待处理</span>
+        </div>
+        <div class="trow">
+          <span class="tdot pend"></span>
+          <div class="tinfo"><div class="name">新增质量门禁校验规则</div><div class="meta"><span class="id">task-007</span><span class="sep">·</span>待分配</div></div>
+          <span class="tdur">—</span><span class="badge pend">待处理</span>
+        </div>
+        <div class="trow">
+          <span class="tdot pend"></span>
+          <div class="tinfo"><div class="name">优化输出流渲染性能</div><div class="meta"><span class="id">task-008</span><span class="sep">·</span>待分配</div></div>
+          <span class="tdur">—</span><span class="badge pend">待处理</span>
+        </div>
+        <div class="trow">
+          <span class="tdot pend"></span>
+          <div class="tinfo"><div class="name">编写自动化测试套件</div><div class="meta"><span class="id">task-009</span><span class="sep">·</span>待分配</div></div>
+          <span class="tdur">—</span><span class="badge pend">待处理</span>
+        </div>
+        <div class="trow">
+          <span class="tdot pend"></span>
+          <div class="tinfo"><div class="name">生成用户手册与示例</div><div class="meta"><span class="id">task-010</span><span class="sep">·</span>待分配</div></div>
+          <span class="tdur">—</span><span class="badge pend">待处理</span>
+        </div>
+        <div class="trow">
+          <span class="tdot pend"></span>
+          <div class="tinfo"><div class="name">修复冷却时间计算偏差</div><div class="meta"><span class="id">task-011</span><span class="sep">·</span>待分配</div></div>
+          <span class="tdur">—</span><span class="badge pend">待处理</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 右侧详情：Tab 合并 输出流/事件/错误 -->
+    <div class="panel">
+      <div class="tabs">
+        <div class="tab on">实时输出流</div>
+        <div class="tab">事件提示 <span style="color:var(--color-primary)">•3</span></div>
+        <div class="tab">错误信息</div>
+        <div class="spacer"></div>
+        <button class="icon-btn">⏸ 暂停</button>
+        <button class="icon-btn">⤓ 导出</button>
+      </div>
+      <div class="sel-summary">
+        <span class="item" style="flex:1;min-width:0"><span class="k">任务</span><span class="v" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">修复登录模块空指针缺陷</span></span>
+        <span class="item"><span class="k">ID</span><span class="v">task-002</span></span>
+        <span class="item"><span class="k">耗时</span><span class="v">1786.7s</span></span>
+        <span class="item"><span class="k">账号·模型</span><span class="v">hy3 · hy3</span></span>
+        <span class="item"><span class="k">状态</span><span class="v" style="color:var(--color-success)">完成</span></span>
+      </div>
+      <div class="stream">
+        <div class="line"><span class="t">18:51:23</span><span class="tag tool">工具调用</span><span class="msg">Bash: ls -la /e/Src/CodeBak/WorkAgent/src</span></div>
+        <div class="line"><span class="t">18:51:23</span><span class="tag tool">工具调用</span><span class="msg">Grep: /e/Src/CodeBak/WorkAgent/tests</span></div>
+        <div class="line"><span class="t">18:51:23</span><span class="tag tool">工具调用</span><span class="msg">Read: /e/Src/CodeBak/WorkAgent/tests/BatchEngineTests.cs</span></div>
+        <div class="line"><span class="t">18:51:24</span><span class="tag ok">完成</span><span class="msg dim">工具执行成功（312ms）</span></div>
+        <div class="line"><span class="t">18:51:24</span><span class="tag ok">完成</span><span class="msg dim">工具执行成功（88ms）</span></div>
+        <div class="line"><span class="t">18:51:23</span><span class="tag warn">切换</span><span class="msg">任务 task-003 使用 18902319604 + hy3 执行</span></div>
+        <div class="line"><span class="t">18:51:23</span><span class="tag warn">额度</span><span class="msg">hy4-preview 当前不在免费时段（今日 23:00 → 次日 07:00 恢复）</span></div>
+        <div class="line"><span class="t">18:51:24</span><span class="tag tool">工具调用</span><span class="msg">Edit: src/Core/Engine/BatchEngine.cs</span></div>
+        <div class="line"><span class="t">18:51:25</span><span class="tag ok">完成</span><span class="msg dim">工具执行成功（203ms）</span></div>
+        <div class="line"><span class="t">18:51:25</span><span class="tag tool">工具调用</span><span class="msg">Bash: dotnet test tests --filter Category=Fast</span></div>
+        <div class="line"><span class="t">18:53:02</span><span class="tag ok">完成</span><span class="msg dim">工具执行成功（97.2s）· 258/258 通过</span></div>
+        <div class="line"><span class="t">18:53:03</span><span class="tag tool">工具调用</span><span class="msg">Bash: dotnet build BatchAgentRunner.slnx -c Release</span></div>
+        <div class="line"><span class="t">18:53:41</span><span class="tag ok">完成</span><span class="msg dim">工具执行成功（38.1s）· 0 警告 0 错误</span></div>
+        <div class="line"><span class="t">18:53:42</span><span class="tag warn">切换</span><span class="msg">模型降级：hy3 → hy4-preview（账号 A → 账号 B）</span></div>
+        <div class="line"><span class="t">18:53:42</span><span class="tag ok">完成</span><span class="msg dim">会话已落盘，等待下一任务调度</span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 底部状态栏 -->
+  <div class="statusbar">
+    <span class="ok">● 已加载任务文件（18:12:16）</span>
+    <span>tasks-2026-10-17-dept.xlsx · 11 个任务</span>
+    <div class="spacer"></div>
+    <span>BatchAgentRunner v1.0</span>
+  </div>
+</div>
+</body>
+</html>

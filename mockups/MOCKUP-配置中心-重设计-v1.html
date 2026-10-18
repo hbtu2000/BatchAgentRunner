@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>配置中心 · 重设计 Mockup v1</title>
+<style>
+/* ===== Design Tokens（与 docs/UI-设计系统-BatchAgentRunner-v1.0.md 对齐，浅/深双主题） ===== */
+:root[data-theme="light"]{
+  --bg-app:#F5F7FA; --bg-surface:#FFFFFF; --bg-surface-2:#F0F3F7;
+  --bg-hover:#EAF0F7; --bg-active:#DCE7F3;
+  --border-subtle:#E3E8EF; --border-strong:#C7D0DC;
+  --text-primary:#1B2430; --text-secondary:#5A6675; --text-muted:#8A95A3;
+  --color-primary:#2563EB; --color-primary-hover:#1D4FD8; --color-primary-soft:#E8F0FE;
+  --color-success:#16A34A; --color-success-soft:#E6F6EC;
+  --color-warning:#D97706; --color-warning-soft:#FDF0DB;
+  --color-error:#DC2626; --color-error-soft:#FBE8E8;
+  --color-info:#2563EB; --color-info-soft:#E8F0FE;
+  --shadow-card:0 1px 2px rgb(16 24 40/.05),0 1px 3px rgb(16 24 40/.06);
+  --shadow-pop:0 12px 32px rgb(16 24 40/.16);
+}
+:root[data-theme="dark"]{
+  --bg-app:#0F1419; --bg-surface:#1A2029; --bg-surface-2:#222A35;
+  --bg-hover:#2A3441; --bg-active:#33404F;
+  --border-subtle:#2C3542; --border-strong:#3C4858;
+  --text-primary:#E8EDF3; --text-secondary:#A6B2C0; --text-muted:#6B7686;
+  --color-primary:#4C8DFF; --color-primary-hover:#6BA0FF; --color-primary-soft:#1E2C44;
+  --color-success:#3FCB6E; --color-success-soft:#15301F;
+  --color-warning:#F5A623; --color-warning-soft:#33260F;
+  --color-error:#F2655E; --color-error-soft:#341A1A;
+  --color-info:#4C8DFF; --color-info-soft:#1E2C44;
+  --shadow-card:0 1px 2px rgb(0 0 0/.4);
+  --shadow-pop:0 12px 32px rgb(0 0 0/.6);
+}
+:root{
+  --font-ui:'Segoe UI','Inter',system-ui,sans-serif;
+  --font-mono:'JetBrains Mono','Cascadia Code',Consolas,monospace;
+  --r-sm:6px; --r-md:10px; --r-lg:14px; --r-pill:999px;
+  --sp-2:8px; --sp-3:12px; --sp-4:16px; --sp-5:20px; --sp-6:24px;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{height:100%}
+body{background:#DDE3EB;font-family:var(--font-ui);color:var(--text-primary);
+  display:flex;justify-content:center;padding:24px}
+.app{width:1440px;height:920px;background:var(--bg-app);border-radius:12px;
+  box-shadow:0 12px 40px rgb(16 24 40/.18);overflow:hidden;display:flex;flex-direction:column}
+
+/* ===== 顶栏 ===== */
+.topbar{height:48px;background:var(--bg-surface);border-bottom:1px solid var(--border-subtle);
+  display:flex;align-items:center;padding:0 16px;gap:12px;flex-shrink:0}
+.logo{width:22px;height:22px;border-radius:6px;background:linear-gradient(135deg,#2563EB,#7C3AED);
+  display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700}
+.app-title{font-size:14px;font-weight:600}
+.crumb{font-size:13px;color:var(--text-muted)}
+.crumb b{color:var(--text-primary);font-weight:600}
+.topbar .spacer{flex:1}
+.meta{font-size:12px;color:var(--text-muted);font-family:var(--font-mono)}
+.theme-btn{font-size:12px;color:var(--text-secondary);border:1px solid var(--border-subtle);
+  background:var(--bg-surface);border-radius:var(--r-sm);padding:4px 10px;cursor:pointer}
+
+/* ===== 应用框架：左导航 + 内容 ===== */
+.body{flex:1;display:flex;min-height:0}
+
+/* 主导航（应用级） */
+.sidebar{width:200px;flex-shrink:0;background:var(--bg-surface);border-right:1px solid var(--border-subtle);
+  display:flex;flex-direction:column;padding:12px 10px}
+.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--r-sm);
+  font-size:14px;color:var(--text-secondary);cursor:pointer;margin-bottom:2px}
+.nav-item .ic{width:18px;text-align:center}
+.nav-item:hover{background:var(--bg-hover)}
+.nav-item.active{background:var(--color-primary-soft);color:var(--color-primary);font-weight:600}
+.nav-item .pill{margin-left:auto;font-size:11px;font-weight:600;padding:1px 8px;border-radius:var(--r-pill);
+  background:var(--color-warning-soft);color:var(--color-warning)}
+.sidebar .spacer{flex:1}
+.sb-bottom{display:flex;align-items:center;gap:8px;font-size:12px;color:var(--text-muted);padding:8px 6px 0;border-top:1px solid var(--border-subtle)}
+
+/* ===== 配置中心：左区段导航 + 右内容 ===== */
+.config{flex:1;display:flex;min-height:0;background:var(--bg-app)}
+.rail{width:212px;flex-shrink:0;border-right:1px solid var(--border-subtle);background:var(--bg-surface);
+  padding:14px 10px;overflow-y:auto}
+.rail-group{font-size:11px;font-weight:700;letter-spacing:.06em;color:var(--text-muted);
+  text-transform:uppercase;padding:14px 10px 6px}
+.rail-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:var(--r-sm);
+  font-size:13px;color:var(--text-secondary);cursor:pointer;margin-bottom:1px}
+.rail-item .dot{width:7px;height:7px;border-radius:50%;background:var(--color-success);flex-shrink:0}
+.rail-item .dot.warn{background:var(--color-warning)}
+.rail-item .dot.gray{background:var(--text-muted)}
+.rail-item:hover{background:var(--bg-hover)}
+.rail-item.active{background:var(--color-primary-soft);color:var(--color-primary);font-weight:600}
+
+.main{flex:1;display:flex;flex-direction:column;min-height:0}
+/* 准备度横条：把「配置向导」从独立 Tab 变成入门引导 + 进度 */
+.readiness{flex-shrink:0;background:var(--bg-surface);border-bottom:1px solid var(--border-subtle);
+  padding:12px 20px;display:flex;align-items:center;gap:18px}
+.readiness .rd-title{font-size:13px;font-weight:600}
+.readiness .rd-title small{display:block;font-size:11px;color:var(--text-muted);font-weight:400;margin-top:2px}
+.stepper{display:flex;align-items:center;gap:0;flex:1;overflow:hidden}
+.step{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--text-muted);white-space:nowrap}
+.step .num{width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;background:var(--bg-surface-2);color:var(--text-secondary);border:1px solid var(--border-strong)}
+.step.done .num{background:var(--color-success);color:#fff;border-color:var(--color-success)}
+.step.done{color:var(--text-secondary)}
+.step.current .num{background:var(--color-primary);color:#fff;border-color:var(--color-primary)}
+.step.current{color:var(--text-primary);font-weight:600}
+.step-line{width:26px;height:1px;background:var(--border-strong);margin:0 6px;flex-shrink:0}
+.step-line.done{background:var(--color-success)}
+
+/* 内容滚动区 */
+.content{flex:1;overflow-y:auto;padding:20px 24px 96px;min-height:0}
+.sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:4px}
+.sec-head h2{font-size:20px;font-weight:600}
+.sec-head .sub{font-size:13px;color:var(--text-muted)}
+.sec-desc{font-size:13px;color:var(--text-secondary);line-height:1.6;margin-bottom:18px;max-width:880px}
+
+/* 卡片 */
+.card{background:var(--bg-surface);border:1px solid var(--border-subtle);border-radius:var(--r-md);
+  box-shadow:var(--shadow-card);padding:16px 18px;margin-bottom:14px}
+.card-h{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.card-h h3{font-size:15px;font-weight:600}
+.card-h .spacer{flex:1}
+.card-h .hint{font-size:12px;color:var(--text-muted)}
+.help{font-size:12px;color:var(--text-muted);line-height:1.55;background:var(--bg-surface-2);
+  border-radius:var(--r-sm);padding:9px 12px;margin-top:10px}
+.help b{color:var(--text-secondary)}
+
+/* 表单行 */
+.field{display:grid;grid-template-columns:200px 1fr;gap:14px;align-items:start;padding:11px 0;border-bottom:1px solid var(--border-subtle)}
+.field:last-child{border-bottom:none}
+.field > label{font-size:13px;color:var(--text-primary);font-weight:500;padding-top:7px}
+.field > label .req{color:var(--color-error);margin-left:2px}
+.field .ctl{display:flex;flex-direction:column;gap:6px}
+.field .desc{font-size:12px;color:var(--text-muted);line-height:1.5}
+input[type=text],select,textarea{font-family:var(--font-ui);font-size:13px;color:var(--text-primary);
+  background:var(--bg-surface-2);border:1px solid var(--border-strong);border-radius:var(--r-sm);
+  padding:8px 10px;width:100%;transition:box-shadow .12s, border-color .12s}
+input[type=text]:focus,select:focus,textarea:focus{outline:none;border-color:var(--color-primary);
+  box-shadow:0 0 0 3px var(--color-primary-soft)}
+select{max-width:320px}
+.w320{max-width:320px}.w420{max-width:420px}
+
+/* 开关 */
+.switch{position:relative;display:inline-flex;align-items:center;gap:10px;cursor:pointer;font-size:13px}
+.switch .track{width:40px;height:22px;border-radius:999px;background:var(--border-strong);position:relative;transition:background .15s}
+.switch .track::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;
+  background:#fff;box-shadow:0 1px 2px rgb(0 0 0/.2);transition:transform .15s}
+.switch.on .track{background:var(--color-primary)}
+.switch.on.warn .track{background:var(--color-warning)}
+.switch.on .track::after{transform:translateX(18px)}
+
+/* 按钮 */
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 14px;border-radius:var(--r-sm);
+  font-size:13px;font-weight:500;border:1px solid var(--border-strong);background:var(--bg-surface);
+  color:var(--text-primary);cursor:pointer;white-space:nowrap}
+.btn:hover{background:var(--bg-hover)}
+.btn.primary{background:var(--color-primary);border-color:var(--color-primary);color:#fff}
+.btn.primary:hover{background:var(--color-primary-hover)}
+.btn.soft{background:var(--color-primary-soft);border-color:transparent;color:var(--color-primary)}
+.btn.soft:hover{background:var(--color-primary-soft);filter:brightness(.97)}
+.btn.success{background:var(--color-success);border-color:var(--color-success);color:#fff}
+.btn.danger{background:var(--bg-surface);border-color:var(--color-error);color:var(--color-error)}
+.btn.danger-strong{background:var(--color-error);border-color:var(--color-error);color:#fff}
+.btn.lg{height:42px;font-size:15px;padding:0 22px}
+.btn.sm{height:28px;font-size:12px;padding:0 10px}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn-icon{border:none;background:none;cursor:pointer;color:var(--text-muted);font-size:14px;padding:4px 6px;border-radius:var(--r-sm)}
+.btn-icon:hover{background:var(--bg-hover);color:var(--text-primary)}
+
+/* 状态胶囊（带点） */
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+  border-radius:var(--r-pill);padding:3px 10px}
+.pill .d{width:7px;height:7px;border-radius:50%}
+.pill.ok{background:var(--color-success-soft);color:var(--color-success)} .pill.ok .d{background:var(--color-success)}
+.pill.gray{background:var(--bg-surface-2);color:var(--text-muted)} .pill.gray .d{background:var(--text-muted)}
+.pill.warn{background:var(--color-warning-soft);color:var(--color-warning)} .pill.warn .d{background:var(--color-warning)}
+.pill.info{background:var(--color-info-soft);color:var(--color-info)} .pill.info .d{background:var(--color-info)}
+
+/* 账号行 */
+.acct{display:flex;align-items:center;gap:12px;padding:12px 14px;border:1px solid var(--border-subtle);
+  border-radius:var(--r-md);background:var(--bg-surface);margin-bottom:8px;transition:box-shadow .15s}
+.acct:hover{box-shadow:var(--shadow-card)}
+.acct.current{border-color:var(--color-primary);background:var(--color-primary-soft)}
+.acct .star{color:var(--color-warning);font-size:15px}
+.acct .nm{font-size:14px;font-weight:600}
+.acct .id{font-size:12px;color:var(--text-muted);font-family:var(--font-mono)}
+.acct .spacer{flex:1}
+.acct .acts{display:flex;gap:6px;align-items:center}
+
+/* 标签输入 */
+.taginput{display:flex;flex-wrap:wrap;gap:6px;align-items:center;background:var(--bg-surface-2);
+  border:1px solid var(--border-strong);border-radius:var(--r-sm);padding:6px 8px;min-height:38px}
+.taginput input{border:none;background:none;outline:none;flex:1;min-width:80px;font-size:13px;color:var(--text-primary);padding:2px}
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-family:var(--font-mono);
+  background:var(--color-primary-soft);color:var(--color-primary);border-radius:var(--r-pill);padding:2px 4px 2px 10px}
+.tag button{border:none;background:none;color:var(--color-primary);cursor:pointer;font-size:13px;line-height:1;padding:0 2px}
+
+/* 模型时段行 */
+.modelrow{display:grid;grid-template-columns:1fr 150px 120px 28px;gap:10px;align-items:center;
+  padding:8px 10px;border:1px solid var(--border-subtle);border-radius:var(--r-sm);margin-bottom:6px;background:var(--bg-surface-2)}
+.modelrow .mname{font-family:var(--font-mono);font-size:13px;font-weight:600;color:var(--text-primary)}
+.modelrow .preview{font-size:11px;color:var(--color-warning);margin-top:2px;font-family:var(--font-mono)}
+
+/* 区段占位（未展开） */
+.empty{text-align:center;padding:60px 20px;color:var(--text-muted)}
+.empty .big{font-size:40px;margin-bottom:10px;opacity:.5}
+
+/* 底部保存条 */
+.footer{position:absolute;left:0;right:0;bottom:0;height:60px;background:var(--bg-surface);
+  border-top:1px solid var(--border-subtle);display:flex;align-items:center;gap:12px;padding:0 24px;
+  box-shadow:0 -2px 8px rgb(16 24 40/.04)}
+.footer .saved{font-size:13px;color:var(--color-success);display:inline-flex;align-items:center;gap:6px}
+.footer .spacer{flex:1}
+.footer .note{font-size:12px;color:var(--text-muted)}
+
+/* 区段显隐 */
+.cfg-section{display:none}
+.cfg-section.active{display:block;animation:fade .2s ease}
+@keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+
+/* tooltip 复刻 */
+.tip{display:inline-flex;align-items:center;justify-content:center;width:15px;height:15px;border-radius:50%;
+  background:var(--bg-surface-2);color:var(--text-muted);font-size:10px;font-weight:700;cursor:help;border:1px solid var(--border-strong)}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- 顶栏 -->
+  <div class="topbar">
+    <div class="logo">B</div>
+    <div class="app-title">AI 批处理任务调度工具</div>
+    <div class="crumb">／ <b>配置中心</b></div>
+    <div class="spacer"></div>
+    <span class="meta">config.json · 已加载</span>
+    <button class="theme-btn" onclick="toggleTheme()">主题：浅色</button>
+  </div>
+
+  <div class="body">
+    <!-- 应用级左导航 -->
+    <div class="sidebar">
+      <div class="nav-item"><span class="ic">⚙</span> 配置中心</div>
+      <div class="nav-item"><span class="ic">▶</span> 执行监控 <span class="pill" style="margin-left:auto;font-size:10px;background:var(--color-primary-soft);color:var(--color-primary);padding:1px 7px;border-radius:999px">● 运行</span></div>
+      <div class="nav-item"><span class="ic">📊</span> 报告</div>
+      <div class="spacer"></div>
+      <div class="sb-bottom"><span>⚙ 配置中心 v1.0</span></div>
+    </div>
+
+    <!-- 配置中心主体 -->
+    <div class="config">
+      <!-- 区段导航（原三个 Tab 合并于此，按语义分组） -->
+      <div class="rail">
+        <div class="rail-group">入门</div>
+        <div class="rail-item active" data-go="quickstart"><span class="dot"></span> 快速开始</div>
+
+        <div class="rail-group">核心配置</div>
+        <div class="rail-item" data-go="accounts"><span class="dot"></span> 账号与凭据</div>
+        <div class="rail-item" data-go="models"><span class="dot warn"></span> 模型与降级</div>
+        <div class="rail-item" data-go="tasks"><span class="dot"></span> 任务与工作空间</div>
+        <div class="rail-item" data-go="expert"><span class="dot gray"></span> 专家</div>
+        <div class="rail-item" data-go="fallback"><span class="dot gray"></span> 特殊模型兜底</div>
+
+        <div class="rail-group">调度与策略</div>
+        <div class="rail-item" data-go="schedule"><span class="dot"></span> 调度与重试</div>
+        <div class="rail-item" data-go="safety"><span class="dot warn"></span> 安全与交互</div>
+        <div class="rail-item" data-go="shutdown"><span class="dot gray"></span> 自动关机</div>
+        <div class="rail-item" data-go="misc"><span class="dot gray"></span> 其它</div>
+      </div>
+
+      <!-- 右内容 -->
+      <div class="main">
+        <!-- 准备度 / 向导进度（配置向导不再独立成 Tab） -->
+        <div class="readiness">
+          <div>
+            <div class="rd-title">配置准备度 <small>完成 4 / 6 步，可随时运行</small></div>
+          </div>
+          <div class="stepper" id="stepper">
+            <div class="step done"><span class="num">✓</span> 执行工具</div><div class="step-line done"></div>
+            <div class="step done"><span class="num">✓</span> 账号</div><div class="step-line done"></div>
+            <div class="step done"><span class="num">✓</span> 模型</div><div class="step-line done"></div>
+            <div class="step current"><span class="num">4</span> 任务文件</div><div class="step-line"></div>
+            <div class="step"><span class="num">5</span> 工作空间</div><div class="step-line"></div>
+            <div class="step"><span class="num">6</span> 保存</div>
+          </div>
+          <button class="btn sm" onclick="goSec('quickstart')">重跑向导</button>
+        </div>
+
+        <div class="content">
+
+          <!-- ============ 快速开始（原“配置向导”入口，现为引导而非独立页） ============ -->
+          <section class="cfg-section active" data-sec="quickstart">
+            <div class="sec-head"><h2>快速开始</h2><span class="sub">首次配置或想重跑引导时看这里</span></div>
+            <p class="sec-desc">配置向导不再是孤立的一个 Tab，而是贯穿各区段的一条“准备度”主线——上面的进度条就是它。点「开始引导」会一步步带你走完：执行工具 → 账号 → 模型 → 任务文件 → 工作空间 → 保存。向导只写入账号、模型、执行工具、任务文件、默认工作空间这几项，其余高级项保持不变。</p>
+
+            <div class="card">
+              <div class="card-h"><h3>6 步引导</h3><span class="spacer"></span><span class="hint">已自动探测到 2 个账号</span></div>
+              <div class="stepper" style="flex-wrap:wrap;gap:10px">
+                <div class="step done"><span class="num">✓</span> ① 执行工具（WorkBuddy 已就绪）</div>
+                <div class="step done"><span class="num">✓</span> ② 账号（2 个已登录）</div>
+                <div class="step done"><span class="num">✓</span> ③ 模型（已拉取可用模型）</div>
+                <div class="step current"><span class="num">4</span> ④ 任务文件</div>
+                <div class="step"><span class="num">5</span> ⑤ 工作空间</div>
+                <div class="step"><span class="num">6</span> ⑥ 保存并重建引擎</div>
+              </div>
+              <div style="margin-top:14px;display:flex;gap:10px">
+                <button class="btn primary lg">▶ 从当前步继续引导</button>
+                <button class="btn">从第一步重跑</button>
+                <span style="margin-left:auto" class="pill warn"><span class="d"></span> 任务文件未选择</span>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-h"><h3>不装 CLI 先自测</h3></div>
+              <div class="field" style="border:none;padding:0">
+                <label>执行工具</label>
+                <div class="ctl">
+                  <select class="w320"><option>Mock（仿真，不调 CLI）</option><option selected>WorkBuddy</option><option>CodeBuddy</option></select>
+                  <div class="desc">选 Mock 可直接验证调度逻辑（降级 / 时段跳过 / 冷却 / 兜底），不验证真实输出质量。</div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============ 账号与凭据（原“账号登录”吸收进来） ============ -->
+          <section class="cfg-section" data-sec="accounts">
+            <div class="sec-head"><h2>账号与凭据</h2><span class="sub">登录、切换、领取积分，都在这里完成</span></div>
+            <p class="sec-desc">原「账号登录」页已合并进本区段。点「开始登录」会自动弹出登录窗口，你在浏览器里完成登录（微信 / 手机号 / 邮箱）后，检测 → 校验 → 备份 → 加入账号池全自动完成。带 ★ 的是 CLI 当前正在用的账号。</p>
+
+            <div class="card">
+              <div class="card-h">
+                <h3>① 登录一个账号</h3><span class="spacer"></span>
+                <span class="pill ok"><span class="d"></span> 已登录 2 个</span>
+              </div>
+              <div class="field" style="grid-template-columns:160px 1fr">
+                <label>用哪个工具</label>
+                <div class="ctl"><select class="w320"><option selected>WorkBuddy</option><option>CodeBuddy</option><option>Mock</option></select>
+                  <div class="desc">一般与执行工具保持一致即可。</div></div>
+              </div>
+              <div class="field" style="grid-template-columns:160px 1fr">
+                <label>账号显示名</label>
+                <div class="ctl"><input type="text" class="w320" placeholder="比如「工作号」，不填则自动编号">
+                  <div class="desc">仅用于界面与报告展示，可随时改。</div></div>
+              </div>
+              <div style="margin-top:6px">
+                <button class="btn primary lg">🔑 开始登录</button>
+                <span class="btn-icon" title="登录哪个 CLI 的账号；会自动弹出浏览器，你在浏览器内完成登录即可。">?</span>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-h"><h3>② 已登录的账号</h3><span class="spacer"></span><button class="btn sm">↻ 刷新</button></div>
+              <div class="acct current">
+                <span class="star">★</span>
+                <div><div class="nm">工作号 A</div><div class="id">acct_a · 当前正在使用</div></div>
+                <span class="spacer"></span>
+                <span class="pill ok"><span class="d"></span> 已登录</span>
+                <div class="acts">
+                  <button class="btn sm">重新登录</button>
+                  <button class="btn sm soft">领取积分</button>
+                  <button class="btn sm danger">删除</button>
+                </div>
+              </div>
+              <div class="acct">
+                <span class="star" style="visibility:hidden">★</span>
+                <div><div class="nm">工作号 B</div><div class="id">acct_b</div></div>
+                <span class="spacer"></span>
+                <span class="pill ok"><span class="d"></span> 已登录</span>
+                <div class="acts">
+                  <button class="btn sm">重新登录</button>
+                  <button class="btn sm soft">切换到此账号</button>
+                  <button class="btn sm soft">领取积分</button>
+                  <button class="btn sm danger">删除</button>
+                </div>
+              </div>
+              <div class="acct">
+                <span class="star" style="visibility:hidden">★</span>
+                <div><div class="nm">旧测试号</div><div class="id">acct_old</div></div>
+                <span class="spacer"></span>
+                <span class="pill gray"><span class="d"></span> 未登录</span>
+                <div class="acts">
+                  <button class="btn sm">重新登录</button>
+                  <button class="btn sm soft">领取积分</button>
+                  <button class="btn sm danger">删除</button>
+                </div>
+              </div>
+              <div class="help">删除会一并清掉备份凭证（路径 <span style="font-family:var(--font-mono)">%LOCALAPPDATA%\BatchAgentRunner\vault\</span>）。明文密码永不落盘、不写日志。</div>
+            </div>
+
+            <div class="card">
+              <div class="card-h"><h3>③ 领取每日积分</h3><span class="spacer"></span>
+                <button class="btn success lg">✓ 一键领取所有账号今日积分</button></div>
+              <div class="field" style="grid-template-columns:200px 1fr;border:none;padding:0">
+                <label>上次领取</label>
+                <div class="ctl"><div class="desc">工作号 A：+1200 · 工作号 B：+1200（同一账号每天仅领一次，重复点会自动跳过已领的账号）。</div></div>
+              </div>
+            </div>
+
+            <div class="card" style="background:var(--bg-surface-2);border-style:dashed">
+              <div class="card-h"><h3 style="font-size:14px">💡 下一步</h3></div>
+              <div class="desc">登录成功后<strong>模型不用手填</strong>：到「模型与降级」区段点「拉取可用模型」，会按当前账号实时读取该 CLI 支持的模型名，直接下拉选择，避免输错。账号就绪后请完成「快速开始」里的任务文件与工作空间两步。</div>
+            </div>
+          </section>
+
+          <!-- ============ 模型与降级 ============ -->
+          <section class="cfg-section" data-sec="models">
+            <div class="sec-head"><h2>模型与降级</h2><span class="sub">v1.12 起模型池挂在账号下，矩阵 = 各账号 × 自有池</span></div>
+            <p class="sec-desc">这是配置的核心。每个账号维护自己的候选模型池与兜底模型池；降级时按「账号顺序 × 该账号自有池顺序」展开，同名模型在不同账号可配不同免费时段与单价。</p>
+
+            <div class="card">
+              <div class="card-h"><h3>降级策略</h3>
+                <span class="btn-icon tip" title="ModelFirst：同一账号先轮完自己的候选池，全耗尽再换账号。AccountFirst：按模型名聚合，先把同一模型名在所有配置了它的账号上轮完。">?</span>
+                <span class="spacer"></span></div>
+              <div class="field" style="grid-template-columns:200px 1fr;border:none;padding:0">
+                <label>策略</label>
+                <div class="ctl"><select class="w320"><option selected>ModelFirst（默认）</option><option>AccountFirst</option></select></div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-h"><h3>工作号 A · 候选模型池</h3>
+                <span class="spacer"></span>
+                <button class="btn sm soft">⇩ 拉取可用模型</button>
+                <button class="btn sm">+ 添加模型</button></div>
+              <div class="modelrow">
+                <div><div class="mname">hy3</div></div>
+                <input type="text" value="00:00 – 24:00" style="padding:5px 8px">
+                <input type="text" value="¥0.00" placeholder="单价" style="padding:5px 8px;max-width:110px">
+                <button class="btn-icon" title="删除">✕</button>
+                <div style="grid-column:1/5" class="preview">全天可用 · 周日–周六</div>
+              </div>
+              <div class="modelrow">
+                <div><div class="mname">hy4-preview</div></div>
+                <input type="text" value="00:00 – 08:00" style="padding:5px 8px">
+                <input type="text" value="¥0.00" placeholder="单价" style="padding:5px 8px;max-width:110px">
+                <button class="btn-icon" title="删除">✕</button>
+                <div style="grid-column:1/5" class="preview">⚠ 仅 00:00–08:00 免费，其余时段外跳过（不计失败）</div>
+              </div>
+              <div class="card-h" style="margin-top:14px"><h3 style="font-size:14px">兜底模型池（有序，不参与时段过滤）</h3><span class="spacer"></span><button class="btn sm">+ 添加兜底</button></div>
+              <div class="taginput" style="max-width:480px">
+                <span class="tag">hy3-mini <button>✕</button></span>
+                <input placeholder="输入后回车添加">
+              </div>
+              <div class="help">兜底触发条件：① 当前任务已开跑过；② 免费组合矩阵当前全部不可用。按「账号顺序 × 该账号兜底池顺序」取第一个可用组合。</div>
+            </div>
+
+            <div class="card">
+              <div class="card-h"><h3>工作号 B · 候选模型池</h3><span class="spacer"></span>
+                <button class="btn sm soft">⇩ 拉取可用模型</button><button class="btn sm">+ 添加模型</button></div>
+              <div class="modelrow">
+                <div><div class="mname">hy4-preview</div></div>
+                <input type="text" value="00:00 – 24:00" style="padding:5px 8px">
+                <input type="text" value="¥0.00" placeholder="单价" style="padding:5px 8px;max-width:110px">
+                <button class="btn-icon" title="删除">✕</button>
+                <div style="grid-column:1/5" class="preview">全天可用 · 与 A 账号同名模型时段各自独立</div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ============ 任务与工作空间 ============ -->
+          <section class="cfg-section" data-sec="tasks">
+            <div class="sec-head"><h2>任务与工作空间</h2><span class="sub">任务清单与 Agent 在哪个目录干活</span></div>
+            <div class="card">
+              <div class="field"><label>任务文件路径 <span class="req">*</span></label>
+                <div class="ctl"><input type="text" class="w420" value="E:\Src\CodeBak\WorkAgent\TaskList\tasks-2026-10-17.json">
+                  <div class="desc">.json 原地原子回写状态与结果；.md 只读输入、状态写 sidecar <span style="font-family:var(--font-mono)">&lt;name&gt;.md.result.json</span>。为空时「开始」按钮禁用。</div></div></div>
+              <div class="field"><label>执行工具</label>
+                <div class="ctl"><select class="w320"><option>WorkBuddy</option><option>CodeBuddy</option><option>Mock</option></select></div></div>
+              <div class="field"><label>CLI 路径</label>
+                <div class="ctl"><input type="text" class="w420" placeholder="null = 在 PATH 里按默认名找">
+                  <div class="desc">装了多版本时写绝对路径最稳。</div></div></div>
+              <div class="field"><label>参数模板</label>
+                <div class="ctl"><input type="text" class="w420" placeholder="null = 用适配器内置模板">
+                  <div class="desc">占位符：<span style="font-family:var(--font-mono)">{prompt} {model} {expert} {workspace} {extra}</span></div></div></div>
+            </div>
+            <div class="card">
+              <div class="card-h"><h3>工作空间</h3><span class="spacer"></span><button class="btn sm">+ 新增空间</button></div>
+              <div class="field" style="grid-template-columns:200px 1fr"><label>全局默认空间</label>
+                <div class="ctl"><select class="w320"><option>web（E:\Src\web）</option><option>WorkAgent（E:\Src\CodeBak\WorkAgent）</option></select>
+                  <div class="desc">生效优先级：单任务 workspace › 本批 default_workspace › 全局默认 › 程序当前目录。</div></div></div>
+              <div class="acct"><div><div class="nm">web</div><div class="id">E:\Src\web</div></div><span class="spacer"></span><span class="pill ok"><span class="d"></span> 全局默认</span><div class="acts"><button class="btn sm">设为默认</button><button class="btn sm danger">删除</button></div></div>
+              <div class="acct"><div><div class="nm">WorkAgent</div><div class="id">E:\Src\CodeBak\WorkAgent</div></div><span class="spacer"></span><div class="acts"><button class="btn sm">设为默认</button><button class="btn sm danger">删除</button></div></div>
+            </div>
+          </section>
+
+          <!-- ============ 专家 ============ -->
+          <section class="cfg-section" data-sec="expert">
+            <div class="sec-head"><h2>专家</h2><span class="sub">单专家 / 专家团；不支持时降级为角色 prompt 注入</span></div>
+            <div class="card">
+              <div class="field"><label>专家类型</label>
+                <div class="ctl"><select class="w320"><option>None（走 CLI 默认智能体）</option><option selected>Single（单专家）</option><option>Team（专家团）</option></select></div></div>
+              <div class="field"><label>专家 / 专家团 ID</label>
+                <div class="ctl"><input type="text" class="w420" value="expertSEO">
+                  <div class="desc">注入参数模板的 <span style="font-family:var(--font-mono)">{expert}</span>。</div></div></div>
+              <div class="field"><label>展示名</label>
+                <div class="ctl"><input type="text" class="w420" value="SEO 优化专家">
+                  <div class="desc">仅用于任务文件 expert_used 与报告展示。</div></div></div>
+              <div class="help">role_prompt 为「CLI 不支持专家参数时退化为 prompt 注入」的预留位，当前版本引擎未消费。</div>
+            </div>
+          </section>
+
+          <!-- ============ 兜底 ============ -->
+          <section class="cfg-section" data-sec="fallback">
+            <div class="sec-head"><h2>特殊模型兜底</h2><span class="sub">全局总开关与成本上限；兜底模型池见「模型与降级」</span></div>
+            <div class="card">
+              <div class="field"><label>启用兜底</label>
+                <div class="ctl"><span class="switch on" onclick="this.classList.toggle('on')"><span class="track"></span></span>
+                  <div class="desc">全局开关，约束所有账号的兜底行为。默认关闭。</div></div></div>
+              <div class="field"><label>单任务兜底上限</label>
+                <div class="ctl"><input type="text" class="w320" value="¥1.00">
+                  <div class="desc">估算单价超过它就不兜底这个任务。</div></div></div>
+              <div class="field"><label>整批兜底上限</label>
+                <div class="ctl"><input type="text" class="w320" value="¥10.00">
+                  <div class="desc">累计超了 → 停用兜底并转阻塞。</div></div></div>
+            </div>
+          </section>
+
+          <!-- ============ 调度与重试 ============ -->
+          <section class="cfg-section" data-sec="schedule">
+            <div class="sec-head"><h2>调度与重试</h2><span class="sub">由窄到宽的层级闸门</span></div>
+            <div class="card">
+              <div class="field"><label>并发数</label>
+                <div class="ctl"><input type="text" class="w320" value="1">
+                  <div class="desc">1 = 严格串行（推荐）。&gt;1 会并发拉起多个 CLI 子进程，但账号/额度共享，更易撞限流。</div></div></div>
+              <div class="field"><label>普通失败重试</label>
+                <div class="ctl"><input type="text" class="w320" value="2">
+                  <div class="desc">非限流/非额度/非危险操作的重试次数；0 = 不重试直接判失败。</div></div></div>
+              <div class="field"><label>限流退避次数</label>
+                <div class="ctl"><input type="text" class="w320" value="3">
+                  <div class="desc">429 之类临时限流退避重试（同一账号+同一模型），起始 5s 指数增长，单次上限 2min。</div></div></div>
+              <div class="field"><label>单次执行超时</label>
+                <div class="ctl"><input type="text" class="w320" value="10 分钟">
+                  <div class="desc">超了判该次失败，已产生的部分输出会保留。</div></div></div>
+              <div class="field"><label>单任务总尝试次数</label>
+                <div class="ctl"><input type="text" class="w320" value="10">
+                  <div class="desc">切模型、切账号、退避重试都算一次，防止无限重试。</div></div></div>
+              <div class="field"><label>单任务总时长上限</label>
+                <div class="ctl"><input type="text" class="w320" value="60 分钟"></div></div>
+              <div class="field"><label>最长可等待</label>
+                <div class="ctl"><input type="text" class="w320" value="60 分钟">
+                  <div class="desc">仅对「免费时段外」类等待生效；超出转「已阻塞」。</div></div></div>
+              <div class="field"><label>等待额度重置</label>
+                <div class="ctl"><span class="switch on" onclick="this.classList.toggle('on')"><span class="track"></span></span>
+                  <div class="desc">所有账号候选模型都因额度耗尽而不可用时，进入等待并无限等待额度重置后自动续跑。</div></div></div>
+              <div class="field"><label>默认冷却时长</label>
+                <div class="ctl"><input type="text" class="w320" value="60 分钟">
+                  <div class="desc">CLI 报错解析不到额度重置时间时的降级冷却。</div></div></div>
+              <div class="field"><label>失败即停</label>
+                <div class="ctl"><span class="switch" onclick="this.classList.toggle('on')"><span class="track"></span></span>
+                  <div class="desc">某条任务重试用尽仍失败时，整批立刻转「已阻塞」。</div></div></div>
+            </div>
+          </section>
+
+          <!-- ============ 安全与交互 ============ -->
+          <section class="cfg-section" data-sec="safety">
+            <div class="sec-head"><h2>安全与交互</h2><span class="sub">无人值守的核心安全阀</span></div>
+            <div class="card">
+              <div class="card-h"><h3>危险操作黑名单 <span class="pill warn"><span class="d"></span> 18 条默认</span></h3><span class="spacer"></span></div>
+              <div class="taginput" style="max-width:640px">
+                <span class="tag">rm -rf <button>✕</button></span>
+                <span class="tag">git push --force <button>✕</button></span>
+                <span class="tag">删除文件 <button>✕</button></span>
+                <span class="tag">格式化 <button>✕</button></span>
+                <input placeholder="输入后回车添加">
+              </div>
+              <div class="help">命中即<strong>绝不</strong>自动批准：杀进程，该任务判失败。这是有意的安全阀，不是 bug。</div>
+            </div>
+            <div class="card">
+              <div class="card-h"><h3>允许白名单 <span class="pill ok"><span class="d"></span> 6 条默认</span></h3><span class="spacer"></span></div>
+              <div class="taginput" style="max-width:640px">
+                <span class="tag">确认覆盖 <button>✕</button></span>
+                <span class="tag">继续 <button>✕</button></span>
+                <input placeholder="输入后回车添加">
+              </div>
+              <div class="help">白名单优先级高于黑名单，别把危险词写进来。</div>
+            </div>
+            <div class="card">
+              <div class="field"><label>默认应答</label>
+                <div class="ctl"><input type="text" class="w320" value="y">
+                  <div class="desc">普通确认型交互注入 stdin 的默认内容。</div></div></div>
+              <div class="field"><label>静默判定秒数</label>
+                <div class="ctl"><input type="text" class="w320" value="30">
+                  <div class="desc">静默多少秒判定为「在等确认」。设太小会误判（模型思考也会静默）。</div></div></div>
+              <div class="field"><label>选择型默认索引</label>
+                <div class="ctl"><input type="text" class="w320" value="0">
+                  <div class="desc">0 = 选择第一个选项。CLI 输出编号选项时自动注入对应选项。</div></div></div>
+            </div>
+          </section>
+
+          <!-- ============ 自动关机 ============ -->
+          <section class="cfg-section" data-sec="shutdown">
+            <div class="sec-head"><h2>自动关机</h2><span class="sub">批级完成后弹出可撤销倒计时</span></div>
+            <div class="card">
+              <div class="field"><label>启用自动关机</label>
+                <div class="ctl"><span class="switch" onclick="this.classList.toggle('on')"><span class="track"></span></span>
+                  <div class="desc">总开关。默认关闭。</div></div></div>
+              <div class="field"><label>仅失败率为 0 时</label>
+                <div class="ctl"><span class="switch" onclick="this.classList.toggle('on')"><span class="track"></span></span>
+                  <div class="desc">开启后，存在失败则阻止关机并标注原因。</div></div></div>
+              <div class="field"><label>倒计时秒数</label>
+                <div class="ctl"><input type="text" class="w320" value="60">
+                  <div class="desc">可撤销倒计时；走完才真正调用系统关机，窗口内点「取消关机」即中止。0 = 跳过窗口直接执行（不推荐）。</div></div></div>
+              <div class="help">关机只在批级「已完成」且结果 100% 落盘、报告写完之后触发。进程不在（崩溃/被结束）时<strong>不会关机</strong>——有意失效保护。</div>
+            </div>
+          </section>
+
+          <!-- ============ 其它 ============ -->
+          <section class="cfg-section" data-sec="misc">
+            <div class="sec-head"><h2>其它</h2><span class="sub">结果大小与备份</span></div>
+            <div class="card">
+              <div class="field"><label>单任务结果上限</label>
+                <div class="ctl"><input type="text" class="w320" value="100 KB">
+                  <div class="desc">超出截断并提示完整内容见运行日志。</div></div></div>
+              <div class="field"><label>备份保留份数</label>
+                <div class="ctl"><input type="text" class="w320" value="5">
+                  <div class="desc">每次启动前备份一次，更旧的自动删；0 = 不备份。</div></div></div>
+            </div>
+          </section>
+
+        </div><!-- /content -->
+
+        <!-- 底部单一保存条（消除每个 Tab 各有一套保存的混乱） -->
+        <div class="footer">
+          <span class="saved">● 未保存的修改</span>
+          <span class="note">账号 / 模型 / 时段 / 降级策略改了必须保存并重建引擎，否则调度用的是旧矩阵。</span>
+          <span class="spacer"></span>
+          <button class="btn">取消</button>
+          <button class="btn primary lg">💾 保存配置并重建引擎</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* 区段导航切换：原三个 Tab → 统一区段 rail */
+function goSec(name){
+  document.querySelectorAll('.rail-item').forEach(el=>el.classList.toggle('active', el.dataset.go===name));
+  document.querySelectorAll('.cfg-section').forEach(el=>el.classList.toggle('active', el.dataset.sec===name));
+  document.querySelector('.content').scrollTop=0;
+}
+document.querySelectorAll('.rail-item').forEach(el=>{
+  el.addEventListener('click',()=>goSec(el.dataset.go));
+});
+/* 应用级导航（示意，仅配置中心可用） */
+document.querySelectorAll('.sidebar .nav-item').forEach(el=>{
+  el.addEventListener('click',()=>{
+    document.querySelectorAll('.sidebar .nav-item').forEach(n=>n.classList.remove('active'));
+    el.classList.add('active');
+  });
+});
+function toggleTheme(){
+  const h=document.documentElement;
+  const dark=h.getAttribute('data-theme')==='dark';
+  h.setAttribute('data-theme', dark?'light':'dark');
+  document.querySelector('.theme-btn').textContent='主题：'+(dark?'浅色':'深色');
+}
+</script>
+</body>
+</html>

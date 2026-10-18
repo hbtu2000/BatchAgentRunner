@@ -1,6 +1,6 @@
 # PRD 全面审查报告
 
-**审查对象：** `docs/PRD-AI批处理任务调度工具-v1.0.md`（AI 批处理任务调度工具 / Batch Agent Runner）
+**审查对象：** `docs/PRD-BatchAgentRunner-v2.0.md`（AI 批处理任务调度工具 / Batch Agent Runner）
 **审查人：** 产品评审（Agent 模式）
 **审查日期：** 2026-10-14
 **审查方式：** 全文通读 + 交叉引用一致性核查 + 技术可行性视角评估

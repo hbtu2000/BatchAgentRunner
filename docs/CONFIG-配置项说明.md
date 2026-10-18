@@ -2,7 +2,7 @@
 
 > 面向「打开配置页/配置文件看不懂每一项」的场合。
 > 全字段带注释模板见 [`samples/config.example.json`](../samples/config.example.json)。
-> 字段口径的原始出处见 [PRD 第 9 章](PRD-AI批处理任务调度工具-v1.0.md)、[技术设计](DESIGN-BatchAgentRunner-v1.0.md)。
+> 字段口径的原始出处见 [PRD 第 9 章](PRD-BatchAgentRunner-v2.0.md)、[技术设计](DESIGN-BatchAgentRunner-v2.0.md)。
 
 ---
 

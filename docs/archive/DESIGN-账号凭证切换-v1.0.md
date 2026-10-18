@@ -19,7 +19,7 @@
 | §11 测试 | `tests/CredentialVault/`：快照 6 + 切换 8 + 引导登录 4 + E2E 2 + DPAPI 往返（21 用例，MockAdapter 模拟 Live 凭证与 refresh token 轮换） |
 
 **上游文档：**
-- 技术设计：`docs/DESIGN-BatchAgentRunner-v1.0.md`（本设计为其第 6 章「Agent 适配层」账号凭据策略的展开，对应 M0 V-4）
+- 技术设计：`docs/DESIGN-BatchAgentRunner-v2.0.md`（本设计为其第 6 章「Agent 适配层」账号凭据策略的展开，对应 M0 V-4）
 - 配置说明：`docs/CONFIG-配置项说明.md`（`accounts[].credential_ref`）
 
 ---

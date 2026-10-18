@@ -1,7 +1,7 @@
 # BatchAgentRunner UI 设计系统 v1.0
 
 > **角色**：UI Designer（像素君）｜面向开发的交付规范
-> **配套文档**：`docs/PRD-AI批处理任务调度工具-v1.0.md`、`docs/DESIGN-BatchAgentRunner-v1.0.md`
+> **配套文档**：`docs/PRD-BatchAgentRunner-v2.0.md`、`docs/DESIGN-BatchAgentRunner-v2.0.md`
 > **平台**：Avalonia 12 跨平台桌面（Windows 优先，macOS / Linux 兼容）｜**双主题：浅色 + 深色**
 > **版本**：1.0（2026-10-15）
 

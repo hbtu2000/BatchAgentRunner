@@ -8,9 +8,9 @@
 **版本：** 1.0
 
 **上游文档：**
-- 产品需求文档：`docs/PRD-AI批处理任务调度工具-v1.0.md`（内容版本 v1.11，第 15 章「二期展望」）
-- 一期技术设计：`docs/DESIGN-BatchAgentRunner-v1.0.md`（v1.1，本设计为其超集扩展）
-- 关联设计：`docs/DESIGN-账号凭证切换-v1.0.md`（v1.1，会话恢复依赖其 `ICredentialVault`）、`docs/UI-设计系统-BatchAgentRunner-v1.0.md`（v1.0）
+- 产品需求文档：`docs/PRD-BatchAgentRunner-v2.0.md`（内容版本 v1.11，第 15 章「二期展望」）
+- 一期技术设计：`docs/DESIGN-BatchAgentRunner-v2.0.md`（v1.1，本设计为其超集扩展）
+- 关联设计：`docs/DESIGN-BatchAgentRunner-v2.0.md`（v1.1，会话恢复依赖其 `ICredentialVault`）、`docs/UI-设计系统-BatchAgentRunner-v1.0.md`（v1.0）
 
 **本设计覆盖：** 二期全部方向（PRD 第 15.4 章 1–7）+ P2 需求 REQ-016/017/018 + 场景模板库（S1–S16）
 **开发语言 / 平台：** 沿用一期 C# / .NET 10 + Avalonia 12（跨平台桌面，Windows 优先）
@@ -659,4 +659,4 @@ Markdown/JSON 报告新增章节：
 
 ---
 
-> 本文档与一期设计 `docs/DESIGN-BatchAgentRunner-v1.0.md` 共同构成完整技术设计。一期为「单指令无人值守跑批」，二期为「软件工程流程自动化」。两者共享同一引擎内核、领域模型与界面体系，二期通过**可选字段 + 端口扩展**叠加，不破坏一期已交付行为。
+> 本文档与一期设计 `docs/DESIGN-BatchAgentRunner-v2.0.md` 共同构成完整技术设计。一期为「单指令无人值守跑批」，二期为「软件工程流程自动化」。两者共享同一引擎内核、领域模型与界面体系，二期通过**可选字段 + 端口扩展**叠加，不破坏一期已交付行为。

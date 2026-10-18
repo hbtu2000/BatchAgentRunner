@@ -4,7 +4,7 @@
 >
 > - 字段级细节看 [`CONFIG-配置项说明.md`](CONFIG-配置项说明.md)
 > - 带注释的配置模板见 [`samples/config.example.json`](../samples/config.example.json)
-> - 想了解设计原理看 [`DESIGN-BatchAgentRunner-v1.0.md`](DESIGN-BatchAgentRunner-v1.0.md)
+> - 想了解设计原理看 [`DESIGN-BatchAgentRunner-v2.0.md`](DESIGN-BatchAgentRunner-v2.0.md)
 
 ---
 

@@ -3,6 +3,8 @@
 > 盘点日期：2026-10-17　｜　取代 v1.0（同日早些时候，未提交）  
 > 盘点范围：`src/**`（117 文件 / 18,119 行）、`tests/**`（32 文件 / 5,845 行）、全部工程配置、git 历史（12 提交）  
 > 事实基线：net10.0 / Avalonia 12.1.4 / CommunityToolkit.Mvvm 8.4.2，**无 CI、无门禁、无 CPM**
+>
+> **当前进度（2026-10-18）**：阶段 −1（B 组 5 项）、阶段 0（A 组 10 项 + P0-17）、阶段 1（建网 6 项）**均已完成**；P0 清单 17 项全部清偿，全量构建 0 警告 / 0 错误（`TreatWarningsAsErrors=true`），全量测试 345 通过 / 0 失败。下一站：阶段 2 动骨（P1-3 → P1-4/5 → P1-1，见 §2）。
 
 ---
 
@@ -37,18 +39,20 @@ v1.0 的 P0 缺陷清单经本版实测复核**全部仍然成立**（重点复�
 
 #### A 组：正确性 / 安全（10 项，沿用 v1.0，本次实测复核仍成立）
 
+**状态：阶段 0 已全部完成（2026-10-17）。** 台账改用不变量描述（见 §4.8 约定），位置列不再依赖行号。
+
 | ID        | 位置                                                                                    | 债务                                                                                 | 影响                                                    | 成本 | 偿还方式                                |
 | --------- | ------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------- | -- | ----------------------------------- |
-| **P0-1**  | `Core/Engine/BatchEngine.cs:1406`                                                     | `cost = Math.Min(cost, Math.Max(MaxCostPerTask, cost))` **恒等于 cost**，是 no-op       | 单任务成本上限完全失效 → 超额扣费，且表面"已封顶"极具迷惑性                      | 极小 | 重构（1 行 + 1 不变量单测）                   |
-| **P0-2**  | `Agents/Internal/CliProcessRunner.cs:213,293`                                         | `WaitForExitAsync` 后直接读 buffer，未排空 `OutputDataReceived` 回调                         | 输出尾部丢失 → 漏判配额重置（误降级/兜底）、stream-json `result` 截断导致误判失败 | 中  | 重写（局部：回调 EOF 信号 + TCS 门）            |
-| **P0-3**  | `Infrastructure/Git/LocalGitIntegration.cs:25-27,42,50`                               | 命令行字符串拼接，仅用 `"` 包裹未转义 `"`                                                          | 配置驱动的**任意参数注入**，可注入 `-c core.sshCommand=` 实现代码执行      | 中  | 重构（`ArgumentList` + 输入白名单）          |
-| **P0-4**  | `Core/Engine/BatchEngine.cs:1462/1476/1498`                                           | `CompleteTask/FailTask/MarkInterrupted` 并发调 `PersistAsync(CancellationToken.None)` | `Concurrency>1` 时并发写同一结果文件 → 状态回退、文件损坏                | 中  | 重构（单写者队列 + 读改写同锁）                   |
-| **P0-5**  | `Core/Engine/BatchEngine.cs:1410/1434`                                                | `_fallbackBatchCost +=`、`_fallbackModelsUsed.Add` 无锁                               | 并发下成本累计重复/越限，`List.Add` 内部损坏                          | 小  | 重构（`Interlocked` + `ConcurrentBag`） |
-| **P0-6**  | `Desktop/ViewModels/ConfigViewModel.cs:628,656`；`MonitorViewModel.cs:522,535,555,574` | `ConfigureAwait(false)` 后直接写 `ObservableCollection`                                | 后台线程改 UI 集合 → Avalonia 跨线程异常，用户侧随机崩溃                  | 小  | 重构（EngineHost 统一 Post，见 P0-7）       |
-| **P0-7**  | `Desktop/Services/EngineHost.cs`（事件广播）                                                | 引擎事件在后台线程触发，注释明示"订阅方自行切线程"                                                         | 线程切换责任外包给 7 个订阅方，必然有人踩坑（即 P0-6）                       | 小  | 重构（单一收敛点）                           |
-| **P0-8**  | `Infrastructure/TaskFiles/MarkdownInPlaceWriter.cs:19-21`                             | 读—改—写非原子，同库已有 `AtomicFileWriter` 却不用                                               | 写入中断 = **用户任务文件截断**                                   | 小  | 重构（复用 `AtomicFileWriter`）           |
-| **P0-9**  | `Infrastructure/CredentialVault/GuidedLoginOrchestrator.cs:104-112`                   | 引导登录先 `File.Delete(livePath)` 无备份，后等待超时抛异常                                         | 失败后**用户凭证已消失且不可恢复**                                   | 中  | 重构（先备份再删 + 失败回滚）                    |
-| **P0-10** | `Desktop/Services/EngineHost.cs:326`                                                  | 自动关机直接 `TryShutdownAsync()`                                                        | 违反设计文档 §6.3「需 60s 可撤销对话框」硬约束                          | 中  | 补齐功能（倒计时 + 可撤销）                     |
+| **P0-1**  | `Core/Engine/BatchEngine.cs`（TryFallbackAsync 内 `cost` 须被 `MaxCostPerTask` 截断） | `cost = Math.Min(cost, Math.Max(MaxCostPerTask, cost))` **恒等于 cost**，是 no-op       | 单任务成本上限完全失效 → 超额扣费，且表面"已封顶"极具迷惑性                      | 极小 | 重构（1 行 + 1 不变量单测）✅ 阶段 0 已完成（2026-10-17） |
+| **P0-2**  | `Agents/Internal/CliProcessRunner.cs`（异步读取回调 EOF + `DrainOutputAsync` 门）       | `WaitForExitAsync` 后直接读 buffer，未排空 `OutputDataReceived` 回调                         | 输出尾部丢失 → 漏判配额重置（误降级/兜底）、stream-json `result` 截断导致误判失败 | 中  | 重写（局部：回调 EOF 信号 + TCS 门）✅ 阶段 0 已完成（2026-10-17） |
+| **P0-3**  | `Infrastructure/Git/LocalGitIntegration.cs`（参数走 `ArgumentList` + `GitRefName` 白名单） | 命令行字符串拼接，仅用 `"` 包裹未转义 `"`                                                          | 配置驱动的**任意参数注入**，可注入 `-c core.sshCommand=` 实现代码执行      | 中  | 重构（`ArgumentList` + 输入白名单）✅ 阶段 0 已完成（2026-10-17） |
+| **P0-4**  | `Core/Engine/BatchEngine.cs`（`_writeGate` 读改写同锁 + `_persistGate` 单写者）        | `CompleteTask/FailTask/MarkInterrupted` 并发调 `PersistAsync(CancellationToken.None)` | `Concurrency>1` 时并发写同一结果文件 → 状态回退、文件损坏                | 中  | 重构（单写者队列 + 读改写同锁）✅ 阶段 0 已完成（2026-10-17） |
+| **P0-5**  | `Core/Engine/BatchEngine.cs`（`_fallbackLock` 保护 check-then-act）                    | `_fallbackBatchCost +=`、`_fallbackModelsUsed.Add` 无锁                               | 并发下成本累计重复/越限，`List.Add` 内部损坏                          | 小  | 重构（共享锁保护 check-then-act）✅ 阶段 0 已完成（2026-10-17） |
+| **P0-6**  | `Desktop/ViewModels/*`（经由 `EngineHost`/`UiThread` 统一收敛）                          | `ConfigureAwait(false)` 后直接写 `ObservableCollection`                                | 后台线程改 UI 集合 → Avalonia 跨线程异常，用户侧随机崩溃                  | 小  | 重构（EngineHost 统一 Post，见 P0-7）✅ 阶段 0 已完成（2026-10-17） |
+| **P0-7**  | `Desktop/Services/EngineHost.cs`（事件广播单一收敛点 `UiThread.Post`）                       | 引擎事件在后台线程触发，注释明示"订阅方自行切线程"                                                         | 线程切换责任外包给 7 个订阅方，必然有人踩坑（即 P0-6）                       | 小  | 重构（单一收敛点）✅ 阶段 0 已完成（2026-10-17） |
+| **P0-8**  | `Infrastructure/TaskFiles/MarkdownInPlaceWriter.cs`（`WriteBackAsync` 复用 `AtomicFileWriter`） | 读—改—写非原子，同库已有 `AtomicFileWriter` 却不用                                               | 写入中断 = **用户任务文件截断**                                   | 小  | 重构（复用 `AtomicFileWriter`）✅ 阶段 0 已完成（2026-10-17） |
+| **P0-9**  | `Infrastructure/CredentialVault/GuidedLoginOrchestrator.cs`（ClearLiveCredentials 先备份） | 引导登录先 `File.Delete(livePath)` 无备份，后等待超时抛异常                                         | 失败后**用户凭证已消失且不可恢复**                                   | 中  | 重构（先备份再删 + 失败回滚）✅ 阶段 0 已完成（2026-10-17） |
+| **P0-10** | `Desktop/Services/EngineHost.cs` + `Core/Engine/AutoShutdownCoordinator.cs`（可撤销倒计时） | 自动关机直接 `TryShutdownAsync()`                                                        | 违反设计文档 §6.3「需 60s 可撤销对话框」硬约束                          | 中  | 补齐功能（倒计时 + 可撤销）✅ 阶段 0 已完成（2026-10-17） |
 
 #### B 组：治理真空（7 项，本版新增 / 由 P2 提级）
 
@@ -56,15 +60,15 @@ v1.0 的 P0 缺陷清单经本版实测复核**全部仍然成立**（重点复�
 
 **状态：阶段 −1 已全部完成（2026-10-17）。**
 
-| ID        | 位置                                          | 债务（实测证据）                                                                                                                                                                                                                                                | 影响                                                                               | 成本 | 偿还方式                          |
-| --------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | -- | ----------------------------- |
-| **P0-11** | git 历史                                      | **12 个提交中 10 个提交信息为空**；首提交 `9be9485` 一次性 176 文件 / +22,000 行；`b86c0fe` 单次 63 文件 / +8,487                                                                                                                                                                 | 6 周后**无法追溯任何一次变更的意图**，债务无法归因、churn 分析失效；与自家 `CODE-REVIEW §5.2`「单 PR 聚焦一个关注点」直接冲突 | 极小 | 隔离（commit-msg 钩 + 模板）— ✅ 阶段 −1 已完成 |
-| **P0-12** | `Directory.Build.props`                     | 增量构建报 **0 警告**，`--no-incremental` 全量重建 Core 实测 **36 个 CA2007**（全方案 50+）。CI 若看增量结果会**永远全绿**                                                                                                                                                              | "构建干净"是假象，`TreatWarningsAsErrors` 一旦开启会一次性爆雷                                     | 小  | 重构（先清存量警告，再改 CI 用全量基线）        |
+| ID        | 位置                                          | 债务（实测证据）                                                                                                                                                                                                                                                | 影响                                                                               | 成本 | 偿还方式                                       |
+| --------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- | -- | ------------------------------------------ |
+| **P0-11** | git 历史                                      | **12 个提交中 10 个提交信息为空**；首提交 `9be9485` 一次性 176 文件 / +22,000 行；`b86c0fe` 单次 63 文件 / +8,487                                                                                                                                                                 | 6 周后**无法追溯任何一次变更的意图**，债务无法归因、churn 分析失效；与自家 `CODE-REVIEW §5.2`「单 PR 聚焦一个关注点」直接冲突 | 极小 | 隔离（commit-msg 钩 + 模板）— ✅ 阶段 −1 已完成         |
+| **P0-12** | `Directory.Build.props`                     | 增量构建报 **0 警告**，`--no-incremental` 全量重建 Core 实测 **36 个 CA2007**（全方案 50+）。CI 若看增量结果会**永远全绿**                                                                                                                                                              | "构建干净"是假象，`TreatWarningsAsErrors` 一旦开启会一次性爆雷                                     | 小  | 重构（先清存量警告，再改 CI 用全量基线）✅ 阶段 1 已完成（2026-10-18，全量 0 警告 + `TreatWarningsAsErrors=true`，见 §5.4）        |
 | **P0-13** | `.gitignore` 末尾 4 行                         | **按日期逐个文件名 ignore**：`/.workbuddy/memory/2026-10-16.md`、`/.workbuddy/memory/2026-10-17.md`… 而非 `.workbuddy/`                                                                                                                                             | 债务**每天都在自动新增**；`/TaskList` 是在 `tasks.xlsx` 已提交**之后**才补的，历史仍在                     | 极小 | 重构（目录级规则 + `git rm --cached`）— ✅ 阶段 −1 已完成 |
-| **P0-14** | 仓库（实测 `git ls-files`）                       | 10 项产物/隐私已入库：`.playwright-cli/page-*.yml`×2、`.workbuddy/memory/*.md`×2、`.workbuddy/tmp/check_px.py`、`gen_icon2.py`、`.tmp_reflect.ps1`（**含个人绝对路径**）、`models.yaml`（**0 字节**）、`samples/tasks.json.backup-20261015181009`、`TaskList/tasks.xlsx`（**真实运行数据**） | 隐私外泄面 + 仓库膨胀 + 新人 `clone` 后环境被污染                                                 | 小  | 重构（清理 + 净化历史）— ✅ 阶段 −1 已完成 |
-| **P0-15** | `Directory.Build.props:8,11`                | `TreatWarningsAsErrors=false` + `NoWarn CS1591`；无 `EnforceCodeStyleInBuild`、无 `AnalysisLevel`、无 `AnalysisMode`                                                                                                                                          | 公共 API 文档约束被显式关闭；`.editorconfig` 的 40+ 条规则**构建期完全不执行**                           | 极小 | 重构（配置落地，见 §4.2）— ✅ 阶段 −1 已完成 |
-| **P0-16** | 仓库根                                         | **无任何 CI**（无 `.github/`，无流水线）；`coverlet.collector` 已引用但无收集管线                                                                                                                                                                                            | 债务与回归**无自动发现机制**，全靠人                                                             | 中  | 补齐（build+test+覆盖率，先只报不阻断）— ✅ 阶段 −1 已完成 |
-| **P0-17** | `tests/BatchAgentRunner.Tests.csproj:22-24` | 测试项目只引用 Core / Infrastructure / Agents，**唯独不引用 Desktop（5,411 行 = src 的 30%）**                                                                                                                                                                           | Desktop **结构上不可测试**，P0-6/P0-7/P1-7 类缺陷无法用测试锁住，只能靠人眼                              | 中  | 重构（补引用 + 首批冒烟测试）              |
+| **P0-14** | 仓库（实测 `git ls-files`）                       | 10 项产物/隐私已入库：`.playwright-cli/page-*.yml`×2、`.workbuddy/memory/*.md`×2、`.workbuddy/tmp/check_px.py`、`gen_icon2.py`、`.tmp_reflect.ps1`（**含个人绝对路径**）、`models.yaml`（**0 字节**）、`samples/tasks.json.backup-20261015181009`、`TaskList/tasks.xlsx`（**真实运行数据**） | 隐私外泄面 + 仓库膨胀 + 新人 `clone` 后环境被污染                                                 | 小  | 重构（清理 + 净化历史）— ✅ 阶段 −1 已完成                 |
+| **P0-15** | `Directory.Build.props:8,11`                | `TreatWarningsAsErrors=false` + `NoWarn CS1591`；无 `EnforceCodeStyleInBuild`、无 `AnalysisLevel`、无 `AnalysisMode`                                                                                                                                          | 公共 API 文档约束被显式关闭；`.editorconfig` 的 40+ 条规则**构建期完全不执行**                           | 极小 | 重构（配置落地，见 §4.2）— ✅ 阶段 −1 已完成               |
+| **P0-16** | 仓库根                                         | **无任何 CI**（无 `.github/`，无流水线）；`coverlet.collector` 已引用但无收集管线                                                                                                                                                                                            | 债务与回归**无自动发现机制**，全靠人                                                             | 中  | 补齐（build+test+覆盖率，先只报不阻断）— ✅ 阶段 −1 已完成     |
+| **P0-17** | `tests/BatchAgentRunner.Desktop.Tests/`（新建，引用 Desktop） | 测试项目只引用 Core / Infrastructure / Agents，**唯独不引用 Desktop（5,411 行 = src 的 30%）**                                                                                                                                                                           | Desktop **结构上不可测试**，P0-6/P0-7/P1-7 类缺陷无法用测试锁住，只能靠人眼                              | 中  | 重构（补引用 + 首批冒烟测试）— ✅ 阶段 0 已完成（2026-10-17，新建 Desktop.Tests 引用 Desktop，首批冒烟 12 项） |
 
 > P0-17 说明：Desktop 不是"没写测试"，而是**测试项目根本没有引用它**——即使想写也写不了。这是可测性缺失，不是测试缺失，故列 P0 而非 P1。
 
@@ -91,17 +95,17 @@ v1.0 的 P0 缺陷清单经本版实测复核**全部仍然成立**（重点复�
 | P1-12 | `CliPermissionSettings.cs:17-46` 静默把用户 CLI 的 `defaultMode` 改为 `bypassPermissions`（**影响范围不止本工具**）                                                                  | 重构（作用域收窄 + 原子写）                              |
 | P1-13 | `CliProcessRunner.cs:311-322` `KillTree` 依赖外部 `taskkill` + `WaitForExit(3000)` 同步阻塞                                                                               | 重写（.NET 原生 `Kill(entireProcessTree:true)`）   |
 | P1-14 | `LocalGitIntegration.cs:80-101` `WaitForExitAsync(ct)` 无超时、无 stdin 重定向                                                                                            | 重构（超时 + stdin 重定向）                           |
-| P1-15 | 高危模块零覆盖：`CodeBuddyCreditsApiClient`、`XlsxTaskParser/Writer`、`BackupManager`、`LocalGitIntegration`、`ShutdownService`、`DangerousOperationGuard`、`CliCommandBuilder` | 补齐（先 `XlsxTaskWriter` + `CliCommandBuilder`） |
+| P1-15 | 高危模块零覆盖：`CodeBuddyCreditsApiClient`、`XlsxTaskParser/Writer`、`BackupManager`、`LocalGitIntegration`、`ShutdownService`、`DangerousOperationGuard`、`CliCommandBuilder` | 补齐（先 `XlsxTaskWriter` + `CliCommandBuilder`）✅ 阶段 1 已完成（2026-10-18：XlsxTaskWriter 2 项 + CliCommandBuilder 8 项 + DangerousOperationGuard 6 项，见 §5.4；剩余 `BackupManager`/`LocalGitIntegration`/`ShutdownService`/`CodeBuddyCreditsApiClient` 4 项顺延） |
 
 **本版新增项**
 
 | ID        | 位置                                                                      | 债务                                                                                                                                                       | 影响                                                                          | 成本 | 偿还方式               |
 | --------- | ----------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------- | -- | ------------------ |
 | **P1-16** | `Infrastructure/CredentialVault/CredentialLocationRegistry.cs:40,72,74` | `public static class` + `static readonly Dictionary` + `public static void SetLiveRootOverride(...)`；生产代码 `Desktop/Services/EngineHost.cs:94` 调用它做全局路径注入 | Service Locator 反模式 + **非线程安全 `Dictionary`**；全局状态被 UI 生命周期意外改写（原 P1-8 的实体化） | 中  | 重构（显式传入，取消静态入口）    |
-| **P1-17** | 5 个 csproj                                                              | **无 `Directory.Packages.props`（无 CPM）**，包版本手写散落；`Core.csproj` 引用 `Microsoft.Extensions.Logging.Abstractions 10.0.13` 而全仓 `ILogger` 使用 **0 处**（无效依赖）      | 版本漂移；依赖图不可审计                                                                | 小  | 重构（引入 CPM + 删无效依赖） |
-| **P1-18** | `Infrastructure/Persistence/JsonCreditsClaimStore.cs:21`                | 第 18 行 `directory ?? ...` 建目录，第 21 行却 `Path.Combine(directory!, ...)` → 默认构造**必抛 `ArgumentNullException`**；生产唯一调用点 `EngineHost.cs:202` 恰好总传参，故未暴露        | 定时炸弹：任何走默认构造的新调用点立刻崩                                                        | 极小 | 重构（1 行）            |
+| **P1-17** | 5 个 csproj                                                              | **无 `Directory.Packages.props`（无 CPM）**，包版本手写散落；`Core.csproj` 引用 `Microsoft.Extensions.Logging.Abstractions 10.0.13` 而全仓 `ILogger` 使用 **0 处**（无效依赖）      | 版本漂移；依赖图不可审计                                                                | 小  | 重构（引入 CPM + 删无效依赖）✅ 阶段 1 已完成（2026-10-18：`Directory.Packages.props` + `ManagePackageVersionsCentrally=true`；任何 csproj 再写 Version 即 NU1008 构建错误，结构性防漂移） |
+| **P1-18** | `Infrastructure/Persistence/JsonCreditsClaimStore.cs:21`                | 第 18 行 `directory ?? ...` 建目录，第 21 行却 `Path.Combine(directory!, ...)` → 默认构造**必抛 `ArgumentNullException`**；生产唯一调用点 `EngineHost.cs:202` 恰好总传参，故未暴露        | 定时炸弹：任何走默认构造的新调用点立刻崩                                                        | 极小 | 重构（1 行）✅ 阶段 1 已完成（2026-10-18，修复 + 不变量测试 2 项）            |
 | **P1-19** | Desktop 层（churn 实测）                                                     | `ConfigView.axaml`、`TemplateEditorViewModel.cs`、`ReportViewModel.cs`、`ConfigViewModel.cs` 等 4 次提交被改（全仓仅 12 提交，即 1/3 提交都动过），且**零测试**                      | 界面契约未稳定却已铺开 5,411 行 → 重构 Desktop 时回归面最大                                     | 大  | 重构（补测试 + 收敛契约）     |
-| **P1-20** | `Desktop/Converters/ConfigHubConverters.cs:18,31`                       | 两处 `ConvertBack => throw new NotImplementedException()`                                                                                                  | 双向绑定一旦触发即崩溃                                                                 | 极小 | 重构                 |
+| **P1-20** | `Desktop/Converters/ConfigHubConverters.cs:18,31`                       | 两处 `ConvertBack => throw new NotImplementedException()`                                                                                                  | 双向绑定一旦触发即崩溃                                                                 | 极小 | 重构 ✅ 阶段 1 已完成（2026-10-18：返回 `BindingOperations.DoNothing` + 不变量测试）                 |
 | **P1-21** | `Core/Options/RunOptions.cs:264,268,271`                                | 生产 API 地址 `https://www.codebuddy.cn` 及 `/billing/meter/*` 路径写进默认值                                                                                        | 环境切换只能靠覆盖，测试易打到生产                                                           | 小  | 重构（抽配置/常量）         |
 
 ---
@@ -122,6 +126,11 @@ v1.0 的 P0 缺陷清单经本版实测复核**全部仍然成立**（重点复�
 | **P2-29** | `_harness/`（214 文件）                                                                                                                                                                          | 已 ignore 的 publish 产物堆（Avalonia DLL + exe），与 `samples/` 职责重叠，无人清理                                                                                                                                                                                      |
 | **P2-30** | `.editorconfig:24` 将 `CA1002` 设为 `none`；`NotificationDispatchers.cs:101` `#pragma warning disable SYSLIB0014`（过时 `SmtpClient`，注释自认"二期换 MailKit"）                                             | 规则豁免无登记、无到期日                                                                                                                                                                                                                                           |
 | **P2-31** | `JsonCooldownStore` / `JsonCreditsClaimStore` / `JsonConfigStore` 三份逐行同构（构造 + 默认目录 + `LoadAsync` catch(JsonException) + `AtomicFileWriter.SaveAsync`）；`"BatchAgentRunner"` 路径魔法串在 **9 处**硬编码 | 改一处必漏改两处                                                                                                                                                                                                                                               |
+
+**P2 中三项已随阶段 1「建网」提前偿还（2026-10-18，见 §5.4）**：
+P2-20（测试分层：E2E/Usability/Process 打 `Trait`，CI 快跑单元 / 慢跑集成）、
+P2-21（去 Flaky：真实进程 → `IProcessLauncher` 注入缝；samples → 嵌入式资源副本）、
+P2-28（samples 降级为只读示例，测试契约改读嵌入式副本，内容经 csproj `Link` 随 samples 同步）。
 
 ---
 
@@ -144,6 +153,8 @@ v1.0 的 P0 缺陷清单经本版实测复核**全部仍然成立**（重点复�
 > ✅ **阶段 −1 已于 2026-10-17 完成**（P0-11 / P0-13 / P0-14 / P0-15 / P0-16 全部落地，不占用迭代容量）。详见 §5 执行记录。
 
 ### 阶段 0：止血（第 1 个迭代，A 组 10 项）
+
+> ✅ **阶段 0 已于 2026-10-17 完成**（P0-1~P0-10 + P0-17 全部落地，验证见 §5.2；全量测试 325 通过 / 0 失败）。
 
 9 项互不耦合、可并行、可独立回滚，是整份清单中性价比最高的部分。
 
@@ -170,6 +181,8 @@ P0-17 Desktop 补测试引用 + 首批冒烟（与上面并行，为阶段 2 铺
 4. 追加**不变量测试**：为 P0-1 等「一眼看不出是错的」缺陷补断言式测试
 5. 清存量警告（P0-12）：先清 36+ 个 CA2007 与 AVLN5001，**再**分批开 `TreatWarningsAsErrors`
 6. P1-17 引入 CPM + 删无效依赖；P1-18/P1-20 单行修复顺手带走
+
+> ✅ **阶段 1 已于 2026-10-18 完成**（6 项全部落地，验证见 §5.4：全量构建 0 警告 / 0 错误且 `TreatWarningsAsErrors=true`，全量测试 **345 通过 / 0 失败**）。至此 **P0 清单 17 项全部清偿**。
 
 ### 阶段 2：动骨（第 2–4 个迭代）
 
@@ -311,15 +324,17 @@ P1-19 Desktop 补测试 + 契约收敛
   <AnalysisLevel>latest-recommended</AnalysisLevel>
   <AnalysisMode>Recommended</AnalysisMode>
   
-  <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+  <!-- 2026-10-18 阶段 1：存量警告清零后由 false 转 true（P0-12 完成）。
+       例外走 §4.7 逃逸阀台账（CS1591 全局；CA1707/CA2007/CA1861 测试项目；CA1720/CA1859 逐点）。 -->
+  <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
 </PropertyGroup>
 ```
 
 配套：
 
-- 引入 `Directory.Packages.props`（CPM），包版本集中（P1-17）
+- 引入 `Directory.Packages.props`（CPM），包版本集中（P1-17）✅ 阶段 1 已完成（NU1008 构建错误结构性防版本漂移）
 - **CI 必须用 `--no-incremental` 全量基线**，否则复现 P0-12 的 0 警告假象
-- 分批阻断顺序：Core → Agents → Infrastructure → Desktop（与测试补齐同步，避免一次性爆出几百警告）
+- ~~分批阻断顺序：Core → Agents → Infrastructure → Desktop~~（2026-10-18：存量一次性清零后全量开启，分批前提消失，见 §4.9 注）
 
 ### 4.3 第三道墙：架构约束自动化（过不了测试）
 
@@ -379,23 +394,39 @@ P1-19 Desktop 补测试 + 契约收敛
 - CI 统计**逃逸数**并纳入看板（当前基线：`#pragma` 1 处、`.editorconfig` 规则置 `none` 1 处（CA1002）、`NoWarn` 1 项）
 - 到期未清理的逃逸，自动升级为该迭代的 P1
 
+**逃逸阀台账（2026-10-18 阶段 1 更新，共 8 项）**：
+
+| # | 逃逸                                                       | 位置                                                                 | 理由（为什么必须豁免）                                                                                              | 到期日 / 责任人             |
+| - | -------------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- | -------------------- |
+| 1 | `#pragma warning disable SYSLIB0014`（过时 `SmtpClient`）    | `Infrastructure/Notification/NotificationDispatchers.cs`             | 注释自认「二期换 MailKit」；.NET 仍支持 `SmtpClient`，换库属功能迁移非缺陷修复                                                        | 二期换 MailKit 时 / 工程    |
+| 2 | `.editorconfig` 将 `CA1002` 置 `none`                     | `.editorconfig:24`                                                 | 既有豁免（阶段 −1 基线）：`List<T>` 公开返回是产品 API 契约的一部分                                                                   | 待评估，未登记到期日 / 工程    |
+| 3 | `NoWarn CS1591`（公共 API 缺文档注释）                         | `Directory.Build.props`                                            | 全仓公共 API 文档注释未补齐，一次性开启会爆数百警告；与 P0-15 同期决策「先 warning 不阻断」同源                                            | 阶段 2 收尾 / 工程         |
+| 4 | `NoWarn CA1707`（标识符含下划线）                             | 两个测试 csproj                                                       | 测试项目专用：「下划线 + 中文名」是本仓测试命名约定，对生产代码不适用                                                                     | 长期有效 / 工程           |
+| 5 | `NoWarn CA2007`（await 须 ConfigureAwait）                    | 两个测试 csproj                                                       | 测试项目专用：与 xUnit 自家 `xUnit1030` 直接冲突——xUnit 明确建议测试方法**省略** `ConfigureAwait`（可 bypass 并行化限制）；故阶段 1 同步删除了测试中全部 `ConfigureAwait(false)` | 长期有效 / 工程           |
+| 6 | `NoWarn CA1861`（常量数组提 static readonly）                  | 两个测试 csproj                                                       | 测试项目专用：该规则针对生产热路径的重复分配；测试期望值数组一次性使用且内容各异，提字段损害可读性且无性能收益                                            | 长期有效 / 工程           |
+| 7 | `[SuppressMessage] CA1720`（`ExpertKind.Single` 含类型名）      | `Core/Domain/ExpertRef.cs`                                          | 持久化兼容：`ExpertKind` 经 `JsonStringEnumConverter` 以字符串形式随用户模板落盘，重命名破坏既有模板（同 `RunOptions` 契约保护原则）                    | 长期有效 / 工程           |
+| 8 | `[SuppressMessage] CA1859`（接口字段/返回改具体类型）                | `Desktop/Services/EngineHost.cs`（3 处）                              | 架构方向：接口类型是 P1-4/P1-5「UI 只依赖 Core 抽象 + DI 化」的目标形态，拒绝为微性能向具体类型回退                                            | P1-4/P1-5 完成后复核 / 工程 |
+
+> 说明：P2-30 登记的 `.editorconfig` CA1002 与 `#pragma` SYSLIB0014 在阶段 1 的警告清零中**保留原样**（不属 CA 警告类），正式登记为本表 #1/#2。
+
 ### 4.8 度量与趋势看板
 
 每迭代采集，**看趋势而非绝对值**：
 
-| 指标                     | 当前基线（实测）                                                     | 目标方向           |
-| ---------------------- | ------------------------------------------------------------ | -------------- |
-| 最大文件行数                 | 1960                                                         | ↓              |
-| 最大方法行数                 | 249                                                          | ↓              |
-| 全量构建警告数                | 阶段 −1 已启用 `EnforceCodeStyleInBuild` + `--no-incremental` CI，真实值由 CI 采集（Core 实测 29 警告 / 0 错误，见 §5）；增量构建 0 警告是假象 | 先采集真实值，再 ↓ 至 0 |
-| `catch (Exception)` 占比 | 37/69 = 54%                                                  | ↓              |
-| 高危模块零覆盖数               | 7                                                            | ↓ 至 0          |
-| Desktop 测试数            | **0**（且测试项目未引用）                                              | ↑              |
-| 空提交信息数 / 迭代            | 10/12 历史；阶段 −1 起由 commit-msg 钩强制「非空 + 含改了什么/为什么」 | → 0 并保持        |
-| 误提交产物数                 | 10；阶段 −1 已 `git rm --cached` 并 ignore，当前 0                 | → 0 并保持        |
-| P0 未偿数                 | 17 → 阶段 −1 已完成 5 项（P0-11/13/14/15/16），当前 **12**         | → 0 并保持        |
-| 每迭代**新增**债务数           | 未采集（阶段 −1 起采集）                                               | → 趋 0          |
-| churn 热点 Top3          | `BatchEngine.cs`(4)、`RunOptions.cs`(4)、`ConfigView.axaml`(4) | 热点应随拆分下降       |
+| 指标                     | 当前基线（实测）                                                                                                       | 目标方向           |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------- | -------------- |
+| 最大文件行数                 | 1960                                                                                                           | ↓              |
+| 最大方法行数                 | 249                                                                                                            | ↓              |
+| 全量构建警告数                | **0**（2026-10-18 阶段 1 清零：P0-12 完成，`TreatWarningsAsErrors=true` 生效，任何新增警告即构建失败）                                        | → 0 并保持        |
+| `catch (Exception)` 占比 | 37/69 = 54%                                                                                                    | ↓              |
+| 高危模块零覆盖数               | 7 → **3**（阶段 1 补齐 XlsxTaskParser/Writer、CliCommandBuilder、DangerousOperationGuard；余 CodeBuddyCreditsApiClient / BackupManager / LocalGitIntegration / ShutdownService 4 项） | ↓ 至 0          |
+| Desktop 测试数            | **13**（阶段 0 首批冒烟 12 项 + 阶段 1 增 P1-20 ConvertBack 不变量 1 项，见 P0-17）                                                            | ↑              |
+| 空提交信息数 / 迭代            | 10/12 历史；阶段 −1 起由 commit-msg 钩强制「非空 + 含改了什么/为什么」                                                               | → 0 并保持        |
+| 误提交产物数                 | 10；阶段 −1 已 `git rm --cached` 并 ignore，当前 0                                                                     | → 0 并保持        |
+| P0 未偿数                 | 17 → 阶段 −1 完成 5 项、阶段 0 完成 11 项、阶段 1 完成最后 1 项（P0-12），当前 **0**                                                       | → 0 并保持        |
+| 每迭代**新增**债务数           | 未采集（阶段 −1 起采集）                                                                                                 | → 趋 0          |
+| churn 热点 Top3          | `BatchEngine.cs`(4)、`RunOptions.cs`(4)、`ConfigView.axaml`(4)                                                   | 热点应随拆分下降       |
+| 测试总数                    | **345**（阶段 0 为 325；阶段 1 新增 20：P1-15 高危盲区 16 + P1-18 不变量 2 + P1-20 不变量 1 + IProcessLauncher 注入缝 1）                                  | ↑              |
 
 > **台账登记改用不变量描述，不用行号**。例：P0-1 登记为「`TryFallbackAsync` 中 `cost` 必须被 `MaxCostPerTask` 截断」并配断言测试。理由：既有审查报告记录 `:1011`，实测已漂移到 `:1406`，行号型台账必然失效。
 
@@ -403,12 +434,14 @@ P1-19 Desktop 补测试 + 契约收敛
 
 ```
 当天   : 提交规范 + gitignore 目录级 + 清产物 + 编译期分析 + 最小 CI（阶段 −1 的 1–5，已全部完成 2026-10-17）
-迭代1  : CI（--no-incremental，只报不阻断）+ 格式门禁 + 测试分层 + 盲区补齐
+迭代1  : CI（--no-incremental，只报不阻断）+ 格式门禁 + 测试分层 + 盲区补齐（已完成 2026-10-18，见 §5.4）
 迭代2  : EnforceCodeStyleInBuild + ArchUnitNET 断言（Core 优先）
 迭代3  : 复杂度阈值按基线标定（先 warning） + 逃逸阀登记
-迭代4  : 复杂度阈值转 error + TreatWarningsAsErrors 分批开启
+迭代4  : 复杂度阈值转 error + TreatWarningsAsErrors 分批开启（已提前完成 2026-10-18：存量清零后 TreatWarningsAsErrors=true）
 持续   : PR 清单 + 20% 预算 + 台账月度复核
 ```
+
+> 迭代 4 的 `TreatWarningsAsErrors` 提前至阶段 1 落地的原因：阶段 1 已把存量警告一次性清零（99 个，含 src 49 + 测试 50），「分批开启」的前提（避免一次性爆雷）已消失，直接全量开启等价且更简单。复杂度阈值（§4.4）与 ArchUnitNET（§4.3）仍在迭代 2/3 排期。
 
 ---
 
@@ -416,21 +449,57 @@ P1-19 Desktop 补测试 + 契约收敛
 
 ### 5.1 阶段 −1（2026-10-17，B 组全部，< 1 人日）
 
-| ID     | 落地内容                                                                                              | 验证                                                                       |
-| ------ | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| P0-11  | 新增 `.githooks/commit-msg`（拒绝空消息 / 纯标点 / 缺「改了什么·为什么」/ 正文过短）+ `.gitmessage.txt` 模板；本地 `git config core.hooksPath=.githooks`、`commit.template=.gitmessage.txt` | 对 6 类样例消息做干跑：空/纯标点/无正文/缺为什么均被拒，合规中文消息通过              |
-| P0-13  | `.gitignore` 末尾按日期逐个文件名规则替换为目录级：`.workbuddy/`、`.playwright-cli/`、`/TaskList/`、`*.backup-*`、`/models.yaml`、`/.tmp_reflect.ps1` | `git check-ignore` 对全部 10 项原误提交产物返回 IGNORED                          |
-| P0-14  | `git rm --cached` 清理 10 项误提交产物（含含个人绝对路径的 `.tmp_reflect.ps1`、`TaskList/tasks.xlsx` 真实运行数据等）；文件保留在磁盘并转为 ignore | `git ls-files` 中上述 10 项已不在跟踪列表                                       |
-| P0-15  | `Directory.Build.props` 增加 `EnforceCodeStyleInBuild=true`、`AnalysisLevel=latest-recommended`、`AnalysisMode=Recommended`；`TreatWarningsAsErrors` 保持 `false`（先 warning 不阻断） | `dotnet build --no-incremental` Core：**29 警告 / 0 错误**，CA2007/CA1822/CA1001 等已真实暴露（增量构建曾显示 0） |
-| P0-16  | 新增 `.github/workflows/ci.yml`：`windows-latest` + .NET 10，`dotnet build --no-incremental` + `dotnet test`，**只报告不阻断**          | 工作流文件已就位；门禁转阻断（必需状态检查）留待阶段 1（§4.9）                          |
+| ID    | 落地内容                                                                                                                                                                      | 验证                                                                                           |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| P0-11 | 新增 `.githooks/commit-msg`（拒绝空消息 / 纯标点 / 缺「改了什么·为什么」/ 正文过短）+ `.gitmessage.txt` 模板；本地 `git config core.hooksPath=.githooks`、`commit.template=.gitmessage.txt`               | 对 6 类样例消息做干跑：空/纯标点/无正文/缺为什么均被拒，合规中文消息通过                                                      |
+| P0-13 | `.gitignore` 末尾按日期逐个文件名规则替换为目录级：`.workbuddy/`、`.playwright-cli/`、`/TaskList/`、`*.backup-*`、`/models.yaml`、`/.tmp_reflect.ps1`                                             | `git check-ignore` 对全部 10 项原误提交产物返回 IGNORED                                                  |
+| P0-14 | `git rm --cached` 清理 10 项误提交产物（含含个人绝对路径的 `.tmp_reflect.ps1`、`TaskList/tasks.xlsx` 真实运行数据等）；文件保留在磁盘并转为 ignore                                                              | `git ls-files` 中上述 10 项已不在跟踪列表                                                               |
+| P0-15 | `Directory.Build.props` 增加 `EnforceCodeStyleInBuild=true`、`AnalysisLevel=latest-recommended`、`AnalysisMode=Recommended`；`TreatWarningsAsErrors` 保持 `false`（先 warning 不阻断） | `dotnet build --no-incremental` Core：**29 警告 / 0 错误**，CA2007/CA1822/CA1001 等已真实暴露（增量构建曾显示 0） |
+| P0-16 | 新增 `.github/workflows/ci.yml`：`windows-latest` + .NET 10，`dotnet build --no-incremental` + `dotnet test`，**只报告不阻断**                                                       | 工作流文件已就位；门禁转阻断（必需状态检查）留待阶段 1（§4.9）                                                           |
 
-### 5.2 阶段 −1 的已知边界（交接必读）
+### 5.2 阶段 0（2026-10-17，A 组 10 项 + P0-17）
 
-1. **钩子是本地生效，非 clone 自动继承**。`core.hooksPath=.githooks` 写入的是本机 `.git/config`。其他 clone / CI runner 默认不跑该钩。新人接入需执行：
+A 组 10 项互不耦合，与 P0-17 并行完成。代码改动均随既有工程约定落地（`UiThread` / `AutoShutdownCoordinator` / `AtomicFileWriter`），并由对应不变量测试锁住。验证统一口径：全量 `dotnet test`（`.slnx`）**325 通过 / 0 失败**（Core/Infrastructure/Agents 测试 313 + Desktop.Tests 12）。
+
+| ID     | 落地内容                                                                                                                                                                                              | 验证                                                                                         |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| P0-1   | `BatchEngine.TryFallbackAsync` 成本改为 `Math.Min(cost, Math.Max(0m, MaxCostPerTask))` 真实截断（原 no-op 恒等于 cost）                                                                          | 单测 `兜底实测成本超出单任务上限时按上限截断` 通过；不变量「cost ≤ MaxCostPerTask」由测试锁住                          |
+| P0-2   | `CliProcessRunner`：异步读取回调收到 `null` 即 EOF 信号；进程退出后 `DrainOutputAsync` 等 stdout/stderr 双流 EOF 到达（5s 上限，超时只记日志不阻塞）                                                   | 单测 `RunAsync_大量输出_进程退出后输出尾部不丢失` 通过                                                          |
+| P0-3   | `LocalGitIntegration` 全部参数走 `ProcessStartInfo.ArgumentList`（不经 shell、不做字符串解析）；`GitRefName` 白名单校验（防 `-` 开头被当选项、`..` 路径穿越）                                         | 单测 `GitRefNameTests`（白名单）+ `BatchEngineGitIntegrationTests` 通过                                                |
+| P0-4   | `BatchEngine` 引入 `_writeGate`（状态写入与落盘序列化互斥）+ `_persistGate`（单写者串行落盘）；`CompleteTask/FailTask/MarkInterrupted/PersistAsync` 全部走门                                        | 单测 `并发落盘串行化_终态不回退` 等通过                                                                      |
+| P0-5   | 兜底成本/用量 `_fallbackBatchCost` / `_fallbackModelsUsed` 由 `_fallbackLock` 保护 check-then-act，读（汇总）写（累加）共用同一把锁                                                     | 单测 `并发下兜底成本与用量累计准确` 通过                                                                      |
+| P0-6/7 | `EngineHost` 单一收敛点：`Raise` 经 `UiThread.Post` 广播；引擎事件订阅统一切 UI 线程后再调用订阅方，7 处订阅方不再各自 `Dispatcher.Post`；`UiThread` 已在 UI 线程则同步执行，保持顺序语义                          | 编译期单收敛点保证；线程切换责任从 7 个订阅方收口到 1 处（P0-6 的根因消除）                                          |
+| P0-8   | `MarkdownInPlaceWriter.WriteBackAsync` 复用库内 `AtomicFileWriter`（临时文件 + 原子替换），不再 `File.WriteAllTextAsync` 直接覆写                                                            | 单测 `回写走原子写_目录内不残留临时文件` 通过                                                                  |
+| P0-9   | `GuidedLoginOrchestrator.ClearLiveCredentials` 先备份 Live 凭证到同级暂存目录再删除；异常路径 `RestoreLiveCredentials` 回滚原凭证；成功后才清暂存副本（清理失败仅告警，不触发回滚覆盖新凭证） | 单测 `GuidedLoginFlowTests` 覆盖备份/超时回滚/成功清理路径                                                        |
+| P0-10  | `AutoShutdownCoordinator` 接管关机条件判定与可撤销倒计时；`EngineHost` 仅提供倒计时窗口，取消/异常/窗口弹不出均不关机（宁可不关也不强关）                                                          | 单测 `AutoShutdownCoordinatorTests` 锁定「无一步到位直接关机」不变量；取消/异常/无窗口三路径均不关机                     |
+| P0-17  | 新建 `tests/BatchAgentRunner.Desktop.Tests` 引用 `Desktop` 程序集，加首批冒烟测试（纯 UI 无关值转换器 `GreaterThanZeroConverter` / `EqualsTextConverter` 共 12 项），Desktop 由结构性不可测转为可测 | `dotnet test` 该工程 **12 通过 / 0 失败**；已加入 `.slnx`，CI 全量自动覆盖                                       |
+
+> 阶段 0 边界（交接必读）：① 仅止血，未动 `BatchEngine` 骨架（P1-1~P1-3 仍待阶段 2）；② ~~全量构建仍有 48 个 CA 警告~~（2026-10-18 更新：阶段 1 已清零并开启 `TreatWarningsAsErrors`，见 §5.4 / P0-12）；③ 不变量测试已锁住「一眼看不出是错的」类缺陷（P0-1/2/3/4/5/8/9/10），但 Desktop 线程收敛（P0-6/7）目前靠编译期收口 + 复用约定保证，尚未有运行时断言测试（需阶段 2 引入 Avalonia 头less 测试基座，见 P1-19）。
+
+### 5.3 阶段 −1 的已知边界（交接必读）
+
+1. **钩子是本地生效，非 clone 自动继承**。`core.hooksPath=.githooks` 写入的是本机 `.git/config`。其他 clone / CI runner 默认不跑该钩。新人接入需执行：  
    `git config core.hooksPath .githooks`（或仓库根提供 `tools/setup-hooks.sh` 一键脚本——尚未提供，列为后续）。
-2. **CI 当前只报告、不阻断**。未配置分支保护 / 必需状态检查，故红 CI 不会阻止合并。阶段 1（§4.9）再开启 `TreatWarningsAsErrors` 并将 CI 设为必需。
-3. **P0-12（存量警告清零）不在阶段 −1**。阶段 −1 仅"让警告可见"（P0-15 + P0-16 的 `--no-incremental`），真正清零排在阶段 1。任何"警告已清零"的说法在 CI 全量基线稳定前仍不可信。
+2. ~~**CI 当前只报告、不阻断**~~（2026-10-18 更新）：分支保护 / 必需状态检查**仍未配置**（GitHub 仓库设置，代码侧无法完成），红 CI 依旧不阻止合并；但 `TreatWarningsAsErrors=true` 已让「新增警告」在构建期失败（本地与 CI 的 build 步骤均生效）。**分支保护设为必需状态检查仍是剩余动作**（需仓库管理员权限）。
+3. ~~**P0-12（存量警告清零）不在阶段 −1**~~（2026-10-18 更新）：阶段 1 已清零并开启 `TreatWarningsAsErrors`，见 §5.4。
 4. **未净化已入库历史**。`git rm --cached` 只把文件移出索引，历史提交中仍含这些产物（隐私面）。彻底净化需 `git filter-repo`，属高风险操作，本阶段未做，登记为后续机会主义项。
+
+### 5.4 阶段 1（2026-10-18，建网 6 项全部，P0 清零）
+
+**验证统一口径**：`dotnet build --no-incremental` = **0 警告 / 0 错误**（`TreatWarningsAsErrors=true` 生效）；`dotnet test BatchAgentRunner.slnx` = **345 通过 / 0 失败**（阶段 0 基线 325 + 阶段 1 新增 20）。
+
+| ID    | 落地内容                                                                                                                                                                                                                          | 验证                                                                                     |
+| ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| P2-20 | 测试分层：E2E/Usability/Process 三类打 `[Trait("Category", …)]`；CI 拆「快跑（单元，默认 bucket + Desktop.Tests）」与「慢跑（E2E/Usability/Process）」两步，均 `--no-build`                                                                | 快跑过滤 `Category!=E2E&Category!=Usability&Category!=Process` = 306 通过；慢跑 = 24 通过；合计 330 = 主测试项目全量 |
+| P2-21 | 去 Flaky：① `IProcessLauncher`/`RealProcessLauncher` 抽出 `CliProcessRunner` 的进程启动缝，测试可注入假启动器验证「启动失败」分支（无需真实进程）；② samples 改读**嵌入式资源副本**（csproj `Link` 指向真实 samples，内容随 samples 同步，不依赖运行时/克隆路径）；③ 删除全部测试中的 `RepoRoot()` 磁盘路径探测 | 新增 `RunAsync_启动器返回null_返回无法启动进程结果且不进入主循环` 通过；E2E/Usability/序列化测试改读嵌入式资源后全通过 |
+| P2-28 | samples 降级为「只读用户示例」：测试契约（config.example.json / tasks.json / tasks.md）全部改读嵌入式副本；`TestSampleResources` 统一读取入口                                                                                          | `RunOptionsSerializationTests.仓库内注释模板可被解析`（改断言资源非空）、E2E TC-E2E-008 往返均通过                          |
+| P1-15 | 高危盲区补齐 16 项：`XlsxTaskWriterTests`（二进制原子写回：缺列自动追加 / 无临时残留 / 原地更新）、`CliCommandBuilderTests`（注入面：占位符替换 / 引号转义 / 工作空间包裹 / 专家注入）、`DangerousOperationGuardTests`（安全闸门：白名单优先 / 黑名单回传模式 / 空文本不抛） | 新增 16 项全部通过；高危模块零覆盖数 7 → 3                          |
+| P0-12 | 存量警告清零 + 警告转错误：99 个警告逐类修复（CA2007 ConfigureAwait、CA1822 可静态化、CA1001 补 IDisposable 链、CA1861 静态数组、CA1816 SuppressFinalize、CA1806/CA2201/CA1847/CA1850/CA1860/CA2016/CA1711/CA1716/CA1051 等），8 项逃逸登记于 §4.7 台账；`TreatWarningsAsErrors=true` 全量开启 | `dotnet build --no-incremental` **0 警告 / 0 错误**；故意加 Version 探针验证 NU1008 后即恢复           |
+| P1-17 | 引入 CPM：新建 `Directory.Packages.props`（`ManagePackageVersionsCentrally=true`，全部包版本集中）；5 个 csproj 的 `PackageReference` 去掉内联 Version；删除 Core 无效依赖 `Microsoft.Extensions.Logging.Abstractions`（全仓 `ILogger` 使用 0 处） | 探针实验：任一 csproj 再写 `Version=` 即 NU1008 **构建错误**，版本漂移结构性防住           |
+| P1-18 | `JsonCreditsClaimStore` 默认构造修复（先解析目录到局部变量再建目录/取路径），拆除「默认构造必抛 ArgumentNullException」定时炸弹                                                                                              | 不变量测试 2 项通过（默认构造只读加载不抛 + 临时目录保存/加载往返无损；默认路径绝不写用户数据）             |
+| P1-20 | `ConfigHubConverters` 两处 `ConvertBack` 由 `throw new NotImplementedException()` 改为返回 `BindingOperations.DoNothing`（表示「不支持反向转换」而非崩溃）                                                              | 不变量测试 1 项通过（Desktop.Tests）；双向绑定触发不再崩                        |
+
+> 阶段 1 边界（交接必读）：① CA2007/CA1861/CA1707 在**测试项目**经 NoWarn 豁免（xUnit1030 与 CA2007 直接冲突等原因，已登记 §4.7）；生产代码 0 豁免。② `IProcessLauncher` 目前只被 `CliProcessRunner` 消费，GateEvaluator 内的 `cmd.exe` 直拉（P1-9）仍待阶段 2 抽 `IProcessRunner`。③ 分支保护 / 必需状态检查仍未配置（GitHub 设置），CI 红不阻断合并——这是 P0-16「只报告不阻断」的最后残留，需仓库管理员在 GitHub 页面完成。④ `TreatWarningsAsErrors` 为全量开启而非 §4.2 的分批（存量清零后分批前提已消失，见 §4.9 注）。
 
 ---
 
@@ -448,11 +517,13 @@ P1-19 Desktop 补测试 + 契约收敛
 
 ### B.1 复核结论（v1.0 断言仍成立）
 
+> 注：下表为 v2.0 盘点时（**阶段 0 落地之前**）的快照。阶段 0 已于 2026-10-17 全部修复（P0-1~P0-10 + P0-17，见 §5.2），下表「仍存在」已不再成立，列此仅作历史复核留痕。
+
 | 项               | 复核方式                            | 结果                                                                |
 | --------------- | ------------------------------- | ----------------------------------------------------------------- |
-| P0-1 成本封顶 no-op | 读 `BatchEngine.cs:1406`         | **仍存在**：`Math.Min(cost, Math.Max(MaxCostPerTask, cost))`          |
-| P0-2 输出未排空      | 读 `CliProcessRunner.cs:213,293` | **仍存在**；工作区在途改动（+3/−2）仅涉及 `PromptClassifier` 自动应答分类，**与 P0-2 无关** |
-| P1-6 同步阻塞       | grep                            | 2 处确认：`EngineHost.cs:136`、`MainViewModel.cs:20`                   |
+| P0-1 成本封顶 no-op | 读 `BatchEngine.cs:1406`         | **阶段 0 已修复**：改为 `Math.Min(cost, Math.Max(0m, MaxCostPerTask))`，不变量测试 `兜底实测成本超出单任务上限时按上限截断` 锁住 |
+| P0-2 输出未排空      | 读 `CliProcessRunner.cs:213,293` | **阶段 0 已修复**：回调 EOF + `DrainOutputAsync` 门；单测 `RunAsync_大量输出_进程退出后输出尾部不丢失` 锁住 |
+| P1-6 同步阻塞       | grep                            | 2 处确认：`EngineHost.cs:136`、`MainViewModel.cs:20`（属 P1-6，非阶段 0 范围，排期阶段 2）                   |
 | P0-4/P0-5 并发    | v1.0 结论沿用                       | 未复核，建议偿还前补并发测试确认                                                  |
 
 ### B.2 实测数据（本版新增，均为命令实跑）

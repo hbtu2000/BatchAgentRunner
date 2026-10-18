@@ -54,7 +54,9 @@ Mock 适配器不调用任何 CLI，用来验证调度逻辑（降级、时段�
 
 ## 开发约定（技术债务治理阶段 −1 起生效）
 
-本仓库按 [`docs/TECH-DEBT-技术债务治理方案-v2.0.md`](docs/TECH-DEBT-技术债务治理方案-v2.0.md) 治理。阶段 −1 已落地的「防新增」机制：
+本仓库按 [`docs/TECH-DEBT-技术债务治理方案-v2.0.md`](docs/TECH-DEBT-技术债务治理方案-v2.0.md) 治理。**当前进度：阶段 −1（B 组 5 项，2026-10-17）、阶段 0（A 组 10 项 + P0-17，2026-10-17）、阶段 1（建网 6 项，2026-10-18）均已完成；P0 清单 17 项全部清偿**。全量测试 `dotnet test BatchAgentRunner.slnx` 当前 **345 通过 / 0 失败**（含 `tests/BatchAgentRunner.Desktop.Tests`）。下一站：阶段 2 动骨（P1-3 提接口 → P1-4/5 DI → P1-1 拆分 `BatchEngine`）。
+
+已落地的「防新增」机制：
 
 - **提交信息门禁**：`.githooks/commit-msg` 拒绝空消息 / 纯标点 / 缺「改了什么·为什么」正文的提交；模板见 `.gitmessage.txt`。
   新 clone 需先启用钩子（本机已配置，其他环境执行一次）：
@@ -62,8 +64,11 @@ Mock 适配器不调用任何 CLI，用来验证调度逻辑（降级、时段�
   git config core.hooksPath .githooks
   git config commit.template .gitmessage.txt
   ```
-- **CI（只报告不阻断）**：`.github/workflows/ci.yml` 在 `windows-latest` 上 `dotnet build --no-incremental` + `dotnet test`。注意必须用 `--no-incremental` 全量重建，否则增量构建会掩盖真实警告（P0-12）。CI 尚未设为合并必需检查，门禁转阻断见治理方案阶段 1。
+- **编译期门禁**：`EnforceCodeStyleInBuild` + `AnalysisLevel=latest-recommended` + **`TreatWarningsAsErrors=true`**（阶段 1 / P0-12：存量警告清零后开启，新增任何分析器警告即构建失败）。豁免走治理方案 §4.7 逃逸阀台账（含理由/到期/责任人）。
+- **CPM**：`Directory.Packages.props` 集中全部包版本；任何 csproj 再写内联 `Version=` 即 NU1008 构建错误。
+- **CI（build 失败即红，合并仍不阻断）**：`.github/workflows/ci.yml` 在 `windows-latest` 上 `dotnet build --no-incremental` + 分层测试（快跑单元 / 慢跑 E2E·Usability·Process）。必须用 `--no-incremental` 全量重建，否则增量构建会掩盖真实警告（P0-12）。分支保护（必需状态检查）尚未配置，需仓库管理员在 GitHub 设置。
 - **`.gitignore` 目录级规则**：`.workbuddy/`、`/.playwright-cli/`、`/TaskList/`、`*.backup-*`、`/models.yaml`、`/.tmp_reflect.ps1` 等运行产物/隐私不再入库。
+- **测试约定**：E2E / Usability / Process 三类打 `[Trait("Category", …)]`，CI 分快慢跑；测试方法省略 `ConfigureAwait`（xUnit 建议）；高危路径（凭证/进程/Git/安全拦截/二进制写回）改动须带测试。
 
 ---
 

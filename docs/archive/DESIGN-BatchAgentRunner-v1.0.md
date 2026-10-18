@@ -10,15 +10,15 @@
 **版本：** 1.1
 
 **上游文档：**
-- 产品需求文档：`docs/PRD-AI批处理任务调度工具-v1.0.md`（内容版本 v1.11）
-- 评审报告（初核 / R2 复审）：`docs/REVIEW-PRD-AI批处理任务调度工具-v1.0.md`、`-r2.md`
+- 产品需求文档：`docs/PRD-BatchAgentRunner-v2.0.md`（内容版本 v1.11）
+- 评审报告（初核 / R2 复审）：`docs/archive/REVIEW-PRD-AI批处理任务调度工具-v1.0.md`、`-r2.md`
 
 **本设计覆盖：** PRD 一期 **P0 全量 + P1 全量**（用户确认范围）
 **开发语言 / 平台：** C# / .NET 10，界面 Avalonia 12（跨平台桌面，Windows 优先）
 
 **相关设计文档：**
-- 二期扩展设计：`docs/DESIGN-BatchAgentRunner-二期-v1.0.md`（流程模板/多阶段编排、DAG 依赖、质量门禁、场景模板库 S1–S16、REQ-016/017/018、Markdown 原地回写、断点会话恢复）
-- 凭证快照与账号切换：`docs/DESIGN-账号凭证切换-v1.0.md`（会话恢复方案 b 的 `ICredentialVault` 基础）
+- 二期扩展设计：`docs/DESIGN-BatchAgentRunner-v2.0.md`（流程模板/多阶段编排、DAG 依赖、质量门禁、场景模板库 S1–S16、REQ-016/017/018、Markdown 原地回写、断点会话恢复）
+- 凭证快照与账号切换：`docs/DESIGN-BatchAgentRunner-v2.0.md`（会话恢复方案 b 的 `ICredentialVault` 基础）
 
 ---
 
@@ -445,7 +445,7 @@ BatchEngine ──(BatchEvent)──▶ EngineHost(订阅)
 | V-1 headless 调用与输出捕获 | `CliCommandBuilder` / `CliProcessRunner` | 参数模板外置为配置，不硬编码 |
 | V-2 模型参数 | `CliCommandBuilder` | 配置 `CliArgumentsTemplate` 占位 |
 | V-3 额度错误特征 | `QuotaErrorClassifier` 模式库 | 模式库配置化 + 手动标记额度耗尽入口 |
-| V-4 多账号切换 | `AccountConfig` 凭据策略 | 账号仅存标识 + 凭据引用，切换策略可替换；**凭据备份/切换专项设计见 `docs/DESIGN-账号凭证切换-v1.0.md`（凭证快照 Vault 方案）** |
+| V-4 多账号切换 | `AccountConfig` 凭据策略 | 账号仅存标识 + 凭据引用，切换策略可替换；**凭据备份/切换专项设计见 `docs/DESIGN-BatchAgentRunner-v2.0.md`（凭证快照 Vault 方案）** |
 | V-5 专家参数 | `AgentRequest.ExpertId` | 不支持时降级为 prompt 注入角色描述 |
 | V-6 无人值守交互覆盖 | `CliProcessRunner` + `PromptClassifier` | stdin 等待检测；确认型注入默认应答，选择型按索引自动选默认项 |
 | V-7 用量/费用数据 | `AgentUsage` / `FallbackCost` | 不可得 → 调用次数 × 预估单价，报告标注「估算」 |

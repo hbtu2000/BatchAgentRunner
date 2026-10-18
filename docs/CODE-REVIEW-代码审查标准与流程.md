@@ -124,7 +124,11 @@
 | H7 | 覆盖式写入一律原子写（`AtomicFileWriter`） | 🔴 | 人工 grep `File.WriteAllText` |
 | H8 | 危险操作黑名单优先拦截、白名单优先于黑名单 | 🔴 | 单测 `DangerousOperationGuard` |
 | H9 | 暂停等待时长从任务/批处理时长剔除 | 🟡 | 单测 `ApplyPausedExclusion` |
-| H10 | 库层 async 必须 `.ConfigureAwait(false)` | 🟡 | 分析器 `CA2007` |
+| H10 | 库层 async 必须 `.ConfigureAwait(false)`（测试方法相反：一律省略，见 xUnit1030） | 🟡 | 分析器 `CA2007`（生产为 error；测试项目经 §4.7 台账豁免） |
+| H11 | 不新增分析器警告（存量已清零） | 🔴 | `TreatWarningsAsErrors=true`，构建期即失败 |
+| H12 | 包版本只写在 `Directory.Packages.props` | 🔴 | CPM + NU1008 构建错误 |
+| H13 | 测试分层：E2E/Usability/Process 打 `[Trait("Category", …)]`；高危路径（凭证/进程/Git/安全拦截/二进制写回）须带测试 | 🟡 | CI 快慢两步 + 人工 |
+| H14 | 持 `IDisposable` 字段的类型自身须可释放（`SemaphoreSlim`/`CancellationTokenSource`/日志） | 🟡 | 分析器 `CA1001`（error） |
 
 ---
 
@@ -216,14 +220,16 @@ dotnet_diagnostic.CS8602.severity = warning
 dotnet_diagnostic.CA2007.severity = warning
 ```
 
-### 7.2 渐进开启分析器（`Directory.Build.props` 里加）
+### 7.2 分析器门禁（`Directory.Build.props`，2026-10-18 阶段 1 已全量落地）
 ```xml
 <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
-<EnableNETAnalyzers>true</EnableNETAnalyzers>
-<AnalysisLevel>latest</AnalysisLevel>
-<!-- 中期再考虑：<TreatWarningsAsErrors>true</TreatWarningsAsErrors> -->
+<AnalysisLevel>latest-recommended</AnalysisLevel>
+<AnalysisMode>Recommended</AnalysisMode>
+<!-- 存量警告清零后已开启：新增任何分析器警告即构建失败。
+     豁免须走治理方案 §4.7 逃逸阀台账（理由 + 到期日 + 责任人）。 -->
+<TreatWarningsAsErrors>true</TreatWarningsAsErrors>
 ```
-> 注意：直接开 `TreatWarningsAsErrors` 会因历史 warning 让构建失败；**先开 `EnforceCodeStyleInBuild` + 分析器，把 warning 清零后再升格为 error**，避免一次性阻断全员。
+> 历史路径记录：直接开 `TreatWarningsAsErrors` 会因历史 warning 让构建失败；本项目先开 `EnforceCodeStyleInBuild` + 分析器，阶段 1（2026-10-18）把 99 个存量警告清零后才升格为 error。测试项目的 `CA1707`/`CA2007`/`CA1861` 豁免见 `tests/**/*.csproj` 注释与治理方案 §4.7 台账。
 
 ### 7.3 格式统一
 - 推荐 `dotnet format` 或 `CSharpier` 作为保存时/提交前钩子，让 §3 里所有风格项交给机器。
@@ -235,17 +241,18 @@ dotnet test tests/BatchAgentRunner.Tests
 dotnet format BatchAgentRunner.slnx --verify-no-changes   # 接门禁时
 ```
 
-### 7.5 长期：轻量 CI（即便现在本地开发）
-- 触发：PR 开/更新 → 跑 build + test + format 校验。
+### 7.5 轻量 CI（已落地，`.github/workflows/ci.yml`）
+- 触发：push/PR 到 `master` → `windows-latest` + .NET 10，`dotnet build --no-incremental`（必须全量重建，否则复现 P0-12 的 0 警告假象）+ 分层测试（快跑单元 / 慢跑 E2E·Usability·Process）。
 - 核心模块（路径 `src/BatchAgentRunner.Core/**`、`src/BatchAgentRunner.Agents/**`、`src/BatchAgentRunner.Infrastructure/**`）要求 2 审批。
+- 分支保护（必需状态检查）尚未配置：CI 红当前不阻止合并，需仓库管理员在 GitHub 仓库设置中补齐（治理方案 §5.3 边界 2）。
 
 ---
 
 ## 8. 落地路线图
 
-- **短期（0–2 周）**：本文件落地 + 加 `.editorconfig` + 团队按 §3 清单互审；核心模块开始双人审；记录前 10 个 PR 的 🔴/🟡 分布。
-- **中期（1–2 月）**：开 `EnforceCodeStyleInBuild` + 分析器，warning 清零；`dotnet format` 接提交前钩子；核心模块门禁硬化。
-- **长期（3 月+）**：轻量 CI 流水线（build/test/format/双人审门禁）；建立误切换率、审查时长、🔴 密度等指标，季度复盘迭代本标准。
+- ~~**短期（0–2 周）**：本文件落地 + 加 `.editorconfig` + 团队按 §3 清单互审；核心模块开始双人审；记录前 10 个 PR 的 🔴/🟡 分布。~~ ✅ 已完成（`.editorconfig`、双人审、CI 均已落地）
+- ~~**中期（1–2 月）**：开 `EnforceCodeStyleInBuild` + 分析器，warning 清零；`dotnet format` 接提交前钩子；核心模块门禁硬化。~~ ✅ 已完成（2026-10-18：99 个存量警告清零 + `TreatWarningsAsErrors=true`，见治理方案 §5.4）
+- **长期（3 月+）**：分支保护设为必需状态检查（GitHub 设置，待仓库管理员）；`dotnet format` 接提交前钩子（`pre-commit`，治理方案 §4.1 已规划未落地）；ArchUnitNET 架构断言 + 复杂度阈值（治理方案 §4.3/§4.4，迭代 2/3）；建立误切换率、审查时长、🔴 密度等指标，季度复盘迭代本标准。
 
 ---
 
@@ -256,11 +263,15 @@ dotnet format BatchAgentRunner.slnx --verify-no-changes   # 接门禁时
 | `File.WriteAllText` 覆盖任务文件 | `AtomicFileWriter.WriteAsync` | `AtomicFileWriter.cs` |
 | DTO 派生属性没 `[JsonIgnore]` | 标 `[JsonIgnore]` | `AccountConfig.cs` |
 | 反序列化集合声明为 `IReadOnlyList<T>` | 用 `List<T>` | 项目记忆坑 |
-| 库代码 async 漏 `ConfigureAwait(false)` | 全部加 | `BatchEngine.cs` 已遵 |
+| 库代码 async 漏 `ConfigureAwait(false)` | 全部加（测试方法相反：省略） | `BatchEngine.cs` 已遵；xUnit1030 |
 | 锁内 `continue`/异常后漏 `Release` | `finally` 中 `Release` | `WaitForRestoreAsync` |
 | CLI 参数字符串拼接 | `ArgumentList` + 环境变量注入 | `DangerousOperationGuard` / Vault |
 | 凭据/指令写日志 | 仅写账号 id + 哈希前 8 位 | `AccountConfig` 安全约定 |
 | 危险操作白名单误含危险词 | 白名单严格、优先级高于黑名单 | `DangerousOperationGuard` |
+| csproj 内联包版本 | 只写 `Directory.Packages.props`（NU1008） | P1-17 |
+| 测试依赖磁盘 samples / 仓库根路径 | 读嵌入式资源副本 `TestSampleResources` | P2-21/P2-28 |
+| 测试里起真实进程 | 注入 `IProcessLauncher` 假启动器 | P2-21 |
+| 持有 `SemaphoreSlim`/`CTS` 却不实现 `IDisposable` | 补 `IDisposable` 链并级联释放 | P0-12 / CA1001 |
 
 ---
 
