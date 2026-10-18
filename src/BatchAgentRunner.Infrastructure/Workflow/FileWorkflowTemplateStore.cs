@@ -50,15 +50,15 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
                 string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase));
     }
 
-    public Task SaveUserTemplateAsync(TemplateSpec template, CancellationToken cancellationToken = default)
+    public Task SaveUserTemplateAsync(TemplateSpec spec, CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(_userDir);
-        var path = Path.Combine(_userDir, $"{template.Id}.json");
-        File.WriteAllText(path, JsonDefaults.Serialize(template));
+        var path = Path.Combine(_userDir, $"{spec.Id}.json");
+        File.WriteAllText(path, JsonDefaults.Serialize(spec));
         return Task.CompletedTask;
     }
 
-    private List<TemplateSpec> LoadFrom(string dir)
+    private static List<TemplateSpec> LoadFrom(string dir)
     {
         if (!Directory.Exists(dir))
         {

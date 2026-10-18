@@ -119,7 +119,8 @@ public sealed class SmtpNotifier : INotifier
                 message.To.Add(to);
             }
 
-            await client.SendMailAsync(message).ConfigureAwait(false);
+            // CA2016：向前传播取消令牌（取消即中止本轮发送）
+            await client.SendMailAsync(message, cancellationToken).ConfigureAwait(false);
         }
         catch (Exception ex)
         {

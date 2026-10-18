@@ -144,7 +144,8 @@ public sealed class LoginAccountRow : ObservableObject
 /// 傻瓜式登录页：把「引导登录全流程 + 加入账号池」收成一个大按钮，
 /// 用户只需要在弹出的浏览器/终端里完成登录，其余（清场、等待、校验、备份、入池、保存）全自动。
 /// </summary>
-public sealed class LoginViewModel : ViewModelBase
+/// <remarks>CA1001（P0-12）：持有 <see cref="CancellationTokenSource"/>（登录/领积分可取消操作），实现 <see cref="IDisposable"/>。</remarks>
+public sealed class LoginViewModel : ViewModelBase, IDisposable
 {
     private readonly EngineHost _host;
 
@@ -719,5 +720,14 @@ public sealed class LoginViewModel : ViewModelBase
         }
 
         return "acc-" + index;
+    }
+
+    /// <summary>释放未取消完的登录/领积分 CTS（CA1001；每次操作结束已主动释放，这里是兜底）。</summary>
+    public void Dispose()
+    {
+        _cts?.Cancel();
+        _cts?.Dispose();
+        _cts = null;
+        GC.SuppressFinalize(this);
     }
 }

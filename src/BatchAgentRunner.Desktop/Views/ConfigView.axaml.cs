@@ -6,6 +6,9 @@ namespace BatchAgentRunner.Desktop.Views;
 
 public partial class ConfigView : UserControl
 {
+    /// <summary>任务文件筛选通配符（CA1861：常量数组提为 static readonly）。</summary>
+    private static readonly string[] TaskFilePatterns = { "*.json", "*.md", "*.markdown", "*.xlsx" };
+
     public ConfigView()
     {
         InitializeComponent();
@@ -36,7 +39,7 @@ public partial class ConfigView : UserControl
             {
                 new FilePickerFileType("任务文件")
                 {
-                    Patterns = new[] { "*.json", "*.md", "*.markdown", "*.xlsx" }
+                    Patterns = TaskFilePatterns
                 },
                 FilePickerFileTypes.All
             }

@@ -66,7 +66,7 @@ public sealed class GateEvaluator
         }
     }
 
-    private async Task<GateResult> EvaluateCommandAsync(QualityGate gate, GateEvaluationContext ctx, CancellationToken cancellationToken)
+    private static async Task<GateResult> EvaluateCommandAsync(QualityGate gate, GateEvaluationContext ctx, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(gate.Command))
         {
@@ -76,11 +76,8 @@ public sealed class GateEvaluator
         var (exitCode, stdOut, stdErr) = await RunCommandAsync(gate.Command, ctx.WorkingDirectory, cancellationToken)
             .ConfigureAwait(false);
 
-        var expected = 0;
-        if (!string.IsNullOrWhiteSpace(gate.ExpectedExitCode))
-        {
-            int.TryParse(gate.ExpectedExitCode, out expected);
-        }
+        // 期望退出码可配置；缺省/解析失败按 0 判定（原行为不变，显式检查 TryParse 返回值以满足 CA1806）
+        var expected = int.TryParse(gate.ExpectedExitCode, out var parsedExitCode) ? parsedExitCode : 0;
 
         if (exitCode != expected)
         {

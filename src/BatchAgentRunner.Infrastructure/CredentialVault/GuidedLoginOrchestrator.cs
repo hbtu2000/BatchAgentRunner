@@ -19,7 +19,8 @@ public sealed record GuidedLoginProgress(GuidedLoginPhase Phase, string Message)
 public sealed class GuidedLoginOrchestrator
 {
     /// <summary>⑥ 校验：调用 CLI 做一次极简请求确认凭证有效（如适配器的 ValidateAccountAsync）。</summary>
-    public delegate Task<PreflightResult> AccountValidatorDelegate(string accountId, CancellationToken ct);
+    /// <remarks>CA1711：委托类型名不带 "Delegate" 后缀（.NET 命名惯例）。</remarks>
+    public delegate Task<PreflightResult> AccountValidator(string accountId, CancellationToken ct);
 
     private readonly ICredentialVault _vault;
     private readonly ICliProcessGuard _processGuard;
@@ -43,7 +44,7 @@ public sealed class GuidedLoginOrchestrator
     /// <param name="timeout">等待登录凭证的超时（DESIGN §5 ⑤：默认 5 分钟）。</param>
     public async Task<CredentialSnapshotInfo> RunAsync(AgentKind cli, string accountId,
         string? displayName = null, string? site = null, TimeSpan? timeout = null,
-        AccountValidatorDelegate? validator = null, CancellationToken cancellationToken = default)
+        AccountValidator? validator = null, CancellationToken cancellationToken = default)
     {
         var spec = CredentialLocationRegistry.Resolve(cli);
         if (!spec.IsConfigured)

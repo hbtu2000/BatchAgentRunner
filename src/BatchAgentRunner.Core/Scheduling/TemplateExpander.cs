@@ -9,9 +9,7 @@ namespace BatchAgentRunner.Core.Scheduling;
 /// </summary>
 public sealed class TemplateExpander
 {
-    private readonly StageTemplateRenderer _renderer = new();
-
-    public List<TaskItem> Expand(TemplateSpec template, string? baseDir = null)
+    public static List<TaskItem> Expand(TemplateSpec template, string? baseDir = null)
     {
         var instances = BuildInstances(template, baseDir);
         var tasks = new List<TaskItem>();
@@ -29,7 +27,7 @@ public sealed class TemplateExpander
 
             var instruction = string.IsNullOrWhiteSpace(template.InstructionTemplate)
                 ? string.Empty
-                : _renderer.Render(template.InstructionTemplate, ctx).Text;
+                : StageTemplateRenderer.Render(template.InstructionTemplate, ctx).Text;
             ctx.SetTaskField("instruction", instruction);
 
             var task = new TaskItem
@@ -69,14 +67,14 @@ public sealed class TemplateExpander
         {
             if (!string.IsNullOrWhiteSpace(stage.InstructionTemplate))
             {
-                stage.InstructionTemplate = new StageTemplateRenderer().Render(stage.InstructionTemplate, ctx).Text;
+                stage.InstructionTemplate = StageTemplateRenderer.Render(stage.InstructionTemplate, ctx).Text;
             }
         }
 
         return clone;
     }
 
-    private List<Dictionary<string, string>> BuildInstances(TemplateSpec template, string? baseDir)
+    private static List<Dictionary<string, string>> BuildInstances(TemplateSpec template, string? baseDir)
     {
         // 1) CSV 模式：任一变量为 CsvColumn 且 FileGlob 指向 csv
         var csvVar = template.Vars.FirstOrDefault(v => v.Source == VarSource.CsvColumn);

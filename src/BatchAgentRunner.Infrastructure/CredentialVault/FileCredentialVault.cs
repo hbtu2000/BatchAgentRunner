@@ -15,7 +15,11 @@ namespace BatchAgentRunner.Infrastructure.CredentialVault;
 ///   vault\audit.log                                    （审计日志：时间/账号/动作/结果，不含内容）
 /// 安全约定：快照内凭证文件经 <see cref="ICredentialProtector"/> 加密落盘；审计只记账号 id 与哈希前 8 位。
 /// </summary>
-public sealed class FileCredentialVault : ICredentialVault
+/// <remarks>
+/// CA1001（P0-12）：持有 <see cref="SemaphoreSlim"/> 序列化门，实现 <see cref="IDisposable"/>；
+/// 由 <see cref="CredentialVaultHost"/> 在用毕时释放（Vault 为应用级单例，随宿主销毁）。
+/// </remarks>
+public sealed class FileCredentialVault : ICredentialVault, IDisposable
 {
     private static readonly JsonSerializerOptions ManifestOptions = new()
     {
@@ -374,7 +378,7 @@ public sealed class FileCredentialVault : ICredentialVault
 
     // ---------------- 内部工具 ----------------
 
-    private CredentialLocationSpec EnsureConfigured(AgentKind cli)
+    private static CredentialLocationSpec EnsureConfigured(AgentKind cli)
     {
         var spec = CredentialLocationRegistry.Resolve(cli);
         if (!spec.IsConfigured)
@@ -397,7 +401,7 @@ public sealed class FileCredentialVault : ICredentialVault
         }
     }
 
-    private List<(string RelativePath, byte[] Bytes, string Sha256)> CollectLiveFiles(CredentialLocationSpec spec)
+    private static List<(string RelativePath, byte[] Bytes, string Sha256)> CollectLiveFiles(CredentialLocationSpec spec)
     {
         var result = new List<(string, byte[], string)>();
         foreach (var file in spec.Files)
@@ -552,6 +556,13 @@ public sealed class FileCredentialVault : ICredentialVault
         }
 
         _auditSink?.Invoke(line);
+    }
+
+    /// <summary>释放序列化门（CA1001）。仅在所有凭证操作已完成后调用。</summary>
+    public void Dispose()
+    {
+        _gate.Dispose();
+        GC.SuppressFinalize(this);
     }
 }
 

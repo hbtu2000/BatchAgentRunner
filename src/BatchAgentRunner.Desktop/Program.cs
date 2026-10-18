@@ -48,7 +48,8 @@ sealed class Program
         AppDomain.CurrentDomain.UnhandledException += (_, e) =>
         {
             var ex = e.ExceptionObject as Exception
-                     ?? new Exception("捕获到非 Exception 类型的未处理异常对象");
+                     // CA2201：抛具体异常类型（ExceptionObject 不是 Exception = 类型转换失败）
+                     ?? new InvalidCastException("捕获到非 Exception 类型的未处理异常对象");
             Log("FATAL", $"AppDomain 未处理异常（IsTerminating={e.IsTerminating}）。{Environment.NewLine}{ex}");
         };
 
@@ -80,7 +81,8 @@ sealed class Program
     {
         try
         {
-            MessageBoxW(IntPtr.Zero,
+            // CA1806：显式丢弃 MessageBoxW 返回值（MB_* 只关心用户点了什么，此处仅告知）
+            _ = MessageBoxW(IntPtr.Zero,
                 $"程序启动/运行失败：{ex.Message}{Environment.NewLine}{Environment.NewLine}" +
                 $"详细日志已写入：{TodayLogPath}",
                 "BatchAgentRunner 致命错误", 0x10 /* MB_ICONERROR */);

@@ -19,6 +19,7 @@ using BatchAgentRunner.Infrastructure.TaskFiles;
 using BatchAgentRunner.Desktop.Views;
 using CommunityToolkit.Mvvm.ComponentModel;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 
 namespace BatchAgentRunner.Desktop.Services;
 
@@ -26,11 +27,20 @@ namespace BatchAgentRunner.Desktop.Services;
 /// 引擎宿主：组装配置 / 适配器 / 存储 / 日志，并把引擎事件广播给界面。
 /// 界面只通过本类与引擎交互，保证「引擎与 UI 解耦、UI 线程安全」。
 /// </summary>
-public sealed class EngineHost : ObservableObject
+/// <remarks>
+/// CA1001（P0-12）：持有可释放成员（运行日志 / 引擎门 / Vault 门），实现 <see cref="IDisposable"/>。
+/// 宿主为应用级单例，正常随进程退出；测试或提前销毁场景可显式调用。
+/// </remarks>
+public sealed class EngineHost : ObservableObject, IDisposable
 {
+    // CA1859（P0-12）显式豁免并登记于治理方案 §4.7 逃逸阀台账：以下三个成员保持接口类型是
+    // P1-4/P1-5「UI 只依赖 Core 抽象 + DI 化」的目标形态（Desktop 作为组合根目前注入唯一实现），
+    // 虚调用性能差异可忽略；改具体类型会加固 P1-4 要拆的倒置，拒绝该建议。
+    [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能", Justification = "接口类型是 P1-4/P1-5 DI 目标形态，拒绝向具体类型回退")]
     private readonly IConfigStore _configStore = new JsonConfigStore();
     private readonly ICooldownStore _cooldownStore = new JsonCooldownStore();
     private readonly ITaskFileStore _taskFileStore = new TaskFileStore();
+    [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能", Justification = "接口类型是 P1-4/P1-5 DI 目标形态，拒绝向具体类型回退")]
     private readonly IReportWriter _reportWriter = new ReportWriter();
     /// <summary>
     /// 自动关机协调器（REQ-015 / P0-10）：负责触发条件判定与可撤销倒计时策略，
@@ -109,6 +119,9 @@ public sealed class EngineHost : ObservableObject
     private BatchEngine CreateEngine()
     {
         _logger?.Dispose();
+        // P0-12 / CA1001：BatchEngine 现为 IDisposable（SemaphoreSlim 门 + 运行 CTS），
+        // 替换旧引擎前先释放，避免每次重建泄漏三座门。
+        _engine?.Dispose();
         _logger = new FileRunLogger(Options.TaskFilePath);
         var adapter = AgentAdapterFactory.Create(Options, msg => _logger.Write("INFO", msg));
         if (adapter is MockAdapter mock)
@@ -155,6 +168,7 @@ public sealed class EngineHost : ObservableObject
     /// 二期通知分发器（REQ-018）：Desktop 通道转为主界面 toast（经引擎事件广播），
     /// Webhook / SMTP 走各自 notifier。仅当配置了通知规则时才需要，无规则时不构造也不分发。
     /// </summary>
+    [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能", Justification = "接口返回类型是 P1-4/P1-5 DI 目标形态，拒绝向具体类型回退")]
     private INotificationDispatcher CreateNotificationDispatcher()
     {
         var notifiers = new List<INotifier>
@@ -302,6 +316,20 @@ public sealed class EngineHost : ObservableObject
     public void NotifyConfigurationChanged() => _engine?.NotifyConfigurationChanged();
 
     public void ResetAllCooldowns() => _engine?.ResetAllCooldowns();
+
+    /// <summary>
+    /// 级联释放（CA1001）：引擎门（P0-12 起 BatchEngine 可释放）→ 运行日志 → Vault 门。
+    /// 运行中调用会破坏引擎并发语义，仅用于宿主销毁/测试清理。
+    /// </summary>
+    public void Dispose()
+    {
+        _engine?.Dispose();
+        _engine = null;
+        _logger?.Dispose();
+        _logger = null;
+        VaultHost.Dispose();
+        GC.SuppressFinalize(this);
+    }
 
     /// <summary>
     /// 自动关机（REQ-015）：正常完成 + 落盘完成 + 可撤销倒计时。

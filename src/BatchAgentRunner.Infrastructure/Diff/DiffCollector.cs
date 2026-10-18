@@ -144,7 +144,7 @@ public sealed class DiffCollector : IDiffCollector
         return result.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    private FileBlob ReadFile(string path)
+    private static FileBlob ReadFile(string path)
     {
         try
         {
@@ -168,8 +168,8 @@ public sealed class DiffCollector : IDiffCollector
 
     private static string ComputeHash(byte[] bytes)
     {
-        using var sha = SHA256.Create();
-        var h = sha.ComputeHash(bytes);
+        // CA1850：优先静态 SHA256.HashData（免一次 SHA256 实例分配）
+        var h = SHA256.HashData(bytes);
         var sb = new StringBuilder(16);
         for (var i = 0; i < 8; i++)
         {

@@ -51,7 +51,6 @@ public sealed class WorkflowOutcome
 public sealed class WorkflowExecutor
 {
     private readonly WorkflowEngineContext _ctx;
-    private readonly StageTemplateRenderer _renderer = new();
 
     public WorkflowExecutor(WorkflowEngineContext ctx) => _ctx = ctx;
 
@@ -86,7 +85,7 @@ public sealed class WorkflowExecutor
 
             var loopGuard = 0;
             var maxLoops = stage.MaxLoops ?? _ctx.DefaultMaxGateLoops;
-            var instructionBase = _renderer.Render(stage.InstructionTemplate, renderCtx).Text;
+            var instructionBase = StageTemplateRenderer.Render(stage.InstructionTemplate, renderCtx).Text;
             var instruction = instructionBase;
 
             while (true)
@@ -429,7 +428,7 @@ public sealed class WorkflowExecutor
         return Path.IsPathRooted(ws) ? ws : Directory.GetCurrentDirectory();
     }
 
-    private void SeedTaskFields(WorkflowRenderContext ctx, TaskItem task)
+    private static void SeedTaskFields(WorkflowRenderContext ctx, TaskItem task)
     {
         ctx.SetTaskField("instruction", task.Instruction);
         ctx.SetTaskField("id", task.Id);

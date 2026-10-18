@@ -371,6 +371,9 @@ public sealed class AccountEditor : ObservableObject
 /// </summary>
 public sealed class NotificationRuleEditor : ObservableObject
 {
+    /// <summary>收件人分隔符（CA1861：常量数组提为 static readonly）。</summary>
+    private static readonly char[] RecipientSeparators = { ',', '\n', ';' };
+
     private NotificationChannel _channel;
     private bool _batchCompleted = true;
     private bool _batchBlocked = true;
@@ -486,7 +489,7 @@ public sealed class NotificationRuleEditor : ObservableObject
                 Port = int.TryParse(_smtpPortText, out var p) ? p : 587,
                 From = string.IsNullOrWhiteSpace(_smtpFrom) ? null : _smtpFrom.Trim(),
                 To = _smtpToText
-                    .Split(new[] { ',', '\n', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                    .Split(RecipientSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                     .ToList(),
                 CredentialRef = string.IsNullOrWhiteSpace(_smtpCredentialRef) ? null : _smtpCredentialRef.Trim()
             };

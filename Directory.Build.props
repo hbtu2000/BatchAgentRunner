@@ -5,10 +5,14 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-    <!-- 阶段 -1 / P0-15：落地编译期分析，先 warning 不阻断；
-         TreatWarningsAsErrors 转 true 见治理方案阶段 1（§4.9，分批开启）。
-         EnforceCodeStyleInBuild 使 .editorconfig 的 40+ 条规则在构建期执行。 -->
+    <!-- P0-12 / 治理方案阶段 1：存量警告已全量清零（no-incremental 全量重建实测 0 警告），
+         警告转错误，防止新增警告悄悄入库。例外走 §4.7 逃逸阀台账（须附理由 + 到期日 + 责任人）：
+         - CS1591（公共 API 文档）：全仓抑制（既有基线，见方案 §4.7）；
+         - CA1707 / CA2007 / CA1861：仅测试项目抑制（理由见各测试 csproj 注释）；
+         - CA1720（ExpertKind.Single）/ CA1859（EngineHost 接口成员）：逐点 [SuppressMessage]，
+           理由写在特性上并登记于方案 §4.7 台账。 -->
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+    <!-- EnforceCodeStyleInBuild 使 .editorconfig 的 40+ 条规则在构建期执行（阶段 -1 / P0-15 落地）。 -->
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <AnalysisLevel>latest-recommended</AnalysisLevel>
     <AnalysisMode>Recommended</AnalysisMode>

@@ -27,7 +27,12 @@ public enum TaskOutcome
 /// 批处理调度引擎（PRD 第 10 章架构方法 + 附录 B 降级状态机）。
 /// 串行 / 受控并发（REQ-012）共用同一套可用性视图与单写者回写。
 /// </summary>
-public sealed class BatchEngine
+/// <remarks>
+/// CA1001（P0-12）：类持有 <see cref="SemaphoreSlim"/> 门与 <see cref="CancellationTokenSource"/>，
+/// 实现 <see cref="IDisposable"/> 由宿主在用毕（替换/退出）时释放。引擎为「每次运行一个实例」的
+/// 短生命周期对象（EngineHost 重建引擎时先释放旧实例）。
+/// </remarks>
+public sealed class BatchEngine : IDisposable
 {
     private readonly RunOptions _options;
     private readonly IAgentCliAdapter _adapter;
@@ -515,7 +520,7 @@ public sealed class BatchEngine
                 BatchStatus.Terminated => NotifyTrigger.BatchTerminated,
                 _ => (NotifyTrigger?)null
             },
-            startedAt);
+            startedAt).ConfigureAwait(false);
 
         return Report;
     }
@@ -694,7 +699,7 @@ public sealed class BatchEngine
         }
         catch (OperationCanceledException)
         {
-            await MarkInterrupted(task, "用户终止，当前任务安全中断");
+            await MarkInterrupted(task, "用户终止，当前任务安全中断").ConfigureAwait(false);
             outcome = TaskOutcome.Terminated;
         }
         catch (Exception ex)
@@ -704,7 +709,7 @@ public sealed class BatchEngine
                 $"任务 {task.Id} 执行异常（{ex.GetType().Name}）：{ex.Message}", task.Id));
             try
             {
-                await FailTask(task, $"执行异常（{ex.GetType().Name}）：{ex.Message}");
+                await FailTask(task, $"执行异常（{ex.GetType().Name}）：{ex.Message}").ConfigureAwait(false);
             }
             catch (Exception persistEx)
             {
@@ -1029,13 +1034,13 @@ public sealed class BatchEngine
         {
             if (taskCts.IsCancellationRequested)
             {
-                await MarkInterrupted(task, "用户终止，当前任务安全中断");
+                await MarkInterrupted(task, "用户终止，当前任务安全中断").ConfigureAwait(false);
                 return TaskOutcome.Terminated;
             }
 
             if (attempts >= _options.MaxAttemptsPerTask)
             {
-                await FailTask(task, $"单任务总尝试次数达到上限（{_options.MaxAttemptsPerTask} 次）");
+                await FailTask(task, $"单任务总尝试次数达到上限（{_options.MaxAttemptsPerTask} 次）").ConfigureAwait(false);
                 return TaskOutcome.Finished;
             }
 
@@ -1046,7 +1051,7 @@ public sealed class BatchEngine
                 if ((_clock.Now - startedAt).TotalSeconds - waitedSoFar > _options.MaxTaskDuration.TotalSeconds)
                 {
                     await FailTask(task,
-                        $"单任务净执行时长达到上限（{_options.MaxTotalMinutesPerTask} 分钟，不含暂停等待）");
+                        $"单任务净执行时长达到上限（{_options.MaxTotalMinutesPerTask} 分钟，不含暂停等待）").ConfigureAwait(false);
                     return TaskOutcome.Finished;
                 }
             }
@@ -1096,7 +1101,7 @@ public sealed class BatchEngine
                     {
                         await MarkInterrupted(task, earliest is null
                             ? "免费组合矩阵当前不可用（额度耗尽 / 时段外 / 冷却中）"
-                            : $"免费组合矩阵当前不可用，最早恢复时间 {earliest.RestoreAt:HH:mm} 超出最长可等待时长");
+                            : $"免费组合矩阵当前不可用，最早恢复时间 {earliest.RestoreAt:HH:mm} 超出最长可等待时长").ConfigureAwait(false);
                         SetStatus(BatchStatus.Blocked);
                         RaiseBlocked(earliest is null
                             ? "所有候选组合额度均已用尽 / 均不在免费时段，批处理已暂停"
@@ -1108,7 +1113,7 @@ public sealed class BatchEngine
                     var waited = await WaitForRestoreAsync(earliest!, task.Id, taskCts.Token).ConfigureAwait(false);
                     if (!waited)
                     {
-                        await MarkInterrupted(task, "用户取消等待，当前任务安全中断");
+                        await MarkInterrupted(task, "用户取消等待，当前任务安全中断").ConfigureAwait(false);
                         SetStatus(BatchStatus.Blocked);
                         Raise(new BatchEvent(BatchEventKind.BatchWaitingCancelled, _clock.Now,
                             "已取消等待，批处理已暂停", task.Id) { BatchStatus = BatchStatus.Blocked });
@@ -1146,7 +1151,7 @@ public sealed class BatchEngine
             }
             catch (OperationCanceledException)
             {
-                await MarkInterrupted(task, "用户终止，当前任务安全中断");
+                await MarkInterrupted(task, "用户终止，当前任务安全中断").ConfigureAwait(false);
                 return TaskOutcome.Terminated;
             }
 
@@ -1157,7 +1162,7 @@ public sealed class BatchEngine
 
             if (result.Succeeded)
             {
-                await CompleteTask(task, result);
+                await CompleteTask(task, result).ConfigureAwait(false);
                 return TaskOutcome.Finished;
             }
 
@@ -1209,11 +1214,11 @@ public sealed class BatchEngine
                         task.Id, combo.Account.Label, combo.Model.Name)
                     { IsDangerous = true });
                     _logger.WriteDangerousOperation(task.Id, failure.Message);
-                    await FailTask(task, failure.Message);
+                    await FailTask(task, failure.Message).ConfigureAwait(false);
                     return TaskOutcome.Finished;
 
                 case AgentFailureKind.Timeout:
-                    await FailTask(task, $"单任务执行超时（{_options.TaskTimeoutMinutes} 分钟），已保留部分输出");
+                    await FailTask(task, $"单任务执行超时（{_options.TaskTimeoutMinutes} 分钟），已保留部分输出").ConfigureAwait(false);
                     return TaskOutcome.Finished;
 
                 default:
@@ -1226,7 +1231,7 @@ public sealed class BatchEngine
                         continue;
                     }
 
-                    await FailTask(task, failure.Message);
+                    await FailTask(task, failure.Message).ConfigureAwait(false);
                     if (_options.StopOnFailure)
                     {
                         SetStatus(BatchStatus.Blocked);
@@ -1482,7 +1487,7 @@ public sealed class BatchEngine
             _fallbackBatchCost += cost;
             _fallbackCostBasis = basis;
         }
-        await FailTask(task, $"兜底模型 {fallbackModel.Name} 执行失败：{result.Failure?.Message ?? "未知错误"}");
+        await FailTask(task, $"兜底模型 {fallbackModel.Name} 执行失败：{result.Failure?.Message ?? "未知错误"}").ConfigureAwait(false);
         return (false, cost);
     }
 
@@ -1514,7 +1519,7 @@ public sealed class BatchEngine
             task.Id, combo.Account.Label, combo.Model.Name) { Task = task });
         _logger.WriteTaskFinished(task.Id, TaskStatus.Done, task.DurationSeconds, task.RetryCount);
         RaiseTaskChanged(task);
-        await PersistAsync(CancellationToken.None);
+        await PersistAsync(CancellationToken.None).ConfigureAwait(false);
     }
 
     private async Task FailTask(TaskItem task, string error)
@@ -1531,10 +1536,10 @@ public sealed class BatchEngine
             $"任务 {task.Id} 失败（重试 {task.RetryCount} 次）：{error}", task.Id) { Task = task });
         _logger.WriteTaskFinished(task.Id, TaskStatus.Failed, task.DurationSeconds, task.RetryCount);
         RaiseTaskChanged(task);
-        await PersistAsync(CancellationToken.None);
+        await PersistAsync(CancellationToken.None).ConfigureAwait(false);
 
         // 二期：任务失败通知（REQ-018；按规则触发，失败不阻断）
-        await DispatchNotificationsAsync(NotifyTrigger.TaskFailed, null, error);
+        await DispatchNotificationsAsync(NotifyTrigger.TaskFailed, null, error).ConfigureAwait(false);
     }
 
     private async Task MarkInterrupted(TaskItem task, string reason)
@@ -1556,7 +1561,7 @@ public sealed class BatchEngine
             $"任务 {task.Id} 已中断：{reason}", task.Id) { Task = task });
         _logger.WriteTaskFinished(task.Id, TaskStatus.Interrupted, task.DurationSeconds, task.RetryCount);
         RaiseTaskChanged(task);
-        await PersistAsync(CancellationToken.None);
+        await PersistAsync(CancellationToken.None).ConfigureAwait(false);
     }
 
     private void AppendPartialOutput(TaskItem task, string output)
@@ -2056,5 +2061,19 @@ public sealed class BatchEngine
         }
 
         return pending.GateLeftover ?? pending.OutputSummary ?? $"阶段 {pending.Name ?? pending.StageId} 未完成";
+    }
+
+    /// <summary>
+    /// 释放三座 <see cref="SemaphoreSlim"/> 门与运行级 <see cref="CancellationTokenSource"/>（CA1001）。
+    /// 仅在所有任务已终态、批处理已停止后调用；运行中调用会破坏并发语义。
+    /// </summary>
+    public void Dispose()
+    {
+        _writeGate.Dispose();
+        _persistGate.Dispose();
+        _waitGate.Dispose();
+        _runCts?.Dispose();
+        _runCts = null;
+        GC.SuppressFinalize(this);
     }
 }

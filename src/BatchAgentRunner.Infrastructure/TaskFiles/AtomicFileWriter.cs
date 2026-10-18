@@ -15,14 +15,20 @@ public static class AtomicFileWriter
         }
 
         var tempPath = $"{targetPath}.tmp-{Guid.NewGuid():N}";
+        var stream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None);
         try
         {
-            await using (var stream = new FileStream(tempPath, FileMode.Create, FileAccess.Write, FileShare.None))
-            await using (var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false)))
+            var writer = new StreamWriter(stream, new System.Text.UTF8Encoding(false));
+            try
             {
                 await writer.WriteAsync(content).ConfigureAwait(false);
                 await writer.FlushAsync(cancellationToken).ConfigureAwait(false);
                 stream.Flush(flushToDisk: true);
+            }
+            finally
+            {
+                // CA2007：await using 声明无法挂 ConfigureAwait，改显式 DisposeAsync
+                await writer.DisposeAsync().ConfigureAwait(false);
             }
 
             File.Move(tempPath, targetPath, overwrite: true);
@@ -31,6 +37,10 @@ public static class AtomicFileWriter
         {
             TryDelete(tempPath);
             throw;
+        }
+        finally
+        {
+            await stream.DisposeAsync().ConfigureAwait(false);
         }
     }
 

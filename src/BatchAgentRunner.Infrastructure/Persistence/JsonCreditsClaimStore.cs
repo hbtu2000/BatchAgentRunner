@@ -16,9 +16,13 @@ public sealed class JsonCreditsClaimStore : ICreditsClaimStore
 
     public JsonCreditsClaimStore(string? directory = null)
     {
-        Directory.CreateDirectory(directory ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BatchAgentRunner"));
-        _filePath = Path.Combine(directory!, "credits-claims.json");
+        // P1-18：原实现 `directory ?? Path.Combine(...)` 建目录，却用 `Path.Combine(directory!, ...)`
+        // 取路径——directory 为 null 时 `directory!` 仍 null，Path.Combine 必抛 ArgumentNullException。
+        // 默认构造（不传参）在生产中虽总传参未暴露，但任何走默认构造的新调用点会立刻崩。改为先解析到局部变量。
+        var resolved = directory ?? Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BatchAgentRunner");
+        Directory.CreateDirectory(resolved);
+        _filePath = Path.Combine(resolved, "credits-claims.json");
     }
 
     public string FilePath => _filePath;

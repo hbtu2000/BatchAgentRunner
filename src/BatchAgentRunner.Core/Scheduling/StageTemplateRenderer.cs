@@ -17,7 +17,7 @@ public sealed class StageTemplateRenderer
     /// <summary>渲染结果。</summary>
     public sealed record RenderResult(string Text, IReadOnlyList<string> Unresolved);
 
-    public RenderResult Render(string template, WorkflowRenderContext context)
+    public static RenderResult Render(string template, WorkflowRenderContext context)
     {
         if (string.IsNullOrEmpty(template))
         {

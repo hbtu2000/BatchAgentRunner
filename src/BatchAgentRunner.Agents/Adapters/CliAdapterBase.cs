@@ -40,10 +40,12 @@ public sealed class CliAdapterSettings
 /// </summary>
 public abstract class CliAdapterBase : IAgentCliAdapter
 {
-    protected readonly CliAdapterSettings Settings;
-    protected readonly AutoAnswerPolicy Policy;
-    protected readonly QuotaErrorClassifier Classifier;
-    protected readonly CliProcessRunner Runner;
+    // CA1051（P0-12）：protected 只读字段改为 protected 自动属性——对子类源码兼容，
+    // 但不以「可见实例字段」形态暴露（子类均在构造期赋值、运行期只读）。
+    protected CliAdapterSettings Settings { get; }
+    protected AutoAnswerPolicy Policy { get; }
+    protected QuotaErrorClassifier Classifier { get; }
+    protected CliProcessRunner Runner { get; }
 
     protected CliAdapterBase(CliAdapterSettings settings, AutoAnswerPolicy? policy = null,
         QuotaErrorClassifier? classifier = null)

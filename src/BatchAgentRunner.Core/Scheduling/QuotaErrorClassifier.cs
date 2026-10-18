@@ -51,15 +51,16 @@ public sealed class QuotaErrorClassifier
     {
         var reference = now ?? DateTimeOffset.Now;
         var text = output ?? string.Empty;
-        var lower = text.ToLowerInvariant();
 
-        if (QuotaPatterns.Any(p => lower.Contains(p.ToLowerInvariant())))
+        // CA1862：Contains 显式使用 StringComparison.OrdinalIgnoreCase（原实现对两侧同时
+        // ToLowerInvariant，与本写法语义等价且避免额外分配；行为由 QuotaDetectionTests 锁定）
+        if (QuotaPatterns.Any(p => text.Contains(p, StringComparison.OrdinalIgnoreCase)))
         {
             var resetAt = ResetTimeParser.Parse(text, reference);
             return new AgentFailure(AgentFailureKind.QuotaExhausted, ExtractMessage(text, "额度已耗尽"), resetAt, text);
         }
 
-        if (RateLimitPatterns.Any(p => lower.Contains(p.ToLowerInvariant())))
+        if (RateLimitPatterns.Any(p => text.Contains(p, StringComparison.OrdinalIgnoreCase)))
         {
             var resetAt = ResetTimeParser.Parse(text, reference);
             // 2026-10-16：带上传解析的重置时间——退避重试升级为冷却时（BatchEngine goto QuotaExhausted），
@@ -67,7 +68,7 @@ public sealed class QuotaErrorClassifier
             return new AgentFailure(AgentFailureKind.RateLimited, ExtractMessage(text, "触发临时限流"), resetAt, text);
         }
 
-        if (AuthPatterns.Any(p => lower.Contains(p.ToLowerInvariant())))
+        if (AuthPatterns.Any(p => text.Contains(p, StringComparison.OrdinalIgnoreCase)))
         {
             return new AgentFailure(AgentFailureKind.AuthExpired, ExtractMessage(text, "账号凭据失效或未登录"), null, text);
         }

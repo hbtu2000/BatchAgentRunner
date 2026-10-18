@@ -238,7 +238,8 @@ public sealed class StreamJsonRenderer
             _pending.Clear();
             if (nl + 1 < pendingStr.Length)
             {
-                _pending.Append(pendingStr.Substring(nl + 1));
+                // CA1846：StringBuilder.Append 有 ReadOnlySpan<char> 重载，免一次中间字符串分配
+                _pending.Append(pendingStr.AsSpan(nl + 1));
             }
         }
         else if (_pending.Length >= CoalesceThreshold)
@@ -248,7 +249,7 @@ public sealed class StreamJsonRenderer
         }
     }
 
-    private void TryEmitAnyText(JsonElement doc, List<string> outputs)
+    private static void TryEmitAnyText(JsonElement doc, List<string> outputs)
     {
         // 兜底：CLI 协议演进/字段变动时，从未知类型事件中抽取短文本，避免实时流静默。
         foreach (var key in new[] { "text", "content", "message" })

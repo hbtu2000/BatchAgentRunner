@@ -21,7 +21,7 @@ public sealed class TaskFileStore : ITaskFileStore
                string.Equals(ext, ".markdown", StringComparison.OrdinalIgnoreCase);
     }
 
-    public bool IsXlsx(string path)
+    public static bool IsXlsx(string path)
     {
         var ext = Path.GetExtension(path);
         return string.Equals(ext, ".xlsx", StringComparison.OrdinalIgnoreCase) ||

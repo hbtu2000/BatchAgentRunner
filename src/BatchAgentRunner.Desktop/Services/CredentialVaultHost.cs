@@ -10,7 +10,11 @@ namespace BatchAgentRunner.Desktop.Services;
 /// 凭证 Vault 宿主（DESIGN-账号凭证切换-v1.0 §7）：装配 Vault 与引导登录编排器，
 /// 向配置页提供「引导登录 / 切换到此账号 / 快照状态」能力。
 /// </summary>
-public sealed class CredentialVaultHost
+/// <remarks>
+/// CA1001（P0-12）：Vault 实现现为 <see cref="IDisposable"/>（SemaphoreSlim 门），
+/// 宿主负责在用毕时级联释放；EngineHost 再级联释放本宿主。
+/// </remarks>
+public sealed class CredentialVaultHost : IDisposable
 {
     public ICredentialVault Vault { get; }
 
@@ -68,4 +72,11 @@ public sealed class CredentialVaultHost
     /// <summary>删除账号快照（界面层负责二次确认，DESIGN §8.5）。</summary>
     public Task DeleteSnapshotAsync(AgentKind kind, string accountId, CancellationToken cancellationToken = default) =>
         Vault.DeleteSnapshotAsync(kind, accountId, cancellationToken);
+
+    /// <summary>级联释放 Vault（CA1001：FileCredentialVault 持 SemaphoreSlim 门）。</summary>
+    public void Dispose()
+    {
+        (Vault as IDisposable)?.Dispose();
+        GC.SuppressFinalize(this);
+    }
 }

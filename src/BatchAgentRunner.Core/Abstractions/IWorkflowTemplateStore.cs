@@ -12,5 +12,6 @@ public interface IWorkflowTemplateStore
     Task<TemplateSpec?> GetAsync(string id, CancellationToken cancellationToken = default);
 
     /// <summary>保存用户自定义模板（覆盖同名）。</summary>
-    Task SaveUserTemplateAsync(TemplateSpec template, CancellationToken cancellationToken = default);
+    /// <param name="spec">模板定义（参数名避开 C# 关键字 <c>template</c>，CA1716）。</param>
+    Task SaveUserTemplateAsync(TemplateSpec spec, CancellationToken cancellationToken = default);
 }

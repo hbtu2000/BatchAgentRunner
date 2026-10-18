@@ -143,34 +143,40 @@ public sealed class MockAdapter : IAgentCliAdapter
     public Task<IReadOnlyList<string>> ListModelsAsync(AccountConfig account,
         CancellationToken cancellationToken = default)
     {
-        return Task.FromResult<IReadOnlyList<string>>(new[]
-        {
-            "claude-sonnet-4-6", "claude-opus-4-5", "claude-haiku-4-5",
-            "gpt-4o", "gpt-4o-mini", "o3-mini",
-            "gemini-2.5-pro", "gemini-2.5-flash",
-            "hy3", "hy4"
-        });
+        return Task.FromResult<IReadOnlyList<string>>(SampleModels);
     }
+
+    /// <summary>仿真模型清单（CA1861：常量数组提为 static readonly，避免每次调用重新分配）。</summary>
+    private static readonly string[] SampleModels =
+    {
+        "claude-sonnet-4-6", "claude-opus-4-5", "claude-haiku-4-5",
+        "gpt-4o", "gpt-4o-mini", "o3-mini",
+        "gemini-2.5-pro", "gemini-2.5-flash",
+        "hy3", "hy4"
+    };
 
     /// <summary>仿真：模型目录带官方风格的倍率数据（形态与真实 CLI 一致），供无 CLI 环境联调折扣展示。</summary>
     public Task<IReadOnlyList<ModelCatalogEntry>> ListModelCatalogAsync(AccountConfig account,
         CancellationToken cancellationToken = default)
     {
-        IReadOnlyList<ModelCatalogEntry> catalog = new[]
-        {
-            new ModelCatalogEntry("claude-sonnet-4-6", 1.00m),
-            new ModelCatalogEntry("claude-opus-4-5", 1.62m),
-            new ModelCatalogEntry("claude-haiku-4-5", 0.17m),
-            new ModelCatalogEntry("gpt-4o", 0.79m),
-            new ModelCatalogEntry("gpt-4o-mini", 0.08m),
-            new ModelCatalogEntry("o3-mini", 0.51m),
-            new ModelCatalogEntry("gemini-2.5-pro", 0.65m),
-            new ModelCatalogEntry("gemini-2.5-flash", 0.11m),
-            new ModelCatalogEntry("hy3", 0.05m),
-            new ModelCatalogEntry("hy4", 0.29m)
-        };
+        IReadOnlyList<ModelCatalogEntry> catalog = SampleCatalog;
         return Task.FromResult(catalog);
     }
+
+    /// <summary>仿真模型目录（CA1861：同上，提为 static readonly）。</summary>
+    private static readonly ModelCatalogEntry[] SampleCatalog =
+    {
+        new ModelCatalogEntry("claude-sonnet-4-6", 1.00m),
+        new ModelCatalogEntry("claude-opus-4-5", 1.62m),
+        new ModelCatalogEntry("claude-haiku-4-5", 0.17m),
+        new ModelCatalogEntry("gpt-4o", 0.79m),
+        new ModelCatalogEntry("gpt-4o-mini", 0.08m),
+        new ModelCatalogEntry("o3-mini", 0.51m),
+        new ModelCatalogEntry("gemini-2.5-pro", 0.65m),
+        new ModelCatalogEntry("gemini-2.5-flash", 0.11m),
+        new ModelCatalogEntry("hy3", 0.05m),
+        new ModelCatalogEntry("hy4", 0.29m)
+    };
 
     public async Task<AgentExecutionResult> ExecuteAsync(AgentRequest request,
         CancellationToken cancellationToken = default)

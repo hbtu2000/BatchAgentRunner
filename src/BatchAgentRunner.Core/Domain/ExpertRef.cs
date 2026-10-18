@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Text.Json.Serialization;
 
 namespace BatchAgentRunner.Core.Domain;
@@ -6,6 +7,14 @@ public enum ExpertKind
 {
     /// <summary>未指定，使用默认智能体（REQ-004a）。</summary>
     None,
+
+    /// <summary>
+    /// 单专家。
+    /// CA1720（标识符含类型名 "Single"）显式豁免并登记于治理方案 §4.7 逃逸阀台账：
+    /// <see cref="ExpertKind"/> 经 <c>JsonStringEnumConverter</c> 以字符串形式持久化在用户模板文件中，
+    /// 重命名成员会破坏既有模板兼容性（同 <c>RunOptions</c> 契约保护原则）。
+    /// </summary>
+    [SuppressMessage("Naming", "CA1720:标识符包含类型名称", Justification = "持久化兼容：ExpertKind.Single 已随用户模板落盘，重命名破坏兼容")]
     Single,
     Team
 }

@@ -16,8 +16,10 @@ namespace BatchAgentRunner.Desktop.ViewModels;
 /// </summary>
 public sealed class TemplateEditorViewModel : ViewModelBase
 {
+    /// <summary>变量多值输入分隔符（CA1861：常量数组提为 static readonly）。</summary>
+    private static readonly char[] VarValueSeparators = { ',', '\n', ';' };
+
     private readonly FileWorkflowTemplateStore _store;
-    private readonly TemplateExpander _expander = new();
 
     private ObservableCollection<TemplateRowViewModel> _templates = new();
     private TemplateRowViewModel? _selectedTemplate;
@@ -177,7 +179,7 @@ public sealed class TemplateEditorViewModel : ViewModelBase
 
         try
         {
-            var tasks = _expander.Expand(BuildSpec(), _baseDir);
+            var tasks = TemplateExpander.Expand(BuildSpec(), _baseDir);
             foreach (var t in tasks)
             {
                 PreviewTasks.Add(new PreviewTaskRowViewModel(t));
@@ -201,7 +203,7 @@ public sealed class TemplateEditorViewModel : ViewModelBase
 
         try
         {
-            var tasks = _expander.Expand(BuildSpec(), _baseDir);
+            var tasks = TemplateExpander.Expand(BuildSpec(), _baseDir);
             var dir = Path.GetDirectoryName(_outputPath);
             if (!string.IsNullOrEmpty(dir))
             {
@@ -231,7 +233,7 @@ public sealed class TemplateEditorViewModel : ViewModelBase
 
             def.Default = input.Value;
             def.Values = input.ValuesText
-                .Split(new[] { ',', '\n', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Split(VarValueSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
                 .ToList();
         }
 
