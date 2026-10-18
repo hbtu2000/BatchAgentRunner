@@ -22,4 +22,57 @@ public class LayeringRulesTests
             .ToArray();
         Assert.Empty(leaked);
     }
+
+    [Fact]
+    public void Core程序集_不得直接使用_SystemDiagnosticsProcess()
+    {
+        // §4.3：Core 命名空间下不得出现 System.Diagnostics.Process（进程 IO 必须赶出 Core，经 IProcessRunner 端口）。
+        // 用反射扫描 IL 局部变量 + 字段/属性/参数/返回类型，覆盖 `new Process()` 这类局部变量引用。
+        var core = typeof(BatchAgentRunner.Core.Engine.BatchEngine).Assembly;
+        var processType = typeof(System.Diagnostics.Process);
+        var psiType = typeof(System.Diagnostics.ProcessStartInfo);
+        var flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance |
+                    BindingFlags.Static | BindingFlags.DeclaredOnly;
+
+        foreach (var type in core.GetTypes())
+        {
+            foreach (var member in type.GetMembers(flags))
+            {
+                if ((member is FieldInfo fi && (fi.FieldType == processType || fi.FieldType == psiType)) ||
+                    (member is PropertyInfo pi && (pi.PropertyType == processType || pi.PropertyType == psiType)))
+                {
+                    Assert.Fail($"{type.FullName}.{member.Name} 直接引用了 System.Diagnostics.Process/ProcessStartInfo，违反 §4.3");
+                }
+
+                if (member is MethodInfo method)
+                {
+                    if (method.ReturnType == processType || method.ReturnType == psiType)
+                    {
+                        Assert.Fail($"{type.FullName}.{method.Name} 返回 System.Diagnostics.Process/ProcessStartInfo，违反 §4.3");
+                    }
+
+                    foreach (var p in method.GetParameters())
+                    {
+                        if (p.ParameterType == processType || p.ParameterType == psiType)
+                        {
+                            Assert.Fail($"{type.FullName}.{method.Name} 的参数引用了 System.Diagnostics.Process/ProcessStartInfo，违反 §4.3");
+                        }
+                    }
+
+                    MethodBody? body;
+                    try { body = method.GetMethodBody(); }
+                    catch { continue; }
+                    if (body is null) continue;
+
+                    foreach (var local in body.LocalVariables)
+                    {
+                        if (local.LocalType == processType || local.LocalType == psiType)
+                        {
+                            Assert.Fail($"{type.FullName}.{method.Name} 的局部变量引用了 System.Diagnostics.Process/ProcessStartInfo，违反 §4.3");
+                        }
+                    }
+                }
+            }
+        }
+    }
 }

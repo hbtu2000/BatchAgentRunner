@@ -1,6 +1,6 @@
-using System.Diagnostics;
 using System.Text;
 using System.Text.RegularExpressions;
+using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
 
 namespace BatchAgentRunner.Core.Scheduling;
@@ -34,13 +34,16 @@ public sealed class GateEvaluationContext
 /// </summary>
 public sealed class GateEvaluator
 {
+    private readonly IProcessRunner _processRunner;
     private readonly Func<GateEvaluationContext, Task<GateResult>>? _reviewer;
     private readonly Func<GateEvaluationContext, Task<bool>>? _manualApprover;
 
     public GateEvaluator(
+        IProcessRunner processRunner,
         Func<GateEvaluationContext, Task<GateResult>>? reviewer = null,
         Func<GateEvaluationContext, Task<bool>>? manualApprover = null)
     {
+        _processRunner = processRunner ?? throw new ArgumentNullException(nameof(processRunner));
         _reviewer = reviewer;
         _manualApprover = manualApprover;
     }
@@ -66,7 +69,7 @@ public sealed class GateEvaluator
         }
     }
 
-    private static async Task<GateResult> EvaluateCommandAsync(QualityGate gate, GateEvaluationContext ctx, CancellationToken cancellationToken)
+    private async Task<GateResult> EvaluateCommandAsync(QualityGate gate, GateEvaluationContext ctx, CancellationToken cancellationToken)
     {
         if (string.IsNullOrWhiteSpace(gate.Command))
         {
@@ -108,62 +111,18 @@ public sealed class GateEvaluator
         return Truncate(gate.FailMessageTemplate.Replace("{stage.output}", detail, StringComparison.Ordinal), 2000);
     }
 
-    private static async Task<(int ExitCode, string StdOut, string StdErr)> RunCommandAsync(
+    private async Task<(int ExitCode, string StdOut, string StdErr)> RunCommandAsync(
         string command, string workingDirectory, CancellationToken cancellationToken)
     {
         var isWindows = OperatingSystem.IsWindows();
-        var psi = new ProcessStartInfo
-        {
-            FileName = isWindows ? "cmd.exe" : "/bin/sh",
-            Arguments = isWindows ? $"/c \"{command}\"" : $"-c \"{command.Replace("\"", "\\\"")}\"",
-            RedirectStandardOutput = true,
-            RedirectStandardError = true,
-            UseShellExecute = false,
-            CreateNoWindow = true
-        };
+        var fileName = isWindows ? "cmd.exe" : "/bin/sh";
+        var arguments = isWindows
+            ? $"/c \"{command}\""
+            : $"-c \"{command.Replace("\"", "\\\"")}\"";
 
-        if (!string.IsNullOrWhiteSpace(workingDirectory) && Directory.Exists(workingDirectory))
-        {
-            psi.WorkingDirectory = workingDirectory;
-        }
-
-        using var process = new Process { StartInfo = psi, EnableRaisingEvents = true };
-        var outSb = new StringBuilder();
-        var errSb = new StringBuilder();
-        process.OutputDataReceived += (_, e) =>
-        {
-            if (e.Data is not null)
-            {
-                outSb.AppendLine(e.Data);
-            }
-        };
-        process.ErrorDataReceived += (_, e) =>
-        {
-            if (e.Data is not null)
-            {
-                errSb.AppendLine(e.Data);
-            }
-        };
-
-        if (!process.Start())
-        {
-            return (-1, string.Empty, "无法启动命令进程");
-        }
-
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
-
-        try
-        {
-            await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
-        }
-        catch (OperationCanceledException)
-        {
-            try { process.Kill(true); } catch { /* 忽略 */ }
-            throw;
-        }
-
-        return (process.ExitCode, outSb.ToString(), errSb.ToString());
+        return await _processRunner
+            .RunAsync(fileName, arguments, workingDirectory, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     private static string Truncate(string? value, int maxChars) =>

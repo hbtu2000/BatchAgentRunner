@@ -105,7 +105,8 @@ public sealed class BatchEngine : IBatchEngine
         IGitIntegration? git = null,
         INotificationDispatcher? notificationDispatcher = null,
         IMarkdownInPlaceWriter? markdownWriter = null,
-        GateEvaluator? gateEvaluator = null)
+        GateEvaluator? gateEvaluator = null,
+        IProcessRunner? processRunner = null)
     {
         _options = options;
         _adapter = adapter;
@@ -118,7 +119,7 @@ public sealed class BatchEngine : IBatchEngine
         _git = git;
         _notificationDispatcher = notificationDispatcher;
         _markdownWriter = markdownWriter;
-        _gateEvaluator = gateEvaluator ?? new GateEvaluator();
+        _gateEvaluator = gateEvaluator ?? new GateEvaluator(processRunner ?? new NullProcessRunner());
         _clock = clock ?? new SystemClock();
         _classifier = classifier ?? new QuotaErrorClassifier();
         _cooldowns = new QuotaCooldownRegistry(_clock, options.DefaultCooldown);

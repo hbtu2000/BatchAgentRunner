@@ -42,12 +42,22 @@ public class WorkflowExecutorTests
             Classifier = new QuotaErrorClassifier(),
             Clock = clock,
             Logger = new NullRunLogger(),
-            GateEvaluator = gateEvaluator ?? new GateEvaluator(),
+            GateEvaluator = gateEvaluator ?? new GateEvaluator(new NullProcessRunner()),
             DefaultMaxGateLoops = options.DefaultMaxGateLoops
         });
 
     private static WorkflowStage Stage(string id, string instruction, QualityGate? gate = null, int? maxLoops = null) =>
         new() { Id = id, Name = id, InstructionTemplate = instruction, Gate = gate, MaxLoops = maxLoops };
+
+    /// <summary>内存假进程运行器（P1-9）：命令门禁测试用它返回预设退出码，避免真实进程 flaky。</summary>
+    private sealed class FakeProcessRunner : IProcessRunner
+    {
+        public int ExitCode { get; init; }
+
+        public Task<(int ExitCode, string Stdout, string Stderr)> RunAsync(
+            string fileName, string arguments, string? workingDirectory, CancellationToken cancellationToken) =>
+            Task.FromResult((ExitCode, string.Empty, string.Empty));
+    }
 
     [Fact]
     public async Task 多阶段顺序执行_前序产出传递给后继阶段()
@@ -134,7 +144,7 @@ public class WorkflowExecutorTests
         }, TimeSpan.Zero, new FakeClock(Noon));
         // 注入可控 reviewer：第 1 次审查未过（遗留问题），第 2 次通过——验证修订循环真的重跑了本阶段
         var reviewCalls = 0;
-        var gateEvaluator = new GateEvaluator(reviewer: _ =>
+        var gateEvaluator = new GateEvaluator(new NullProcessRunner(), reviewer: _ =>
         {
             reviewCalls++;
             return Task.FromResult(reviewCalls == 1
@@ -177,7 +187,8 @@ public class WorkflowExecutorTests
         var adapter = new MockAdapter((_, _) => MockStep.Ok("输出"), TimeSpan.Zero, new FakeClock(Noon));
         var options = Options();
         options.DefaultMaxGateLoops = 2;
-        var executor = Build(options, adapter, new FakeClock(Noon));
+        var executor = Build(options, adapter, new FakeClock(Noon),
+            new GateEvaluator(new FakeProcessRunner { ExitCode = 1 }));
 
         var task = new TaskItem
         {

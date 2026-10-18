@@ -10,6 +10,7 @@ using BatchAgentRunner.Core.Engine;
 using BatchAgentRunner.Core.Events;
 using BatchAgentRunner.Core.Options;
 using BatchAgentRunner.Desktop.Services;
+using BatchAgentRunner.Infrastructure;
 using BatchAgentRunner.Infrastructure.CredentialVault;
 using BatchAgentRunner.Infrastructure.Diff;
 using BatchAgentRunner.Infrastructure.Git;
@@ -77,7 +78,8 @@ public sealed class EngineFactory : IEngineFactory
             notificationDispatcher: dispatcher,
             diffCollector: diffCollector,
             git: new LocalGitIntegration(),
-            markdownWriter: new MarkdownInPlaceWriter());
+            markdownWriter: new MarkdownInPlaceWriter(),
+            processRunner: new RealProcessRunner());
     }
 
     /// <summary>构造 CLI 适配器（按当前执行工具）。</summary>
