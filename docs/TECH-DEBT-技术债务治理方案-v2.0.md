@@ -181,8 +181,9 @@ P0-17 Desktop 补测试引用 + 首批冒烟（与上面并行，为阶段 2 铺
 4. 追加**不变量测试**：为 P0-1 等「一眼看不出是错的」缺陷补断言式测试
 5. 清存量警告（P0-12）：先清 36+ 个 CA2007 与 AVLN5001，**再**分批开 `TreatWarningsAsErrors`
 6. P1-17 引入 CPM + 删无效依赖；P1-18/P1-20 单行修复顺手带走
+7. 格式门禁（§4.1）：`pre-commit` 钩 `dotnet format --verify-no-changes` + `.editorconfig` 声明 `end_of_line=lf` + `.gitattributes` 锁 `eol=lf`（§4.1 承诺「阶段 1 起」，2026-10-18 落地）
 
-> ✅ **阶段 1 已于 2026-10-18 完成**（6 项全部落地，验证见 §5.4：全量构建 0 警告 / 0 错误且 `TreatWarningsAsErrors=true`，全量测试 **345 通过 / 0 失败**）。至此 **P0 清单 17 项全部清偿**。
+> ✅ **阶段 1 已于 2026-10-18 完成**（6 项全部落地 + §4.1 格式门禁，验证见 §5.4：全量构建 0 警告 / 0 错误且 `TreatWarningsAsErrors=true`，全量测试 **345 通过 / 0 失败**，`dotnet format` 基线 0 问题）。至此 **P0 清单 17 项全部清偿**。
 
 ### 阶段 2：动骨（第 2–4 个迭代）
 
@@ -311,8 +312,8 @@ P1-19 Desktop 补测试 + 契约收敛
 
 针对实测的「10/12 提交信息为空」：
 
-- `commit-msg` 钩：拒绝空消息、拒绝纯标点、要求正文含「改了什么 / 为什么」
-- `pre-commit` 钩：`dotnet format --verify-no-changes`（阶段 1 起）
+- `commit-msg` 钩：拒绝空消息、拒绝纯标点、要求正文含「改了什么 / 为什么」✅ 阶段 −1 已完成
+- `pre-commit` 钩：`dotnet format --verify-no-changes` ✅ **阶段 1 已完成（2026-10-18，`.githooks/pre-commit`）**。落地细节与已知 SDK 限制见 §5.4「格式门禁」行与 §4.7 台账 #9（CHARSET 假阳性过滤）。
 - 提交模板 + `CODE-REVIEW §5.2` 的单 PR 单一关注点约束
 
 ### 4.2 第二道墙：编译期门禁（编不出）
@@ -348,7 +349,7 @@ P1-19 Desktop 补测试 + 契约收敛
 | `Desktop` 不得直接 `new` Infrastructure 具体类型（须经接口）  | 防 P1-4 复发          |
 | `Domain` 下不得出现 `INotifyPropertyChanged`         | 防 P2-7 扩散          |
 | 生产程序集不得出现 `FakeClock`/`Mock*` 类型                | 防 P2-8 测试替身进生产     |
-| `Catch (Exception)` 占比不得上升（基线 37/69 = 54%）      | 防吞异常继续扩散           |
+| `Catch (Exception)` 占比不得上升（基线 42/79 = 53%，2026-10-18 复测；盘点时 37/69 = 54%） | 防吞异常继续扩散           |
 
 ### 4.4 第四道墙：复杂度门禁（CI 不过）
 
@@ -367,7 +368,7 @@ P1-19 Desktop 补测试 + 契约收敛
 在 `docs/CODE-REVIEW-代码审查标准与流程.md` 追加，PR 模板强制勾选：
 
 - [ ] 本次改动是否让任何文件的行数/复杂度上升？若是，说明理由
-- [ ] 是否新增 `catch { }`，或 `catch(Exception)` 后仅记 WARN？（当前 37 处，是排障困难主因）
+- [ ] 是否新增 `catch { }`，或 `catch(Exception)` 后仅记 WARN？（当前 42 处，是排障困难主因）
 - [ ] 是否新增可变 `static` 状态？（P1-16 类）
 - [ ] 是否新增 `.GetAwaiter().GetResult()` / `.Result` / `.Wait()`？（P1-6 类）
 - [ ] 后台线程 `await` 后是否直接改了 UI 集合？（P0-6 类）
@@ -394,7 +395,7 @@ P1-19 Desktop 补测试 + 契约收敛
 - CI 统计**逃逸数**并纳入看板（当前基线：`#pragma` 1 处、`.editorconfig` 规则置 `none` 1 处（CA1002）、`NoWarn` 1 项）
 - 到期未清理的逃逸，自动升级为该迭代的 P1
 
-**逃逸阀台账（2026-10-18 阶段 1 更新，共 8 项）**：
+**逃逸阀台账（2026-10-18 阶段 1 更新，共 9 项）**：
 
 | # | 逃逸                                                       | 位置                                                                 | 理由（为什么必须豁免）                                                                                              | 到期日 / 责任人             |
 | - | -------------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------- | -------------------- |
@@ -406,6 +407,7 @@ P1-19 Desktop 补测试 + 契约收敛
 | 6 | `NoWarn CA1861`（常量数组提 static readonly）                  | 两个测试 csproj                                                       | 测试项目专用：该规则针对生产热路径的重复分配；测试期望值数组一次性使用且内容各异，提字段损害可读性且无性能收益                                            | 长期有效 / 工程           |
 | 7 | `[SuppressMessage] CA1720`（`ExpertKind.Single` 含类型名）      | `Core/Domain/ExpertRef.cs`                                          | 持久化兼容：`ExpertKind` 经 `JsonStringEnumConverter` 以字符串形式随用户模板落盘，重命名破坏既有模板（同 `RunOptions` 契约保护原则）                    | 长期有效 / 工程           |
 | 8 | `[SuppressMessage] CA1859`（接口字段/返回改具体类型）                | `Desktop/Services/EngineHost.cs`（3 处）                              | 架构方向：接口类型是 P1-4/P1-5「UI 只依赖 Core 抽象 + DI 化」的目标形态，拒绝为微性能向具体类型回退                                            | P1-4/P1-5 完成后复核 / 工程 |
+| 9 | `dotnet format` CHARSET 类诊断过滤（pre-commit 钩）                 | `.githooks/pre-commit`（`grep -v 'error CHARSET'`）                  | SDK 10.0.401 回归：`Directory.Build.props` 的 `CodePage=65001`（中文源码跨代码页编译所需，保留）触发 CharsetFixer 对全部 .cs 文件误报，且修复器为空操作（最小复现：同内容去掉 CodePage 即 0 误报）。钩子改用显式 `iconv` UTF-8 有效性校验补偿 | SDK 修复该回归后移除过滤 / 工程 |
 
 > 说明：P2-30 登记的 `.editorconfig` CA1002 与 `#pragma` SYSLIB0014 在阶段 1 的警告清零中**保留原样**（不属 CA 警告类），正式登记为本表 #1/#2。
 
@@ -418,8 +420,8 @@ P1-19 Desktop 补测试 + 契约收敛
 | 最大文件行数                 | 1960                                                                                                           | ↓              |
 | 最大方法行数                 | 249                                                                                                            | ↓              |
 | 全量构建警告数                | **0**（2026-10-18 阶段 1 清零：P0-12 完成，`TreatWarningsAsErrors=true` 生效，任何新增警告即构建失败）                                        | → 0 并保持        |
-| `catch (Exception)` 占比 | 37/69 = 54%                                                                                                    | ↓              |
-| 高危模块零覆盖数               | 7 → **3**（阶段 1 补齐 XlsxTaskParser/Writer、CliCommandBuilder、DangerousOperationGuard；余 CodeBuddyCreditsApiClient / BackupManager / LocalGitIntegration / ShutdownService 4 项） | ↓ 至 0          |
+| `catch (Exception)` 占比 | **42/79 = 53%**（2026-10-18 复测；盘点基线 37/69 = 54%，阶段 0/1 改动后绝对值上升、占比持平） | ↓              |
+| 高危模块零覆盖数               | 7 → **4**（阶段 1 补齐 XlsxTaskParser/Writer、CliCommandBuilder、DangerousOperationGuard；余 CodeBuddyCreditsApiClient / BackupManager / LocalGitIntegration / ShutdownService 4 项） | ↓ 至 0          |
 | Desktop 测试数            | **13**（阶段 0 首批冒烟 12 项 + 阶段 1 增 P1-20 ConvertBack 不变量 1 项，见 P0-17）                                                            | ↑              |
 | 空提交信息数 / 迭代            | 10/12 历史；阶段 −1 起由 commit-msg 钩强制「非空 + 含改了什么/为什么」                                                               | → 0 并保持        |
 | 误提交产物数                 | 10；阶段 −1 已 `git rm --cached` 并 ignore，当前 0                                                                     | → 0 并保持        |
@@ -434,7 +436,7 @@ P1-19 Desktop 补测试 + 契约收敛
 
 ```
 当天   : 提交规范 + gitignore 目录级 + 清产物 + 编译期分析 + 最小 CI（阶段 −1 的 1–5，已全部完成 2026-10-17）
-迭代1  : CI（--no-incremental，只报不阻断）+ 格式门禁 + 测试分层 + 盲区补齐（已完成 2026-10-18，见 §5.4）
+迭代1  : CI（--no-incremental，只报不阻断）+ 格式门禁 + 测试分层 + 盲区补齐（已完成 2026-10-18，见 §5.4；格式门禁 = pre-commit 钩 + end_of_line/eol=lf 约定，CHARSET 假阳性按 §4.7 #9 过滤）
 迭代2  : EnforceCodeStyleInBuild + ArchUnitNET 断言（Core 优先）
 迭代3  : 复杂度阈值按基线标定（先 warning） + 逃逸阀登记
 迭代4  : 复杂度阈值转 error + TreatWarningsAsErrors 分批开启（已提前完成 2026-10-18：存量清零后 TreatWarningsAsErrors=true）
@@ -484,22 +486,23 @@ A 组 10 项互不耦合，与 P0-17 并行完成。代码改动均随既有工�
 3. ~~**P0-12（存量警告清零）不在阶段 −1**~~（2026-10-18 更新）：阶段 1 已清零并开启 `TreatWarningsAsErrors`，见 §5.4。
 4. **未净化已入库历史**。`git rm --cached` 只把文件移出索引，历史提交中仍含这些产物（隐私面）。彻底净化需 `git filter-repo`，属高风险操作，本阶段未做，登记为后续机会主义项。
 
-### 5.4 阶段 1（2026-10-18，建网 6 项全部，P0 清零）
+### 5.4 阶段 1（2026-10-18，建网 6 项 + §4.1 格式门禁，P0 清零）
 
-**验证统一口径**：`dotnet build --no-incremental` = **0 警告 / 0 错误**（`TreatWarningsAsErrors=true` 生效）；`dotnet test BatchAgentRunner.slnx` = **345 通过 / 0 失败**（阶段 0 基线 325 + 阶段 1 新增 20）。
+**验证统一口径**：`dotnet build --no-incremental` = **0 警告 / 0 错误**（`TreatWarningsAsErrors=true` 生效）；`dotnet test BatchAgentRunner.slnx` = **345 通过 / 0 失败**（阶段 0 基线 325 + 阶段 1 新增 20）；`dotnet format --verify-no-changes` = **0 问题**（CHARSET 假阳性按 §4.7 #9 过滤后）。
 
 | ID    | 落地内容                                                                                                                                                                                                                          | 验证                                                                                     |
 | ----- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| P2-20 | 测试分层：E2E/Usability/Process 三类打 `[Trait("Category", …)]`；CI 拆「快跑（单元，默认 bucket + Desktop.Tests）」与「慢跑（E2E/Usability/Process）」两步，均 `--no-build`                                                                | 快跑过滤 `Category!=E2E&Category!=Usability&Category!=Process` = 306 通过；慢跑 = 24 通过；合计 330 = 主测试项目全量 |
+| P2-20 | 测试分层：E2E/Usability/Process 三类打 `[Trait("Category", …)]`；CI 拆「快跑（单元，默认 bucket + Desktop.Tests）」与「慢跑（E2E/Usability/Process）」两步，均 `--no-build`                                                                | 快跑过滤 `Category!=E2E&Category!=Usability&Category!=Process` = 308 通过；慢跑 = 24 通过；合计 332 = 主测试项目全量（2026-10-18 复测修订：原记 306/330，与同文档 345 = 332 + 13 自相矛盾，按实跑计数更正） |
 | P2-21 | 去 Flaky：① `IProcessLauncher`/`RealProcessLauncher` 抽出 `CliProcessRunner` 的进程启动缝，测试可注入假启动器验证「启动失败」分支（无需真实进程）；② samples 改读**嵌入式资源副本**（csproj `Link` 指向真实 samples，内容随 samples 同步，不依赖运行时/克隆路径）；③ 删除全部测试中的 `RepoRoot()` 磁盘路径探测 | 新增 `RunAsync_启动器返回null_返回无法启动进程结果且不进入主循环` 通过；E2E/Usability/序列化测试改读嵌入式资源后全通过 |
 | P2-28 | samples 降级为「只读用户示例」：测试契约（config.example.json / tasks.json / tasks.md）全部改读嵌入式副本；`TestSampleResources` 统一读取入口                                                                                          | `RunOptionsSerializationTests.仓库内注释模板可被解析`（改断言资源非空）、E2E TC-E2E-008 往返均通过                          |
-| P1-15 | 高危盲区补齐 16 项：`XlsxTaskWriterTests`（二进制原子写回：缺列自动追加 / 无临时残留 / 原地更新）、`CliCommandBuilderTests`（注入面：占位符替换 / 引号转义 / 工作空间包裹 / 专家注入）、`DangerousOperationGuardTests`（安全闸门：白名单优先 / 黑名单回传模式 / 空文本不抛） | 新增 16 项全部通过；高危模块零覆盖数 7 → 3                          |
+| P1-15 | 高危盲区补齐 16 项：`XlsxTaskWriterTests`（二进制原子写回：缺列自动追加 / 无临时残留 / 原地更新）、`CliCommandBuilderTests`（注入面：占位符替换 / 引号转义 / 工作空间包裹 / 专家注入）、`DangerousOperationGuardTests`（安全闸门：白名单优先 / 黑名单回传模式 / 空文本不抛） | 新增 16 项全部通过；高危模块零覆盖数 7 → 4（2026-10-18 勘误：原记 7→3，但同格列余 4 项，7−3=4，按算术更正） |
 | P0-12 | 存量警告清零 + 警告转错误：99 个警告逐类修复（CA2007 ConfigureAwait、CA1822 可静态化、CA1001 补 IDisposable 链、CA1861 静态数组、CA1816 SuppressFinalize、CA1806/CA2201/CA1847/CA1850/CA1860/CA2016/CA1711/CA1716/CA1051 等），8 项逃逸登记于 §4.7 台账；`TreatWarningsAsErrors=true` 全量开启 | `dotnet build --no-incremental` **0 警告 / 0 错误**；故意加 Version 探针验证 NU1008 后即恢复           |
 | P1-17 | 引入 CPM：新建 `Directory.Packages.props`（`ManagePackageVersionsCentrally=true`，全部包版本集中）；5 个 csproj 的 `PackageReference` 去掉内联 Version；删除 Core 无效依赖 `Microsoft.Extensions.Logging.Abstractions`（全仓 `ILogger` 使用 0 处） | 探针实验：任一 csproj 再写 `Version=` 即 NU1008 **构建错误**，版本漂移结构性防住           |
 | P1-18 | `JsonCreditsClaimStore` 默认构造修复（先解析目录到局部变量再建目录/取路径），拆除「默认构造必抛 ArgumentNullException」定时炸弹                                                                                              | 不变量测试 2 项通过（默认构造只读加载不抛 + 临时目录保存/加载往返无损；默认路径绝不写用户数据）             |
 | P1-20 | `ConfigHubConverters` 两处 `ConvertBack` 由 `throw new NotImplementedException()` 改为返回 `BindingOperations.DoNothing`（表示「不支持反向转换」而非崩溃）                                                              | 不变量测试 1 项通过（Desktop.Tests）；双向绑定触发不再崩                        |
+| §4.1 格式门禁 | `pre-commit` 钩落地（`.githooks/pre-commit`）：`dotnet format --verify-no-changes`（CHARSET 假阳性按 §4.7 #9 过滤）+ 暂存 `.cs` 显式 `iconv` UTF-8 校验；`.editorconfig` 声明 `end_of_line=lf`、`.gitattributes` 锁 `* text=auto eol=lf`（修复 autocrlf 机器上 CRLF/LF 互踩）；存量格式基线同步清零（23 文件：IMPORTS/WHITESPACE/FINALNEWLINE/ENDOFLINE） | 钩子三项验证：干净状态放行；注入尾随空格文件被拒（WHITESPACE）；注入 GBK 字节文件被拒（UTF-8 守卫）。`dotnet format --verify-no-changes` 过滤 CHARSET 后 0 问题 |
 
-> 阶段 1 边界（交接必读）：① CA2007/CA1861/CA1707 在**测试项目**经 NoWarn 豁免（xUnit1030 与 CA2007 直接冲突等原因，已登记 §4.7）；生产代码 0 豁免。② `IProcessLauncher` 目前只被 `CliProcessRunner` 消费，GateEvaluator 内的 `cmd.exe` 直拉（P1-9）仍待阶段 2 抽 `IProcessRunner`。③ 分支保护 / 必需状态检查仍未配置（GitHub 设置），CI 红不阻断合并——这是 P0-16「只报告不阻断」的最后残留，需仓库管理员在 GitHub 页面完成。④ `TreatWarningsAsErrors` 为全量开启而非 §4.2 的分批（存量清零后分批前提已消失，见 §4.9 注）。
+> 阶段 1 边界（交接必读）：① CA2007/CA1861/CA1707 在**测试项目**经 NoWarn 豁免（xUnit1030 与 CA2007 直接冲突等原因，已登记 §4.7）；生产代码 0 豁免。② `IProcessLauncher` 目前只被 `CliProcessRunner` 消费，GateEvaluator 内的 `cmd.exe` 直拉（P1-9）仍待阶段 2 抽 `IProcessRunner`。③ 分支保护 / 必需状态检查仍未配置（GitHub 设置），CI 红不阻断合并——这是 P0-16「只报告不阻断」的最后残留，需仓库管理员在 GitHub 页面完成。④ `TreatWarningsAsErrors` 为全量开启而非 §4.2 的分批（存量清零后分批前提已消失，见 §4.9 注）。⑤ `pre-commit` 钩与 commit-msg 钩同为**本机生效**（`core.hooksPath` 写在本机 `.git/config`，clone 不自动继承），新人接入需执行 `git config core.hooksPath .githooks`；CI runner 不跑钩子，靠 `TreatWarningsAsErrors` + CI build 步骤兜底。⑥ CHARSET 过滤依赖 SDK 10.0.401 的回归行为，升级 SDK 后需复测（§4.7 #9）。
 
 ---
 

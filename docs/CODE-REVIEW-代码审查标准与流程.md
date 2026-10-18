@@ -19,7 +19,9 @@
 - 测试套件存在且覆盖核心调度、降级矩阵、额度判定、凭据切换、端到端等（`tests/BatchAgentRunner.Tests`）。
 
 **参差不齐、需要标准兜住的差距**
-- **没有任何静态分析基线**：仓库无 `.editorconfig`、无 `.ruleset`/`.globalconfig`，`Directory.Build.props` 里 `TreatWarningsAsErrors=false`。→ 格式化、warning 全靠人眼，最容易出现「参差」。
+> 2026-10-18 更新（治理阶段 −1/0/1 完成后）：以下各项为本文档制定时的起点差距，**已全部闭合**——`.editorconfig` 已建、`TreatWarningsAsErrors=true` 已开、静态分析已进构建、格式门禁已进 pre-commit 钩（详见 §7.2/§7.5 与治理方案 §5.4）。保留原文作为起点留痕。
+
+- **没有任何静态分析基线**：~~仓库无 `.editorconfig`、无 `.ruleset`/`.globalconfig`，`Directory.Build.props` 里 `TreatWarningsAsErrors=false`。~~ → 格式化、warning 全靠人眼，最容易出现「参差」。（已闭合）
 - **并发复杂度高**：`BatchEngine` 同时用 `_writeLock` / `_statsLock` / `_waitGate` 三把锁 + `SemaphoreSlim` + 多 `CancellationTokenSource`，锁的配对（`lock`→`Release`）、`ConfigureAwait(false)`、取消传播是主要正确性风险区。
 - **配置序列化有「坑」**：snake_case 字段、派生属性必须 `[JsonIgnore]`、集合不能用接口类型声明（否则 `System.Text.Json` 反序列化抛 `NotSupportedException`）——这些是项目历史踩过的坑，但只写在记忆里，没进审查清单。
 - **个别风格争议点**：`BatchEngine` 中 `goto case AgentFailureKind.QuotaExhausted;` 用于失败类型升级，可读性见仁见智，需在标准里给明确口径。
@@ -152,10 +154,10 @@
 |------|----------|------|
 | 构建通过（`dotnet build`） | 已可 | 必须 |
 | 测试通过（`dotnet test`） | 已可 | 必须 |
-| `dotnet format` 无差异 | 无基线 | 短期加上 |
-| 无新增 compiler warning | `TreatWarningsAsErrors=false` | 中期开启 |
+| `dotnet format` 无差异 | **已落地**（2026-10-18：`pre-commit` 钩强制，见 §7.2/治理方案 §4.1） | 必须 |
+| 无新增 compiler warning | **已开启** `TreatWarningsAsErrors=true`（2026-10-18，存量清零后） | 必须 |
 | 核心模块双人审 | 无 | 必须 |
-| 静态分析（CA 规则）零新增 🔴 | 无规则集 | 中期 |
+| 静态分析（CA 规则）零新增 🔴 | **已落地**（`EnforceCodeStyleInBuild` + `AnalysisLevel=latest-recommended`，2026-10-18） | 必须 |
 
 ### 5.4 时限与 SLA（建议）
 - 普通 PR：审查者 **1 个工作日内** 首轮反馈；作者 **2 个工作日内** 完成修改。
@@ -238,7 +240,7 @@ dotnet_diagnostic.CA2007.severity = warning
 ```bash
 dotnet build BatchAgentRunner.slnx
 dotnet test tests/BatchAgentRunner.Tests
-dotnet format BatchAgentRunner.slnx --verify-no-changes   # 接门禁时
+dotnet format BatchAgentRunner.slnx --verify-no-changes   # pre-commit 钩已强制（CHARSET 假阳性除外，治理方案 §4.7 #9）
 ```
 
 ### 7.5 轻量 CI（已落地，`.github/workflows/ci.yml`）
@@ -252,7 +254,8 @@ dotnet format BatchAgentRunner.slnx --verify-no-changes   # 接门禁时
 
 - ~~**短期（0–2 周）**：本文件落地 + 加 `.editorconfig` + 团队按 §3 清单互审；核心模块开始双人审；记录前 10 个 PR 的 🔴/🟡 分布。~~ ✅ 已完成（`.editorconfig`、双人审、CI 均已落地）
 - ~~**中期（1–2 月）**：开 `EnforceCodeStyleInBuild` + 分析器，warning 清零；`dotnet format` 接提交前钩子；核心模块门禁硬化。~~ ✅ 已完成（2026-10-18：99 个存量警告清零 + `TreatWarningsAsErrors=true`，见治理方案 §5.4）
-- **长期（3 月+）**：分支保护设为必需状态检查（GitHub 设置，待仓库管理员）；`dotnet format` 接提交前钩子（`pre-commit`，治理方案 §4.1 已规划未落地）；ArchUnitNET 架构断言 + 复杂度阈值（治理方案 §4.3/§4.4，迭代 2/3）；建立误切换率、审查时长、🔴 密度等指标，季度复盘迭代本标准。
+- **长期（3 月+）**：分支保护设为必需状态检查（GitHub 设置，待仓库管理员）；ArchUnitNET 架构断言 + 复杂度阈值（治理方案 §4.3/§4.4，迭代 2/3）；建立误切换率、审查时长、🔴 密度等指标，季度复盘迭代本标准。
+- ~~`dotnet format` 接提交前钩子（`pre-commit`，治理方案 §4.1 已规划未落地）~~ ✅ **已完成（2026-10-18 阶段 1）**：`.githooks/pre-commit` 强制 `dotnet format --verify-no-changes` + 暂存 `.cs` 的 UTF-8 校验；`.editorconfig` 声明 `end_of_line=lf`、`.gitattributes` 锁 `eol=lf`。CHARSET 类假阳性（SDK 10.0.401 + `CodePage` 回归）按治理方案 §4.7 #9 过滤并登记。
 
 ---
 
@@ -272,6 +275,7 @@ dotnet format BatchAgentRunner.slnx --verify-no-changes   # 接门禁时
 | 测试依赖磁盘 samples / 仓库根路径 | 读嵌入式资源副本 `TestSampleResources` | P2-21/P2-28 |
 | 测试里起真实进程 | 注入 `IProcessLauncher` 假启动器 | P2-21 |
 | 持有 `SemaphoreSlim`/`CTS` 却不实现 `IDisposable` | 补 `IDisposable` 链并级联释放 | P0-12 / CA1001 |
+| 源码存成 GBK / 带 BOM / 行尾 CRLF 混用 | UTF-8 无 BOM + LF（`pre-commit` 钩强制，`iconv` + `end_of_line=lf`） | P0-12 格式门禁 / SDK 10.0.401 CHARSET 回归（治理方案 §4.7 #9） |
 
 ---
 
