@@ -1,7 +1,11 @@
 ###############################################################################
 # Set default behavior to automatically normalize line endings.
 ###############################################################################
-* text=auto
+# 阶段 1 / P0-12 格式门禁（2026-10-18）：eol=lf 锁定 LF 约定。
+# 仅 text=auto 时，autocrlf=true 的机器会把 LF 存成 CRLF，与 .editorconfig 的
+# end_of_line = lf 互相打架，dotnet format 的 ENDOFLINE 校验误报。
+# text=auto 对二进制（*.xlsx/*.png/*.ico 等）自动识别、不做转换。
+* text=auto eol=lf
 
 ###############################################################################
 # Set default behavior for command prompt diff.

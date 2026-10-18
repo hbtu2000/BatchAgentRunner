@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using BatchAgentRunner.Agents.Adapters;
@@ -6,6 +8,7 @@ using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Engine;
 using BatchAgentRunner.Core.Events;
 using BatchAgentRunner.Core.Options;
+using BatchAgentRunner.Desktop.Views;
 using BatchAgentRunner.Infrastructure.CredentialVault;
 using BatchAgentRunner.Infrastructure.Diff;
 using BatchAgentRunner.Infrastructure.Git;
@@ -16,10 +19,7 @@ using BatchAgentRunner.Infrastructure.Persistence;
 using BatchAgentRunner.Infrastructure.Platform;
 using BatchAgentRunner.Infrastructure.Reporting;
 using BatchAgentRunner.Infrastructure.TaskFiles;
-using BatchAgentRunner.Desktop.Views;
 using CommunityToolkit.Mvvm.ComponentModel;
-using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 
 namespace BatchAgentRunner.Desktop.Services;
 

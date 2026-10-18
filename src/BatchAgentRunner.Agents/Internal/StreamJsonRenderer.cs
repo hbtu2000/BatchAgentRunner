@@ -55,44 +55,44 @@ public sealed class StreamJsonRenderer
 
         try
         {
-        if (!doc.TryGetProperty("type", out var typeEl) || typeEl.ValueKind != JsonValueKind.String)
-        {
-            var miss = new List<string>();
-            FlushPending(miss);
-            miss.Add(line);
-            return miss;
-        }
+            if (!doc.TryGetProperty("type", out var typeEl) || typeEl.ValueKind != JsonValueKind.String)
+            {
+                var miss = new List<string>();
+                FlushPending(miss);
+                miss.Add(line);
+                return miss;
+            }
 
-        var outputs = new List<string>();
-        var type = typeEl.GetString();
-        // 非 stream_event（回合边界/完整事件）到达时，先把累积的增量缓冲刷出，避免末尾正文滞留
-        if (type != "stream_event")
-        {
-            FlushPending(outputs);
-        }
+            var outputs = new List<string>();
+            var type = typeEl.GetString();
+            // 非 stream_event（回合边界/完整事件）到达时，先把累积的增量缓冲刷出，避免末尾正文滞留
+            if (type != "stream_event")
+            {
+                FlushPending(outputs);
+            }
 
-        switch (type)
-        {
-            case "assistant":
-                EmitAssistant(doc, outputs);
-                break;
-            case "user":
-                EmitUser(doc, outputs);
-                break;
-            case "result":
-                EmitResult(doc, outputs);
-                break;
-            case "stream_event":
-                EmitStreamEvent(doc, outputs);
-                break;
-            // system / error 等未知类型：尽量抽取可读文本兜底，避免实时流静默
-            default:
-                TryEmitAnyText(doc, outputs);
-                break;
-        }
+            switch (type)
+            {
+                case "assistant":
+                    EmitAssistant(doc, outputs);
+                    break;
+                case "user":
+                    EmitUser(doc, outputs);
+                    break;
+                case "result":
+                    EmitResult(doc, outputs);
+                    break;
+                case "stream_event":
+                    EmitStreamEvent(doc, outputs);
+                    break;
+                // system / error 等未知类型：尽量抽取可读文本兜底，避免实时流静默
+                default:
+                    TryEmitAnyText(doc, outputs);
+                    break;
+            }
 
-        return outputs;
-    }
+            return outputs;
+        }
         catch
         {
             return new[] { line };

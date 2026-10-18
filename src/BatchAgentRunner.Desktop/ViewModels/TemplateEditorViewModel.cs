@@ -369,7 +369,8 @@ public sealed class TemplateEditorViewModel : ViewModelBase
     };
 
     private void LoadVarInputs()
-    {        VarInputs.Clear();
+    {
+        VarInputs.Clear();
         if (_selectedTemplate is null)
         {
             return;

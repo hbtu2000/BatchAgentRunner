@@ -82,32 +82,32 @@ public static partial class CodeBuddyModelCatalogReader
         switch (element.ValueKind)
         {
             case JsonValueKind.Object:
-            {
-                if (element.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String
-                    && element.TryGetProperty("credits", out var creditsEl) && creditsEl.ValueKind == JsonValueKind.String
-                    && idEl.GetString() is { Length: > 0 } id
-                    && TryParseCredits(creditsEl.GetString(), out var multiplier))
                 {
-                    map[id] = multiplier; // 后出现的覆盖先出现的（新配置优先）
-                }
+                    if (element.TryGetProperty("id", out var idEl) && idEl.ValueKind == JsonValueKind.String
+                        && element.TryGetProperty("credits", out var creditsEl) && creditsEl.ValueKind == JsonValueKind.String
+                        && idEl.GetString() is { Length: > 0 } id
+                        && TryParseCredits(creditsEl.GetString(), out var multiplier))
+                    {
+                        map[id] = multiplier; // 后出现的覆盖先出现的（新配置优先）
+                    }
 
-                foreach (var property in element.EnumerateObject())
-                {
-                    Collect(property.Value, map);
-                }
+                    foreach (var property in element.EnumerateObject())
+                    {
+                        Collect(property.Value, map);
+                    }
 
-                break;
-            }
+                    break;
+                }
 
             case JsonValueKind.Array:
-            {
-                foreach (var item in element.EnumerateArray())
                 {
-                    Collect(item, map);
-                }
+                    foreach (var item in element.EnumerateArray())
+                    {
+                        Collect(item, map);
+                    }
 
-                break;
-            }
+                    break;
+                }
         }
     }
 

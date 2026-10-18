@@ -1,6 +1,6 @@
+using BatchAgentRunner.Agents.Internal;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Options;
-using BatchAgentRunner.Agents.Internal;
 
 namespace BatchAgentRunner.Agents.Adapters;
 

@@ -799,7 +799,8 @@ public sealed class BatchEngine : IDisposable
         RaiseTaskChanged(task);
         _logger.WriteTaskFinished(task.Id, outcome.FinalStatus, task.DurationSeconds, task.RetryCount);
         Raise(new BatchEvent(BatchEventKind.TaskFinished, _clock.Now,
-            $"工作流任务 {task.Id} 结束：{outcome.FinalStatus}", task.Id) { Task = task });
+            $"工作流任务 {task.Id} 结束：{outcome.FinalStatus}", task.Id)
+        { Task = task });
 
         await PersistAsync(CancellationToken.None).ConfigureAwait(false);
 
@@ -942,7 +943,8 @@ public sealed class BatchEngine : IDisposable
         RaiseTaskChanged(task);
         _logger.WriteTaskFinished(task.Id, TaskStatus.Blocked, task.DurationSeconds, task.RetryCount);
         Raise(new BatchEvent(BatchEventKind.TaskFinished, _clock.Now,
-            $"任务 {task.Id} {reason}", task.Id) { Task = task });
+            $"任务 {task.Id} {reason}", task.Id)
+        { Task = task });
         await PersistAsync(CancellationToken.None).ConfigureAwait(false);
         return true;
     }
@@ -1116,7 +1118,8 @@ public sealed class BatchEngine : IDisposable
                         await MarkInterrupted(task, "用户取消等待，当前任务安全中断").ConfigureAwait(false);
                         SetStatus(BatchStatus.Blocked);
                         Raise(new BatchEvent(BatchEventKind.BatchWaitingCancelled, _clock.Now,
-                            "已取消等待，批处理已暂停", task.Id) { BatchStatus = BatchStatus.Blocked });
+                            "已取消等待，批处理已暂停", task.Id)
+                        { BatchStatus = BatchStatus.Blocked });
                         return TaskOutcome.Blocked;
                     }
 
@@ -1188,19 +1191,19 @@ public sealed class BatchEngine : IDisposable
                     goto case AgentFailureKind.QuotaExhausted;
 
                 case AgentFailureKind.QuotaExhausted:
-                {
-                    var record = _cooldowns.Record(combo.Account.Id, combo.Model.Name, failure.ResetAt, _clock.Now,
-                        failure.Raw);
-                    Raise(new BatchEvent(BatchEventKind.QuotaResetRecorded, _clock.Now,
-                        $"组合 {combo} 额度已耗尽，记录重置时间 {record.ResetAt:yyyy-MM-dd HH:mm}（{record.DescribeSource()}）",
-                        task.Id, combo.Account.Label, combo.Model.Name)
-                    { Detail = record.RawValue });
-                    _logger.WriteQuotaResetRecorded(combo.Account.Id, combo.Model.Name, record.ResetAt, record.Source);
-                    _cooldowns.PurgeExpired(_clock.Now);
-                    await SaveCooldownsAsync().ConfigureAwait(false);
-                    rateLimitStreak = 0;
-                    continue;
-                }
+                    {
+                        var record = _cooldowns.Record(combo.Account.Id, combo.Model.Name, failure.ResetAt, _clock.Now,
+                            failure.Raw);
+                        Raise(new BatchEvent(BatchEventKind.QuotaResetRecorded, _clock.Now,
+                            $"组合 {combo} 额度已耗尽，记录重置时间 {record.ResetAt:yyyy-MM-dd HH:mm}（{record.DescribeSource()}）",
+                            task.Id, combo.Account.Label, combo.Model.Name)
+                        { Detail = record.RawValue });
+                        _logger.WriteQuotaResetRecorded(combo.Account.Id, combo.Model.Name, record.ResetAt, record.Source);
+                        _cooldowns.PurgeExpired(_clock.Now);
+                        await SaveCooldownsAsync().ConfigureAwait(false);
+                        rateLimitStreak = 0;
+                        continue;
+                    }
 
                 case AgentFailureKind.AuthExpired:
                     combo.Account.Enabled = false;
@@ -1338,7 +1341,8 @@ public sealed class BatchEngine : IDisposable
 
             SetStatus(BatchStatus.Running);
             Raise(new BatchEvent(BatchEventKind.BatchResumed, _clock.Now,
-                $"已恢复执行（暂停 {elapsed / 60:0.0} 分钟，不计入任务时长）") { BatchStatus = BatchStatus.Running });
+                $"已恢复执行（暂停 {elapsed / 60:0.0} 分钟，不计入任务时长）")
+            { BatchStatus = BatchStatus.Running });
             _logger.WriteBatchResumed("到达恢复时间点");
             return true;
         }
@@ -1474,7 +1478,8 @@ public sealed class BatchEngine : IDisposable
 
             Raise(new BatchEvent(BatchEventKind.FallbackUsed, _clock.Now,
                 $"兜底完成：任务 {task.Id}（花费 ¥{cost:0.####}，{(basis == CostBasis.Measured ? "实测" : "估算")}）",
-                task.Id, account.Label, fallbackModel.Name) { Cost = cost, Task = task });
+                task.Id, account.Label, fallbackModel.Name)
+            { Cost = cost, Task = task });
             _logger.WriteFallbackUsed(task.Id, fallbackModel.Name, cost, basis);
             RaiseTaskChanged(task);
             await PersistAsync(ct).ConfigureAwait(false);
@@ -1516,7 +1521,8 @@ public sealed class BatchEngine : IDisposable
 
         Raise(new BatchEvent(BatchEventKind.TaskFinished, _clock.Now,
             $"任务 {task.Id} 完成（{task.DurationSeconds:0.#}s，{combo.Account.Label} + {combo.Model.Name}）",
-            task.Id, combo.Account.Label, combo.Model.Name) { Task = task });
+            task.Id, combo.Account.Label, combo.Model.Name)
+        { Task = task });
         _logger.WriteTaskFinished(task.Id, TaskStatus.Done, task.DurationSeconds, task.RetryCount);
         RaiseTaskChanged(task);
         await PersistAsync(CancellationToken.None).ConfigureAwait(false);
@@ -1533,7 +1539,8 @@ public sealed class BatchEngine : IDisposable
         }
 
         Raise(new BatchEvent(BatchEventKind.TaskFinished, _clock.Now,
-            $"任务 {task.Id} 失败（重试 {task.RetryCount} 次）：{error}", task.Id) { Task = task });
+            $"任务 {task.Id} 失败（重试 {task.RetryCount} 次）：{error}", task.Id)
+        { Task = task });
         _logger.WriteTaskFinished(task.Id, TaskStatus.Failed, task.DurationSeconds, task.RetryCount);
         RaiseTaskChanged(task);
         await PersistAsync(CancellationToken.None).ConfigureAwait(false);
@@ -1558,7 +1565,8 @@ public sealed class BatchEngine : IDisposable
         }
 
         Raise(new BatchEvent(BatchEventKind.TaskFinished, _clock.Now,
-            $"任务 {task.Id} 已中断：{reason}", task.Id) { Task = task });
+            $"任务 {task.Id} 已中断：{reason}", task.Id)
+        { Task = task });
         _logger.WriteTaskFinished(task.Id, TaskStatus.Interrupted, task.DurationSeconds, task.RetryCount);
         RaiseTaskChanged(task);
         await PersistAsync(CancellationToken.None).ConfigureAwait(false);
@@ -1732,7 +1740,8 @@ public sealed class BatchEngine : IDisposable
         {
             Raise(new BatchEvent(BatchEventKind.IdSnapshotWarning, _clock.Now,
                 $"检测到已完成任务 ID 消失或变更（{string.Join("、", missing.Take(5))}），若任务被重排可能导致重跑，请确认",
-                null) { Detail = string.Join(",", missing) });
+                null)
+            { Detail = string.Join(",", missing) });
         }
 
         _idSnapshot = current;
@@ -1775,7 +1784,12 @@ public sealed class BatchEngine : IDisposable
     {
         var entry = new TimelineEntry
         {
-            At = _clock.Now, Kind = kind, Message = message, TaskId = taskId, Account = account, Model = model
+            At = _clock.Now,
+            Kind = kind,
+            Message = message,
+            TaskId = taskId,
+            Account = account,
+            Model = model
         };
         lock (_statsLock)
         {
@@ -1854,7 +1868,8 @@ public sealed class BatchEngine : IDisposable
     {
         Status = status;
         Raise(new BatchEvent(BatchEventKind.StatusChanged, _clock.Now, $"批处理状态：{status}",
-            null) { BatchStatus = status });
+            null)
+        { BatchStatus = status });
     }
 
     private void RaiseTaskChanged(TaskItem task)
@@ -1924,8 +1939,11 @@ public sealed class BatchEngine : IDisposable
             FailedTasks = _tasks.Where(t => t.Status == TaskStatus.Failed)
                 .Select(t => new FailedTaskEntry
                 {
-                    TaskId = t.Id, Error = t.Error, RetryCount = t.RetryCount,
-                    Model = t.ModelUsed, Account = t.AccountUsed
+                    TaskId = t.Id,
+                    Error = t.Error,
+                    RetryCount = t.RetryCount,
+                    Model = t.ModelUsed,
+                    Account = t.AccountUsed
                 }).ToList(),
             WindowWaitSeconds = Math.Round(_windowWaitSeconds, 1),
             CooldownWaitSeconds = Math.Round(_cooldownWaitSeconds, 1),
@@ -2018,7 +2036,8 @@ public sealed class BatchEngine : IDisposable
     }
 
     /// <summary>阻断来源：依赖失败（Failed/Blocked）或悬空（不存在）的依赖 Id。</summary>
-    private List<string>? ComputeBlockedBy(TaskItem task)    {
+    private List<string>? ComputeBlockedBy(TaskItem task)
+    {
         if (task.Status != TaskStatus.Blocked || task.DependsOn is not { Count: > 0 })
         {
             return null;

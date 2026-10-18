@@ -1,9 +1,9 @@
 using System.Text.RegularExpressions;
+using BatchAgentRunner.Agents.Internal;
 using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Options;
 using BatchAgentRunner.Core.Scheduling;
-using BatchAgentRunner.Agents.Internal;
 using BatchAgentRunner.Infrastructure.CredentialVault;
 
 namespace BatchAgentRunner.Agents.Adapters;

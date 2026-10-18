@@ -1,3 +1,4 @@
+using System.Text.Json;
 using BatchAgentRunner.Agents.Adapters;
 using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
@@ -8,7 +9,6 @@ using BatchAgentRunner.Core.Serialization;
 using BatchAgentRunner.Infrastructure.Logging;
 using BatchAgentRunner.Infrastructure.Persistence;
 using BatchAgentRunner.Infrastructure.TaskFiles;
-using System.Text.Json;
 
 namespace BatchAgentRunner.Tests.Usability;
 

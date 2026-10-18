@@ -301,9 +301,11 @@ public class CreditsClaimTests
         public void Write(string level, string message) => Lines.Add(message);
         public void WriteTaskStarted(string taskId, string? account, string? model, string? expert, string? workspace) { }
         public void WriteTaskFinished(string taskId, BatchAgentRunner.Core.Domain.TaskStatus status,
-            double durationSeconds, int retryCount) { }
+            double durationSeconds, int retryCount)
+        { }
         public void WriteModelSwitched(string? fromAccount, string? fromModel, string? toAccount, string? toModel,
-            string reason, string? taskId) { }
+            string reason, string? taskId)
+        { }
         public void WriteWindowSkipped(string model, DateTimeOffset? nextWindowStart) { }
         public void WriteCooldownSkipped(string account, string model, DateTimeOffset resetAt) { }
         public void WriteQuotaResetRecorded(string account, string model, DateTimeOffset resetAt, CooldownSource source) { }

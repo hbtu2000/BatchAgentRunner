@@ -4,6 +4,10 @@ root = true
 trim_trailing_whitespace = true
 insert_final_newline = true
 charset = utf-8
+# 仓库索引统一 LF（git ls-files --eol 实测 i/lf）。不声明时 Windows 上
+# dotnet format 的 CHARSET 修复器按 CRLF 预期校验，全部文件误报（P0-12
+# 格式门禁落地时实测 162 个假阳性），且修复器不会实际改写——显式声明为 lf。
+end_of_line = lf
 
 [*.cs]
 indent_style = space

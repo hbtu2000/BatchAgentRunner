@@ -116,7 +116,9 @@ public class BatchEngineTests
         var options = Options(M("m1"));
         options.Fallback = new FallbackConfig
         {
-            Enabled = true, MaxCostPerTask = 1m, MaxCostPerBatch = 5m
+            Enabled = true,
+            MaxCostPerTask = 1m,
+            MaxCostPerBatch = 5m
         };
         // v1.12：兜底模型池挂在账号下
         options.Accounts[0].FallbackModels = new List<FallbackModel>

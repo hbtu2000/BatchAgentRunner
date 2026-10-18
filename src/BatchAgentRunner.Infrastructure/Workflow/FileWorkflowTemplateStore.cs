@@ -121,11 +121,13 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
         // S1 需求文档生成与审查
         private static TemplateSpec S1() => new()
         {
-            Id = "S1", Name = "需求文档生成与审查",
+            Id = "S1",
+            Name = "需求文档生成与审查",
             Vars = Vars(("topic", "待梳理的需求主题")),
             Workflow = new WorkflowSpec
             {
-                Name = "需求文档生成与审查", DefaultMaxLoops = 3,
+                Name = "需求文档生成与审查",
+                DefaultMaxLoops = 3,
                 Stages = new List<WorkflowStage>
                 {
                     Stage("gen", "生成需求文档", "根据主题「{var:topic}」生成结构化的需求文档（背景/目标/范围/功能点/验收标准）。"),
@@ -139,11 +141,13 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
         // S2 设计文档生成与审查
         private static TemplateSpec S2() => new()
         {
-            Id = "S2", Name = "设计文档生成与审查",
+            Id = "S2",
+            Name = "设计文档生成与审查",
             Vars = Vars(("requirement", "需求文档内容或路径")),
             Workflow = new WorkflowSpec
             {
-                Name = "设计文档生成与审查", DefaultMaxLoops = 3,
+                Name = "设计文档生成与审查",
+                DefaultMaxLoops = 3,
                 Stages = new List<WorkflowStage>
                 {
                     Stage("gen", "生成设计文档", "基于「{var:requirement}」生成设计文档（架构/模块/接口/数据模型/可行性/成本）。"),
@@ -157,11 +161,13 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
         // S3 自动排期与逐任务推进
         private static TemplateSpec S3() => new()
         {
-            Id = "S3", Name = "自动排期与逐任务推进",
+            Id = "S3",
+            Name = "自动排期与逐任务推进",
             Vars = Vars(("requirement", "需求文档内容")),
             Workflow = new WorkflowSpec
             {
-                Name = "自动排期与逐任务推进", DefaultMaxLoops = 1,
+                Name = "自动排期与逐任务推进",
+                DefaultMaxLoops = 1,
                 Stages = new List<WorkflowStage>
                 {
                     Stage("plan", "生成排期(WBS)", "根据「{var:requirement}」拆解为带依赖的任务清单（WBS），输出任务 id 与依赖关系。"),
@@ -173,12 +179,14 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
         // S4 批量代码审查与分批修复
         private static TemplateSpec S4() => new()
         {
-            Id = "S4", Name = "批量代码审查与分批修复",
+            Id = "S4",
+            Name = "批量代码审查与分批修复",
             Vars = Vars(("scope", "待审查的模块/目录")),
             DefaultBatchSize = 5,
             Workflow = new WorkflowSpec
             {
-                Name = "批量代码审查与分批修复", DefaultMaxLoops = 2,
+                Name = "批量代码审查与分批修复",
+                DefaultMaxLoops = 2,
                 Stages = new List<WorkflowStage>
                 {
                     Stage("review", "分批审查", "审查「{var:scope}」代码，输出问题清单（含严重度）。"),
@@ -192,12 +200,14 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
         // S5 批量 E2E 测试与修复
         private static TemplateSpec S5() => new()
         {
-            Id = "S5", Name = "批量E2E测试与修复",
+            Id = "S5",
+            Name = "批量E2E测试与修复",
             Vars = Vars(("scope", "E2E 测试目录")),
             DefaultBatchSize = 5,
             Workflow = new WorkflowSpec
             {
-                Name = "批量E2E测试与修复", DefaultMaxLoops = 2,
+                Name = "批量E2E测试与修复",
+                DefaultMaxLoops = 2,
                 Stages = new List<WorkflowStage>
                 {
                     Stage("run", "分批跑E2E", "编写/执行「{var:scope}」的 E2E 用例。"),
@@ -211,12 +221,14 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
         // S6 批量可用性测试与修复
         private static TemplateSpec S6() => new()
         {
-            Id = "S6", Name = "批量可用性测试与修复",
+            Id = "S6",
+            Name = "批量可用性测试与修复",
             Vars = Vars(("scope", "待走查的页面/功能")),
             DefaultBatchSize = 5,
             Workflow = new WorkflowSpec
             {
-                Name = "批量可用性测试与修复", DefaultMaxLoops = 2,
+                Name = "批量可用性测试与修复",
+                DefaultMaxLoops = 2,
                 Stages = new List<WorkflowStage>
                 {
                     Stage("audit", "分批走查", "对「{var:scope}」做可用性走查（WCAG/交互/文案）。"),
@@ -230,12 +242,14 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
         // S7 批量 Bug 修复流水线
         private static TemplateSpec S7() => new()
         {
-            Id = "S7", Name = "批量Bug修复流水线",
+            Id = "S7",
+            Name = "批量Bug修复流水线",
             Vars = Vars(("bugs", "Bug 清单（每行一个）")),
             DefaultBatchSize = 5,
             Workflow = new WorkflowSpec
             {
-                Name = "批量Bug修复流水线", DefaultMaxLoops = 2,
+                Name = "批量Bug修复流水线",
+                DefaultMaxLoops = 2,
                 Stages = new List<WorkflowStage>
                 {
                     Stage("locate", "逐个定位", "独立会话逐个定位 Bug：\n{var:bugs}"),
@@ -248,12 +262,14 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
         // S8 单元测试批量补齐
         private static TemplateSpec S8() => new()
         {
-            Id = "S8", Name = "单元测试批量补齐",
+            Id = "S8",
+            Name = "单元测试批量补齐",
             Vars = Vars(("scope", "低覆盖率模块")),
             DefaultBatchSize = 5,
             Workflow = new WorkflowSpec
             {
-                Name = "单元测试批量补齐", DefaultMaxLoops = 2,
+                Name = "单元测试批量补齐",
+                DefaultMaxLoops = 2,
                 Stages = new List<WorkflowStage>
                 {
                     Stage("scan", "扫描低覆盖", "扫描「{var:scope}」的覆盖率缺口。"),
@@ -267,12 +283,14 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
         // S9 依赖升级流水线
         private static TemplateSpec S9() => new()
         {
-            Id = "S9", Name = "依赖升级流水线",
+            Id = "S9",
+            Name = "依赖升级流水线",
             Vars = Vars(("deps", "待升级依赖清单")),
             DefaultBatchSize = 3,
             Workflow = new WorkflowSpec
             {
-                Name = "依赖升级流水线", DefaultMaxLoops = 2,
+                Name = "依赖升级流水线",
+                DefaultMaxLoops = 2,
                 Stages = new List<WorkflowStage>
                 {
                     Stage("plan", "依赖清单", "列出「{var:deps}」的升级计划。"),
@@ -286,12 +304,14 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
         // S10 代码规范批量整改
         private static TemplateSpec S10() => new()
         {
-            Id = "S10", Name = "代码规范批量整改",
+            Id = "S10",
+            Name = "代码规范批量整改",
             Vars = Vars(("scope", "待整改代码范围")),
             DefaultBatchSize = 5,
             Workflow = new WorkflowSpec
             {
-                Name = "代码规范批量整改", DefaultMaxLoops = 2,
+                Name = "代码规范批量整改",
+                DefaultMaxLoops = 2,
                 Stages = new List<WorkflowStage>
                 {
                     Stage("scan", "lint扫描", "扫描「{var:scope}」的规范问题：\n{output:scan}", null),
@@ -305,12 +325,14 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
         // S11 安全漏洞批量修复
         private static TemplateSpec S11() => new()
         {
-            Id = "S11", Name = "安全漏洞批量修复",
+            Id = "S11",
+            Name = "安全漏洞批量修复",
             Vars = Vars(("report", "扫描报告路径/内容")),
             DefaultBatchSize = 3,
             Workflow = new WorkflowSpec
             {
-                Name = "安全漏洞批量修复", DefaultMaxLoops = 2,
+                Name = "安全漏洞批量修复",
+                DefaultMaxLoops = 2,
                 Stages = new List<WorkflowStage>
                 {
                     Stage("scan", "漏洞分级", "对「{var:report}」的漏洞按严重度分级。"),
@@ -324,12 +346,14 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
         // S12 性能问题批量优化
         private static TemplateSpec S12() => new()
         {
-            Id = "S12", Name = "性能问题批量优化",
+            Id = "S12",
+            Name = "性能问题批量优化",
             Vars = Vars(("report", "profiling 报告")),
             DefaultBatchSize = 3,
             Workflow = new WorkflowSpec
             {
-                Name = "性能问题批量优化", DefaultMaxLoops = 2,
+                Name = "性能问题批量优化",
+                DefaultMaxLoops = 2,
                 Stages = new List<WorkflowStage>
                 {
                     Stage("profile", "热点分级", "对「{var:report}」的性能热点分级。"),
@@ -342,12 +366,14 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
         // S13 代码注释/文档批量补全
         private static TemplateSpec S13() => new()
         {
-            Id = "S13", Name = "代码注释/文档批量补全",
+            Id = "S13",
+            Name = "代码注释/文档批量补全",
             Vars = Vars(("scope", "待补全模块")),
             DefaultBatchSize = 5,
             Workflow = new WorkflowSpec
             {
-                Name = "代码注释/文档批量补全", DefaultMaxLoops = 2,
+                Name = "代码注释/文档批量补全",
+                DefaultMaxLoops = 2,
                 Stages = new List<WorkflowStage>
                 {
                     Stage("scan", "扫描缺失", "扫描「{var:scope}」缺注释/缺文档的模块。"),
@@ -360,12 +386,14 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
         // S14 多语言翻译与校对
         private static TemplateSpec S14() => new()
         {
-            Id = "S14", Name = "多语言翻译与校对",
+            Id = "S14",
+            Name = "多语言翻译与校对",
             Vars = Vars(("content", "待翻译内容"), ("target", "目标语言")),
             DefaultBatchSize = 5,
             Workflow = new WorkflowSpec
             {
-                Name = "多语言翻译与校对", DefaultMaxLoops = 3,
+                Name = "多语言翻译与校对",
+                DefaultMaxLoops = 3,
                 Stages = new List<WorkflowStage>
                 {
                     Stage("translate", "分批翻译", "将「{var:content}」翻译为「{var:target}」。"),
@@ -379,11 +407,13 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
         // S15 发布流水线
         private static TemplateSpec S15() => new()
         {
-            Id = "S15", Name = "发布流水线",
+            Id = "S15",
+            Name = "发布流水线",
             Vars = Vars(("version", "待发布版本号")),
             Workflow = new WorkflowSpec
             {
-                Name = "发布流水线", DefaultMaxLoops = 1,
+                Name = "发布流水线",
+                DefaultMaxLoops = 1,
                 Stages = new List<WorkflowStage>
                 {
                     Stage("bump", "版本号更新", "将版本号更新为「{var:version}」。"),
@@ -398,12 +428,14 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
         // S16 UI 走查与视觉回归
         private static TemplateSpec S16() => new()
         {
-            Id = "S16", Name = "UI走查与视觉回归",
+            Id = "S16",
+            Name = "UI走查与视觉回归",
             Vars = Vars(("scope", "待走查页面")),
             DefaultBatchSize = 5,
             Workflow = new WorkflowSpec
             {
-                Name = "UI走查与视觉回归", DefaultMaxLoops = 2,
+                Name = "UI走查与视觉回归",
+                DefaultMaxLoops = 2,
                 Stages = new List<WorkflowStage>
                 {
                     Stage("capture", "分批截图", "对「{var:scope}」截图对比。"),

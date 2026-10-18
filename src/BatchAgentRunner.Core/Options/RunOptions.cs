@@ -1,7 +1,7 @@
 using System.Text.Json.Serialization;
 using BatchAgentRunner.Core.Domain;
-using BatchAgentRunner.Core.Serialization;
 using BatchAgentRunner.Core.Scheduling;
+using BatchAgentRunner.Core.Serialization;
 
 namespace BatchAgentRunner.Core.Options;
 

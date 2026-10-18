@@ -582,9 +582,9 @@ public sealed class MonitorViewModel : ViewModelBase
     /// <summary>批处理结束后的界面收尾（P0-6：后台线程 → UI 线程后再写绑定属性）。</summary>
     private void FinishWithReport(BatchReport report) => UiThread.Post(() =>
     {
-            StatusMessage = $"批处理结束：{report.BatchStatus}，成功 {report.Done} / 失败 {report.Failed} / 中断 {report.Interrupted}";
-            OnPropertyChanged(nameof(LastReportPath));
-        });
+        StatusMessage = $"批处理结束：{report.BatchStatus}，成功 {report.Done} / 失败 {report.Failed} / 中断 {report.Interrupted}";
+        OnPropertyChanged(nameof(LastReportPath));
+    });
 
     /// <summary>状态栏文案写入：调用方可能来自后台线程，统一marshal到 UI 线程。</summary>
     private void SetStatusMessage(string text) => UiThread.Post(() => StatusMessage = text);

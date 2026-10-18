@@ -26,7 +26,8 @@ public sealed class FileRunLogger : IRunLogger
         Directory.CreateDirectory(dir);
         LogFilePath = Path.Combine(dir, $"run-{DateTime.Now:yyyyMMddHHmmss}.log");
         _writer = new StreamWriter(new FileStream(LogFilePath, FileMode.Create, FileAccess.Write, FileShare.Read),
-            new UTF8Encoding(false)) { AutoFlush = true };
+            new UTF8Encoding(false))
+        { AutoFlush = true };
 
         Write("INFO", $"运行日志开始：{DateTime.Now:yyyy-MM-dd HH:mm:ss}");
     }
