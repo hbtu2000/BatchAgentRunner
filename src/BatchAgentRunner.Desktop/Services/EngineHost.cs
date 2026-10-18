@@ -143,7 +143,7 @@ public sealed class EngineHost : ObservableObject, IEngineHost
     public async Task<IReadOnlyList<ModelCatalogEntry>> FetchModelsAsync(AccountConfig? account = null,
         CancellationToken cancellationToken = default)
     {
-        var adapter = EngineFactory.CreateAdapter(Options);
+        var adapter = _factory.CreateAdapter(Options);
         return await adapter.ListModelCatalogAsync(account ?? new AccountConfig(), cancellationToken).ConfigureAwait(false);
     }
 
@@ -172,7 +172,7 @@ public sealed class EngineHost : ObservableObject, IEngineHost
         ICreditsApiClient api = EngineFactory.CreateApiClient(cli, Options.CreditsClaim);
 
         var accounts = Options.Accounts.Where(a => a.Enabled).ToList();
-        var summary = await EngineFactory
+        var summary = await _factory
             .CreateCreditsOrchestrator(
                 VaultHost.Vault,
                 api,

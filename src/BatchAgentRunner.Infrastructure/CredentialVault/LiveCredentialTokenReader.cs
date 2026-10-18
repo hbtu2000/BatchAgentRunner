@@ -13,12 +13,19 @@ namespace BatchAgentRunner.Infrastructure.CredentialVault;
 /// </summary>
 public sealed class LiveCredentialTokenReader : ICredentialTokenReader
 {
+    private readonly ICredentialLocationRegistry _registry;
+
+    public LiveCredentialTokenReader(ICredentialLocationRegistry registry)
+    {
+        _registry = registry ?? throw new ArgumentNullException(nameof(registry));
+    }
+
     public string? TryReadAccessToken(AgentKind cli)
     {
         CredentialLocationSpec spec;
         try
         {
-            spec = CredentialLocationRegistry.Resolve(cli);
+            spec = _registry.Resolve(cli);
         }
         catch (CredentialVaultException)
         {
@@ -32,7 +39,7 @@ public sealed class LiveCredentialTokenReader : ICredentialTokenReader
 
         foreach (var file in spec.Files)
         {
-            var path = CredentialLocationRegistry.ResolveLiveFile(spec, file.RelativePath);
+            var path = _registry.ResolveLiveFile(spec, file.RelativePath);
             if (!File.Exists(path))
             {
                 continue;

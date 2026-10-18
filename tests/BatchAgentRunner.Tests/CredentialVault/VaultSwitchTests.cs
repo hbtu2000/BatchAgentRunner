@@ -21,11 +21,12 @@ public class VaultSwitchTests
         var liveRoot = Path.Combine(Path.GetTempPath(), "bar-live-" + Guid.NewGuid().ToString("N")[..10]);
         Directory.CreateDirectory(vaultRoot);
         Directory.CreateDirectory(liveRoot);
-        CredentialLocationRegistry.SetLiveRootOverride(AgentKind.Mock, liveRoot);
+        var registry = new CredentialLocationRegistry();
+        registry.SetLiveRootOverride(AgentKind.Mock, liveRoot);
         var audit = new List<string>();
         var clock = new FakeClock(T1);
         var vault = new FileCredentialVault(vaultRoot, new TestCredentialProtector(),
-            new FakeCliProcessGuard(cliRunning), clock, audit.Add);
+            new FakeCliProcessGuard(cliRunning), clock, audit.Add, registry);
         return new Fixture(vault, vaultRoot, liveRoot, clock, audit);
     }
 
@@ -131,8 +132,10 @@ public class VaultSwitchTests
         var f = await SetupTwoAccounts();
         f.Vault.GetType(); // no-op
         var guard = new FakeCliProcessGuard(true);
-        var vault2 = new FileCredentialVault(f.VaultRoot, new TestCredentialProtector(), guard, f.Clock);
-        CredentialLocationRegistry.SetLiveRootOverride(AgentKind.Mock, f.LiveRoot);
+        var registry = new CredentialLocationRegistry();
+        registry.SetLiveRootOverride(AgentKind.Mock, f.LiveRoot);
+        var vault2 = new FileCredentialVault(f.VaultRoot, new TestCredentialProtector(), guard, f.Clock,
+            registry: registry);
 
         var ex = await Assert.ThrowsAsync<CredentialVaultException>(() =>
             vault2.SwitchToAsync(AgentKind.Mock, "acc-a", "manual"));

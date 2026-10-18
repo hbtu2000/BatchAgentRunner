@@ -20,19 +20,26 @@ public sealed class CredentialVaultHost : IDisposable
 
     public GuidedLoginOrchestrator Orchestrator { get; }
 
-    public CredentialVaultHost(ICredentialVault vault, GuidedLoginOrchestrator orchestrator)
+    /// <summary>凭证位置注册表（P1-16：宿主持有唯一实例，引导登录链路显式共用同一份覆盖状态）。</summary>
+    public ICredentialLocationRegistry Locations { get; }
+
+    public CredentialVaultHost(ICredentialVault vault, GuidedLoginOrchestrator orchestrator,
+        ICredentialLocationRegistry locations)
     {
         Vault = vault;
         Orchestrator = orchestrator;
+        Locations = locations ?? throw new ArgumentNullException(nameof(locations));
     }
 
     /// <summary>桌面端默认装配：DPAPI 静态加密 + 真实进程守卫 + CLI 登录启动器。</summary>
-    public static CredentialVaultHost CreateDefault()
+    public static CredentialVaultHost CreateDefault(ICredentialLocationRegistry? locations = null)
     {
-        var guard = new CliProcessGuard();
-        var vault = new FileCredentialVault(processGuard: guard);
-        var orchestrator = new GuidedLoginOrchestrator(vault, guard, new CliLoginLauncher());
-        return new CredentialVaultHost(vault, orchestrator);
+        var registry = locations ?? new CredentialLocationRegistry();
+        var guard = new CliProcessGuard(registry);
+        var vault = new FileCredentialVault(processGuard: guard, registry: registry);
+        var orchestrator = new GuidedLoginOrchestrator(vault, guard, new CliLoginLauncher(registry),
+            registry: registry);
+        return new CredentialVaultHost(vault, orchestrator, registry);
     }
 
     /// <summary>快照状态的人话描述（配置页账号卡展示，DESIGN §7「快照状态」）。</summary>
@@ -58,7 +65,7 @@ public sealed class CredentialVaultHost : IDisposable
     public async Task<CredentialSnapshotInfo> GuidedLoginAsync(AgentKind kind, AccountConfig account,
         Action<GuidedLoginProgress>? progress = null, CancellationToken cancellationToken = default)
     {
-        var adapter = AgentAdapterFactory.Create(new RunOptions { AgentKind = kind });
+        var adapter = AgentAdapterFactory.Create(new RunOptions { AgentKind = kind }, registry: Locations);
         return await Orchestrator.RunAsync(kind, account.Id, account.DisplayName,
             validator: (id, token) => adapter.ValidateAccountAsync(
                 new AccountConfig { Id = id, DisplayName = account.DisplayName }, token),

@@ -26,17 +26,19 @@ public sealed class GuidedLoginOrchestrator
     private readonly ICliProcessGuard _processGuard;
     private readonly ICliLoginLauncher _launcher;
     private readonly IClock _clock;
+    private readonly ICredentialLocationRegistry _registry;
     private readonly Action<GuidedLoginProgress>? _progress;
     private readonly TimeSpan _pollInterval;
 
     public GuidedLoginOrchestrator(ICredentialVault vault, ICliProcessGuard processGuard,
         ICliLoginLauncher launcher, IClock? clock = null, Action<GuidedLoginProgress>? progress = null,
-        TimeSpan? pollInterval = null)
+        TimeSpan? pollInterval = null, ICredentialLocationRegistry? registry = null)
     {
         _vault = vault;
         _processGuard = processGuard;
         _launcher = launcher;
         _clock = clock ?? new SystemClock();
+        _registry = registry ?? new CredentialLocationRegistry();
         _progress = progress;
         _pollInterval = pollInterval ?? TimeSpan.FromSeconds(2);
     }
@@ -46,7 +48,7 @@ public sealed class GuidedLoginOrchestrator
         string? displayName = null, string? site = null, TimeSpan? timeout = null,
         AccountValidator? validator = null, CancellationToken cancellationToken = default)
     {
-        var spec = CredentialLocationRegistry.Resolve(cli);
+        var spec = _registry.Resolve(cli);
         if (!spec.IsConfigured)
         {
             throw new CredentialVaultException(
@@ -132,7 +134,7 @@ public sealed class GuidedLoginOrchestrator
     /// 记录清理前的 Live 指纹、把 Live 凭证文件复制到暂存目录后再删除（M0 V-4e 确认后可换 logout 清理动作）。
     /// P0-9：原实现直接 File.Delete 不留备份，登录未完成时用户凭证永久丢失。
     /// </summary>
-    private static LiveCredentialBackup ClearLiveCredentials(CredentialLocationSpec spec)
+    private LiveCredentialBackup ClearLiveCredentials(CredentialLocationSpec spec)
     {
         var baseline = new Dictionary<string, string?>(StringComparer.Ordinal);
         var backups = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -140,7 +142,7 @@ public sealed class GuidedLoginOrchestrator
 
         foreach (var file in spec.Files)
         {
-            var livePath = CredentialLocationRegistry.ResolveLiveFile(spec, file.RelativePath);
+            var livePath = _registry.ResolveLiveFile(spec, file.RelativePath);
             if (!File.Exists(livePath))
             {
                 baseline[file.RelativePath] = null;
@@ -166,11 +168,11 @@ public sealed class GuidedLoginOrchestrator
     }
 
     /// <summary>把暂存的 Live 凭证副本还原回原位置（引导登录未完成时回滚）。</summary>
-    private static void RestoreLiveCredentials(CredentialLocationSpec spec, LiveCredentialBackup backup)
+    private void RestoreLiveCredentials(CredentialLocationSpec spec, LiveCredentialBackup backup)
     {
         foreach (var (relativePath, backupPath) in backup.Backups)
         {
-            var livePath = CredentialLocationRegistry.ResolveLiveFile(spec, relativePath);
+            var livePath = _registry.ResolveLiveFile(spec, relativePath);
             Directory.CreateDirectory(Path.GetDirectoryName(livePath)!);
             File.Copy(backupPath, livePath, overwrite: true);
         }
@@ -216,7 +218,7 @@ public sealed class GuidedLoginOrchestrator
         {
             foreach (var file in spec.Files)
             {
-                var livePath = CredentialLocationRegistry.ResolveLiveFile(spec, file.RelativePath);
+                var livePath = _registry.ResolveLiveFile(spec, file.RelativePath);
                 if (File.Exists(livePath) &&
                     (!baseline.TryGetValue(file.RelativePath, out var old) || old != Sha256Of(livePath)))
                 {

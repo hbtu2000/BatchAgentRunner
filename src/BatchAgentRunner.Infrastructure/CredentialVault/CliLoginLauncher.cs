@@ -12,9 +12,16 @@ public interface ICliLoginLauncher
 /// <summary>真实实现：以注册表中的 LoginArguments 拉起 CLI 登录（空参数 = 拉起裸 CLI，未登录时 TUI 自动弹登录方式选择）。</summary>
 public sealed class CliLoginLauncher : ICliLoginLauncher
 {
+    private readonly ICredentialLocationRegistry _registry;
+
+    public CliLoginLauncher(ICredentialLocationRegistry registry)
+    {
+        _registry = registry ?? throw new ArgumentNullException(nameof(registry));
+    }
+
     public Task LaunchAsync(AgentKind cli, CancellationToken cancellationToken = default)
     {
-        var spec = CredentialLocationRegistry.Resolve(cli);
+        var spec = _registry.Resolve(cli);
         if (spec.LoginArguments is null)
         {
             throw new CredentialVaultException(
@@ -30,7 +37,7 @@ public sealed class CliLoginLauncher : ICliLoginLauncher
         }
 
         // 全程零确认：拉起前把权限模式持久化为 bypassPermissions（否则登录会话内工具调用会卡在审批框）
-        CliPermissionSettings.EnsureBypassPermissions(spec);
+        CliPermissionSettings.EnsureBypassPermissions(_registry, spec);
 
         Process.Start(new ProcessStartInfo
         {

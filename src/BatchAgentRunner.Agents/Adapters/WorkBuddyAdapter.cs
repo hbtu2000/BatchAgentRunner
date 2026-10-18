@@ -1,6 +1,7 @@
 using BatchAgentRunner.Agents.Internal;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Options;
+using BatchAgentRunner.Infrastructure.CredentialVault;
 
 namespace BatchAgentRunner.Agents.Adapters;
 
@@ -11,8 +12,9 @@ namespace BatchAgentRunner.Agents.Adapters;
 /// </summary>
 public sealed class WorkBuddyAdapter : CliAdapterBase
 {
-    public WorkBuddyAdapter(CliAdapterSettings? settings = null, AutoAnswerPolicy? policy = null)
-        : base(settings ?? new CliAdapterSettings(), policy)
+    public WorkBuddyAdapter(CliAdapterSettings? settings = null, AutoAnswerPolicy? policy = null,
+        ICredentialLocationRegistry? registry = null)
+        : base(settings ?? new CliAdapterSettings(), policy, registry: registry)
     {
     }
 

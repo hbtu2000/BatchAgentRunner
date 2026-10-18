@@ -32,16 +32,19 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
     private readonly ICliProcessGuard _processGuard;
     private readonly IClock _clock;
     private readonly Action<string>? _auditSink;
+    private readonly ICredentialLocationRegistry _registry;
     private readonly SemaphoreSlim _gate = new(1, 1);
 
     public FileCredentialVault(string? root = null, ICredentialProtector? protector = null,
-        ICliProcessGuard? processGuard = null, IClock? clock = null, Action<string>? auditSink = null)
+        ICliProcessGuard? processGuard = null, IClock? clock = null, Action<string>? auditSink = null,
+        ICredentialLocationRegistry? registry = null)
     {
         _root = root ?? Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
             "BatchAgentRunner", "vault");
         _protector = protector ?? new DpapiCredentialProtector();
-        _processGuard = processGuard ?? new CliProcessGuard();
+        _registry = registry ?? new CredentialLocationRegistry();
+        _processGuard = processGuard ?? new CliProcessGuard(_registry);
         _clock = clock ?? new SystemClock();
         _auditSink = auditSink;
     }
@@ -53,7 +56,7 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
 
     public string? CurrentLiveAccount(AgentKind cli)
     {
-        var spec = CredentialLocationRegistry.Resolve(cli);
+        var spec = _registry.Resolve(cli);
         var state = ReadLiveState();
         return state.TryGetValue(spec.CliId, out var s) ? s.AccountId : null;
     }
@@ -84,7 +87,7 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
             if (collected.Count == 0)
             {
                 var expected = string.Join("; ", spec.Files.Select(f =>
-                    CredentialLocationRegistry.ResolveLiveFile(spec, f.RelativePath)));
+                    _registry.ResolveLiveFile(spec, f.RelativePath)));
                 throw new CredentialVaultException(
                     $"未发现 {spec.CliId} 的 Live 凭证文件（预期位置：{expected}）。" +
                     "请先完成 CLI 引导登录");
@@ -192,7 +195,7 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
         var changed = 0;
         foreach (var entry in manifest.Files)
         {
-            var livePath = CredentialLocationRegistry.ResolveLiveFile(spec, entry.RelativePath);
+            var livePath = _registry.ResolveLiveFile(spec, entry.RelativePath);
             if (!File.Exists(livePath))
             {
                 updated.Add(entry);
@@ -221,7 +224,7 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
                 continue;
             }
 
-            var livePath = CredentialLocationRegistry.ResolveLiveFile(spec, liveFile.RelativePath);
+            var livePath = _registry.ResolveLiveFile(spec, liveFile.RelativePath);
             if (!File.Exists(livePath))
             {
                 continue;
@@ -257,7 +260,7 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
         {
             foreach (var entry in target.Files)
             {
-                var livePath = CredentialLocationRegistry.ResolveLiveFile(spec, entry.RelativePath);
+                var livePath = _registry.ResolveLiveFile(spec, entry.RelativePath);
                 var directory = Path.GetDirectoryName(Path.GetFullPath(livePath));
                 if (!string.IsNullOrEmpty(directory))
                 {
@@ -289,7 +292,7 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
                     continue;
                 }
 
-                var livePath = CredentialLocationRegistry.ResolveLiveFile(spec, liveFile.RelativePath);
+                var livePath = _registry.ResolveLiveFile(spec, liveFile.RelativePath);
                 if (File.Exists(livePath))
                 {
                     rollback.Add((livePath, File.ReadAllBytes(livePath)));
@@ -378,9 +381,9 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
 
     // ---------------- 内部工具 ----------------
 
-    private static CredentialLocationSpec EnsureConfigured(AgentKind cli)
+    private CredentialLocationSpec EnsureConfigured(AgentKind cli)
     {
-        var spec = CredentialLocationRegistry.Resolve(cli);
+        var spec = _registry.Resolve(cli);
         if (!spec.IsConfigured)
         {
             throw new CredentialVaultException(
@@ -401,12 +404,12 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
         }
     }
 
-    private static List<(string RelativePath, byte[] Bytes, string Sha256)> CollectLiveFiles(CredentialLocationSpec spec)
+    private List<(string RelativePath, byte[] Bytes, string Sha256)> CollectLiveFiles(CredentialLocationSpec spec)
     {
         var result = new List<(string, byte[], string)>();
         foreach (var file in spec.Files)
         {
-            var livePath = CredentialLocationRegistry.ResolveLiveFile(spec, file.RelativePath);
+            var livePath = _registry.ResolveLiveFile(spec, file.RelativePath);
             if (!File.Exists(livePath))
             {
                 continue;
@@ -486,7 +489,7 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
 
     private void WriteManifest(AgentKind cli, string accountId, SnapshotManifest manifest)
     {
-        var dir = AccountDirectory(CredentialLocationRegistry.Resolve(cli).CliId, accountId);
+        var dir = AccountDirectory(_registry.Resolve(cli).CliId, accountId);
         Directory.CreateDirectory(dir);
         File.WriteAllText(Path.Combine(dir, "manifest.json"), JsonSerializer.Serialize(manifest, ManifestOptions));
     }
@@ -514,7 +517,7 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
         Path.Combine(_root, cliId, accountId);
 
     private string ManifestPath(AgentKind cli, string accountId) =>
-        Path.Combine(AccountDirectory(CredentialLocationRegistry.Resolve(cli).CliId, accountId), "manifest.json");
+        Path.Combine(AccountDirectory(_registry.Resolve(cli).CliId, accountId), "manifest.json");
 
     private static string NormalizeAccountId(string accountId)
     {

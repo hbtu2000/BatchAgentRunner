@@ -9,9 +9,16 @@ namespace BatchAgentRunner.Infrastructure.CredentialVault;
 /// </summary>
 public sealed class CliProcessGuard : ICliProcessGuard
 {
+    private readonly ICredentialLocationRegistry _registry;
+
+    public CliProcessGuard(ICredentialLocationRegistry registry)
+    {
+        _registry = registry ?? throw new ArgumentNullException(nameof(registry));
+    }
+
     public bool IsCliRunning(AgentKind cli)
     {
-        var spec = CredentialLocationRegistry.Resolve(cli);
+        var spec = _registry.Resolve(cli);
         foreach (var name in spec.ProcessNames)
         {
             try

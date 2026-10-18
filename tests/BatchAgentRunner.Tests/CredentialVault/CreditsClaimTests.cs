@@ -329,12 +329,13 @@ public class LiveCredentialTokenReaderTests
     {
         var liveRoot = Path.Combine(Path.GetTempPath(), "bar-tok-" + Guid.NewGuid().ToString("N")[..10]);
         Directory.CreateDirectory(liveRoot);
-        CredentialLocationRegistry.SetLiveRootOverride(AgentKind.Mock, liveRoot);
+        var registry = new CredentialLocationRegistry();
+        registry.SetLiveRootOverride(AgentKind.Mock, liveRoot);
         var path = Path.Combine(liveRoot, ".credentials.json");
         File.WriteAllText(path,
             """{"account":{"uid":"u1"},"auth":{"accessToken":"at-abc123","refreshToken":"rt-1"},"accounts":[]}""");
 
-        var token = new LiveCredentialTokenReader().TryReadAccessToken(AgentKind.Mock);
+        var token = new LiveCredentialTokenReader(registry).TryReadAccessToken(AgentKind.Mock);
 
         Assert.Equal("at-abc123", token);
     }
@@ -344,13 +345,15 @@ public class LiveCredentialTokenReaderTests
     {
         var liveRoot = Path.Combine(Path.GetTempPath(), "bar-tok-" + Guid.NewGuid().ToString("N")[..10]);
         Directory.CreateDirectory(liveRoot);
-        CredentialLocationRegistry.SetLiveRootOverride(AgentKind.Mock, liveRoot);
+        var registry = new CredentialLocationRegistry();
+        registry.SetLiveRootOverride(AgentKind.Mock, liveRoot);
+        var reader = new LiveCredentialTokenReader(registry);
         File.WriteAllText(Path.Combine(liveRoot, ".credentials.json"), """{"refresh_token":"rt-1"}""");
 
-        Assert.Null(new LiveCredentialTokenReader().TryReadAccessToken(AgentKind.Mock));
+        Assert.Null(reader.TryReadAccessToken(AgentKind.Mock));
 
         File.Delete(Path.Combine(liveRoot, ".credentials.json"));
-        Assert.Null(new LiveCredentialTokenReader().TryReadAccessToken(AgentKind.Mock));
+        Assert.Null(reader.TryReadAccessToken(AgentKind.Mock));
     }
 
     [Fact]

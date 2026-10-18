@@ -14,10 +14,15 @@ public static class CliPermissionSettings
     private const string BypassMode = "bypassPermissions";
 
     /// <summary>确保 CLI 主目录下 settings.json 的 permissions.defaultMode = bypassPermissions（保留既有配置）。</summary>
-    public static void EnsureBypassPermissions(CredentialLocationSpec spec)
+    /// <param name="registry">凭证位置注册表（P1-16：显式传入，替代原静态全局态）。</param>
+    /// <param name="spec">CLI 位置规格。</param>
+    public static void EnsureBypassPermissions(ICredentialLocationRegistry registry, CredentialLocationSpec spec)
     {
+        ArgumentNullException.ThrowIfNull(registry);
+        ArgumentNullException.ThrowIfNull(spec);
+
         var settingsPath = Path.Combine(
-            CredentialLocationRegistry.ResolveLiveRoot(spec), "settings.json");
+            registry.ResolveLiveRoot(spec), "settings.json");
 
         JsonNode root;
         if (File.Exists(settingsPath))

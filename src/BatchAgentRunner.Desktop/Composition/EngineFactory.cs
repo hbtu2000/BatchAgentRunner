@@ -42,11 +42,32 @@ public sealed class EngineFactory : IEngineFactory
     /// <summary>报告写入器（IReportWriter 接口，Infrastructure 实现）。</summary>
     public IReportWriter ReportWriter { get; } = new ReportWriter();
 
+    /// <summary>
+    /// 凭证位置注册表（P1-16）：替代原静态全局注册表的唯一显式实例，Mock Live 根在此一次性覆写，
+    /// 全部凭证链路（Vault / 引导登录 / CLI 适配器 / 积分领取）显式共用同一实例。
+    /// </summary>
+    public ICredentialLocationRegistry CredentialLocations { get; } = CreateCredentialLocations();
+
+    /// <summary>凭证 Vault 宿主（DPAPI 加密 + 真实进程守卫；Mock 工具指向工具私有目录）。</summary>
+    public CredentialVaultHost VaultHost { get; }
+
     /// <summary>出厂示例配置（与 <c>JsonConfigStore.CreateSample()</c> 等价，经工厂暴露以避免 UI 层直引 Infrastructure）。</summary>
     public static RunOptions CreateSampleRunOptions() => JsonConfigStore.CreateSample();
 
-    /// <summary>凭证 Vault 宿主（DPAPI 加密 + 真实进程守卫；Mock 工具指向工具私有目录）。</summary>
-    public CredentialVaultHost VaultHost { get; } = CreateVaultHost();
+    public EngineFactory()
+    {
+        VaultHost = CredentialVaultHost.CreateDefault(CredentialLocations);
+    }
+
+    private static CredentialLocationRegistry CreateCredentialLocations()
+    {
+        var registry = new CredentialLocationRegistry();
+        var mockLiveRoot = Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+            "BatchAgentRunner", "mock-live");
+        registry.SetLiveRootOverride(AgentKind.Mock, mockLiveRoot);
+        return registry;
+    }
 
     /// <inheritdoc />
     public IBatchEngine CreateEngine(
@@ -55,7 +76,7 @@ public sealed class EngineFactory : IEngineFactory
         ICredentialVault? credentialVault,
         Action<string, string> raiseToast)
     {
-        var adapter = AgentAdapterFactory.Create(options, msg => logger.Write("INFO", msg));
+        var adapter = AgentAdapterFactory.Create(options, msg => logger.Write("INFO", msg), CredentialLocations);
         if (adapter is MockAdapter mock)
         {
             // Mock 的「Live 凭证文件」与 Vault 共用同一位置，保活回写/切换全链路可用 Mock 联调
@@ -83,7 +104,8 @@ public sealed class EngineFactory : IEngineFactory
     }
 
     /// <summary>构造 CLI 适配器（按当前执行工具）。</summary>
-    public static IAgentCliAdapter CreateAdapter(RunOptions options) => AgentAdapterFactory.Create(options);
+    public IAgentCliAdapter CreateAdapter(RunOptions options) =>
+        AgentAdapterFactory.Create(options, registry: CredentialLocations);
 
     /// <summary>构造运行日志（按任务文件路径落盘）。</summary>
     public static IRunLogger CreateLogger(RunOptions options) => new FileRunLogger(options.TaskFilePath);
@@ -93,13 +115,14 @@ public sealed class EngineFactory : IEngineFactory
         => kind == AgentKind.Mock ? new MockCreditsApiClient() : new CodeBuddyCreditsApiClient(config);
 
     /// <summary>构造积分领取编排器（切换凭证 → 读前 → 领取 → 读后 → 记录）。</summary>
-    public static CreditsClaimOrchestrator CreateCreditsOrchestrator(
+    public CreditsClaimOrchestrator CreateCreditsOrchestrator(
         ICredentialVault vault,
         ICreditsApiClient api,
         IRunLogger? logger,
         string configDirectory,
         Action<CreditsClaimProgress> progress)
-        => new CreditsClaimOrchestrator(vault, api, new JsonCreditsClaimStore(configDirectory), logger: logger, progress: progress);
+        => new CreditsClaimOrchestrator(vault, api, new JsonCreditsClaimStore(configDirectory),
+            logger: logger, progress: progress, registry: CredentialLocations);
 
     /// <summary>写积分领取报告（Markdown / JSON）。</summary>
     public static Task<string> WriteCreditsClaimReportAsync(CreditsClaimSummary summary, string directory, CancellationToken cancellationToken)
@@ -115,18 +138,5 @@ public sealed class EngineFactory : IEngineFactory
             new SmtpNotifier(logger)
         };
         return new NotificationDispatcher(notifiers);
-    }
-
-    /// <summary>
-    /// 默认 Vault 装配：DPAPI 静态加密 + 真实进程守卫；Mock 适配器把 Live 指到工具私有目录，
-    /// 保证「MockAdapter 模拟同一套 Vault 流程，全链路可先行联调」（DESIGN §7）。
-    /// </summary>
-    private static CredentialVaultHost CreateVaultHost()
-    {
-        var mockLiveRoot = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "BatchAgentRunner", "mock-live");
-        CredentialLocationRegistry.SetLiveRootOverride(AgentKind.Mock, mockLiveRoot);
-        return CredentialVaultHost.CreateDefault();
     }
 }

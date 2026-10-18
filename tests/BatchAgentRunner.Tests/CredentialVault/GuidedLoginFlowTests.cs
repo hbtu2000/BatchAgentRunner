@@ -12,7 +12,7 @@ public class GuidedLoginFlowTests
     private static readonly DateTimeOffset T1 = At.Local(2026, 10, 15, 14, 0);
 
     /// <summary>测试用登录启动器：拉起时记录 Live 是否已被清场，并可选写入新凭证。</summary>
-    private sealed class FakeLauncher(Action onLaunch) : ICliLoginLauncher
+    private sealed class FakeLauncher(Action onLaunch, ICredentialLocationRegistry registry) : ICliLoginLauncher
     {
         public bool LiveWasClearedAtLaunch { get; private set; }
         public int LaunchCount { get; private set; }
@@ -21,7 +21,7 @@ public class GuidedLoginFlowTests
         {
             LaunchCount++;
             LiveWasClearedAtLaunch = !File.Exists(Path.Combine(
-                CredentialLocationRegistry.ResolveLiveRoot(CredentialLocationRegistry.Resolve(cli)),
+                registry.ResolveLiveRoot(registry.Resolve(cli)),
                 ".credentials.json"));
             onLaunch();
             return Task.CompletedTask;
@@ -37,14 +37,15 @@ public class GuidedLoginFlowTests
         var liveRoot = Path.Combine(Path.GetTempPath(), "bar-live-" + Guid.NewGuid().ToString("N")[..10]);
         Directory.CreateDirectory(vaultRoot);
         Directory.CreateDirectory(liveRoot);
-        CredentialLocationRegistry.SetLiveRootOverride(AgentKind.Mock, liveRoot);
+        var registry = new CredentialLocationRegistry();
+        registry.SetLiveRootOverride(AgentKind.Mock, liveRoot);
         var clock = new FakeClock(T1);
         var vault = new FileCredentialVault(vaultRoot, new TestCredentialProtector(),
-            new FakeCliProcessGuard(), clock);
+            new FakeCliProcessGuard(), clock, registry: registry);
         var progress = new List<GuidedLoginProgress>();
-        var launcher = new FakeLauncher(() => onLaunch(liveRoot));
+        var launcher = new FakeLauncher(() => onLaunch(liveRoot), registry);
         var orchestrator = new GuidedLoginOrchestrator(vault, new FakeCliProcessGuard(cliRunning),
-            launcher, clock, progress.Add, TimeSpan.FromMilliseconds(5));
+            launcher, clock, progress.Add, TimeSpan.FromMilliseconds(5), registry);
         return new Fixture(orchestrator, vault, vaultRoot, liveRoot, launcher, progress);
     }
 

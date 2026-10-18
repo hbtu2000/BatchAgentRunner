@@ -11,10 +11,13 @@ public class CliPermissionSettingsTests : IDisposable
     private readonly string _root =
         Path.Combine(Path.GetTempPath(), "bar-perm-" + Guid.NewGuid().ToString("N")[..10]);
 
+    /// <summary>P1-16：测试自持注册表实例（显式覆写 Live 根到临时目录），不再依赖静态全局态。</summary>
+    private readonly CredentialLocationRegistry _registry = new();
+
     public CliPermissionSettingsTests()
     {
         Directory.CreateDirectory(_root);
-        CredentialLocationRegistry.SetLiveRootOverride(AgentKind.CodeBuddy, _root);
+        _registry.SetLiveRootOverride(AgentKind.CodeBuddy, _root);
     }
 
     private string SettingsPath => Path.Combine(_root, "settings.json");
@@ -22,7 +25,7 @@ public class CliPermissionSettingsTests : IDisposable
     [Fact]
     public void 无settings时_创建并写入bypass权限模式()
     {
-        CliPermissionSettings.EnsureBypassPermissions(CredentialLocationRegistry.Resolve(AgentKind.CodeBuddy));
+        CliPermissionSettings.EnsureBypassPermissions(_registry, _registry.Resolve(AgentKind.CodeBuddy));
 
         var json = JsonNode.Parse(File.ReadAllText(SettingsPath))!;
         Assert.Equal("bypassPermissions", json["permissions"]?["defaultMode"]?.ToString());
@@ -34,7 +37,7 @@ public class CliPermissionSettingsTests : IDisposable
         File.WriteAllText(SettingsPath,
             """{"theme":"dark","permissions":{"defaultMode":"default","allow":["Bash(ls*)"]}}""");
 
-        CliPermissionSettings.EnsureBypassPermissions(CredentialLocationRegistry.Resolve(AgentKind.CodeBuddy));
+        CliPermissionSettings.EnsureBypassPermissions(_registry, _registry.Resolve(AgentKind.CodeBuddy));
 
         var json = JsonNode.Parse(File.ReadAllText(SettingsPath))!;
         Assert.Equal("dark", json["theme"]?.ToString());
@@ -47,7 +50,7 @@ public class CliPermissionSettingsTests : IDisposable
     {
         File.WriteAllText(SettingsPath, "{not valid json");
 
-        CliPermissionSettings.EnsureBypassPermissions(CredentialLocationRegistry.Resolve(AgentKind.CodeBuddy));
+        CliPermissionSettings.EnsureBypassPermissions(_registry, _registry.Resolve(AgentKind.CodeBuddy));
 
         var json = JsonNode.Parse(File.ReadAllText(SettingsPath))!;
         Assert.Equal("bypassPermissions", json["permissions"]?["defaultMode"]?.ToString());

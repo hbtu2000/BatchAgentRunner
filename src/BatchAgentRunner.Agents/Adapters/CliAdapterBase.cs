@@ -46,14 +46,17 @@ public abstract class CliAdapterBase : IAgentCliAdapter
     protected AutoAnswerPolicy Policy { get; }
     protected QuotaErrorClassifier Classifier { get; }
     protected CliProcessRunner Runner { get; }
+    /// <summary>凭证位置注册表（P1-16：显式注入，替代原静态全局态）。</summary>
+    protected ICredentialLocationRegistry Locations { get; }
 
     protected CliAdapterBase(CliAdapterSettings settings, AutoAnswerPolicy? policy = null,
-        QuotaErrorClassifier? classifier = null)
+        QuotaErrorClassifier? classifier = null, ICredentialLocationRegistry? registry = null)
     {
         Settings = settings;
         Policy = policy ?? AutoAnswerPolicy.CreateDefault();
         Classifier = classifier ?? new QuotaErrorClassifier();
         Runner = new CliProcessRunner(Policy, settings.Log);
+        Locations = registry ?? new CredentialLocationRegistry();
     }
 
     public abstract AgentKind Kind { get; }
@@ -111,7 +114,7 @@ public abstract class CliAdapterBase : IAgentCliAdapter
         {
             try
             {
-                CliPermissionSettings.EnsureBypassPermissions(CredentialLocationRegistry.Resolve(Kind));
+                CliPermissionSettings.EnsureBypassPermissions(Locations, Locations.Resolve(Kind));
             }
             catch (Exception ex)
             {

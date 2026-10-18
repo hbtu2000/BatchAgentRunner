@@ -30,12 +30,13 @@ public sealed class CreditsClaimOrchestrator
 
     public CreditsClaimOrchestrator(ICredentialVault vault, ICreditsApiClient api, ICreditsClaimStore store,
         ICredentialTokenReader? tokenReader = null, IClock? clock = null, IRunLogger? logger = null,
-        Action<CreditsClaimProgress>? progress = null)
+        Action<CreditsClaimProgress>? progress = null, ICredentialLocationRegistry? registry = null)
     {
         _vault = vault;
         _api = api;
         _store = store;
-        _tokenReader = tokenReader ?? new LiveCredentialTokenReader();
+        _tokenReader = tokenReader ?? new LiveCredentialTokenReader(
+            registry ?? new CredentialLocationRegistry());
         _clock = clock ?? new SystemClock();
         _logger = logger;
         _progress = progress;

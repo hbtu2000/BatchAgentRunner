@@ -32,10 +32,11 @@ public class MockVaultE2ETests
         var vaultRoot = Path.Combine(dir, "vault");
         var liveRoot = Path.Combine(dir, "live");
         Directory.CreateDirectory(liveRoot);
-        CredentialLocationRegistry.SetLiveRootOverride(AgentKind.Mock, liveRoot);
+        var registry = new CredentialLocationRegistry();
+        registry.SetLiveRootOverride(AgentKind.Mock, liveRoot);
         var clock = new FakeClock(Noon);
         var vault = new FileCredentialVault(vaultRoot, new TestCredentialProtector(),
-            new FakeCliProcessGuard(), clock);
+            new FakeCliProcessGuard(), clock, registry: registry);
         return new Env(vault, dir, vaultRoot, liveRoot, Path.Combine(liveRoot, ".credentials.json"), clock);
     }
 
@@ -174,10 +175,12 @@ public class MockVaultE2ETests
         logger.Dispose();
 
         // 重新引导登录覆盖 acc-b 旧快照（Mock 启动器直接写入新凭证）
+        var registry = new CredentialLocationRegistry();
+        registry.SetLiveRootOverride(AgentKind.Mock, env.LiveRoot);
         var orchestrator = new GuidedLoginOrchestrator(env.Vault, new FakeCliProcessGuard(),
             new TestLauncher(() => File.WriteAllText(env.LiveFile,
                 "{\"access_token\":\"sk-B2\",\"refresh_token\":\"rt-B2\"}")),
-            env.Clock, null, TimeSpan.FromMilliseconds(5));
+            env.Clock, null, TimeSpan.FromMilliseconds(5), registry);
         await orchestrator.RunAsync(AgentKind.Mock, "acc-b", "账号 B");
 
         var bSnapshot = System.Text.Encoding.UTF8.GetString(new TestCredentialProtector().Unprotect(

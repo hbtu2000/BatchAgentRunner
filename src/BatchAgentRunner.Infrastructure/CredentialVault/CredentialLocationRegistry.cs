@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using BatchAgentRunner.Core.Domain;
 
 namespace BatchAgentRunner.Infrastructure.CredentialVault;
@@ -28,6 +29,26 @@ public sealed record CredentialLocationSpec(
 }
 
 /// <summary>
+/// Live 位置注册表端口（P1-16）：把原 <c>static</c> 全局注册表改为显式注入的实例服务，
+/// 消除 Service Locator 反模式与非线程安全静态 Dictionary；覆盖状态随实例走，
+/// 由组合根（EngineFactory）持有唯一实例并一次性设置 Mock Live 根，消费方显式传入。
+/// </summary>
+public interface ICredentialLocationRegistry
+{
+    CredentialLocationSpec Resolve(AgentKind kind);
+
+    /// <summary>Live 主目录（覆盖优先，否则 = 用户主目录 + 注册表相对根）。</summary>
+    string ResolveLiveRoot(CredentialLocationSpec spec);
+
+    /// <summary>Live 侧某个凭证文件的绝对路径。
+    /// 有 Root 覆盖且未单列 FilesRoot 时（Mock/测试）沿用覆盖根；否则 = 用户主目录 + (FilesRoot ?? HomeRelativeRoot)。</summary>
+    string ResolveLiveFile(CredentialLocationSpec spec, string relativePath);
+
+    /// <summary>Live 主目录覆盖（Mock / 测试 / 非默认安装位置）。线程安全；重复设置以最后一次为准。</summary>
+    void SetLiveRootOverride(AgentKind kind, string path);
+}
+
+/// <summary>
 /// Live 位置注册表（2026-10-15 M0 实测结论，DESIGN §2）：
 /// - CodeBuddy CLI（v2.167.0 实测）：登录态在共享数据区
 ///   %USERPROFILE%\AppData\Local\CodeBuddyExtension\Data\Public\auth\Tencent-Cloud.coding-copilot.info
@@ -35,9 +56,13 @@ public sealed record CredentialLocationSpec(
 ///   ~/.codebuddy/.credentials.json 不存在、删除它不影响登录态（V-4a 原预期作废）。
 ///   文件名派生自 product.json 的 authentication.id，CLI 大版本更新若改名只需改这里。
 /// - WorkBuddy：同目录下发现 workbuddy-desktop.info（待 WorkBuddy 侧确认后登记）。
-/// - Mock：假凭证文件，Live 主目录必须通过 <see cref="SetLiveRootOverride"/> 指定。
+/// - Mock：假凭证文件，Live 主目录必须通过 <see cref="ICredentialLocationRegistry.SetLiveRootOverride"/> 指定。
 /// </summary>
-public static class CredentialLocationRegistry
+/// <remarks>
+/// P1-16：规格表 <c>Specs</c> 为不可变静态数据（全部实例共享）；Live 根覆盖为实例状态
+/// （<see cref="ConcurrentDictionary{TKey,TValue}"/>），不再有跨实例的全局副作用。
+/// </remarks>
+public sealed class CredentialLocationRegistry : ICredentialLocationRegistry
 {
     private static readonly Dictionary<AgentKind, CredentialLocationSpec> Specs = new()
     {
@@ -68,15 +93,12 @@ public static class CredentialLocationRegistry
             null)
     };
 
-    /// <summary>Live 主目录覆盖（Mock / 测试 / 非默认安装位置）。</summary>
-    private static readonly Dictionary<AgentKind, string> LiveRootOverrides = new();
+    /// <summary>Live 主目录覆盖（Mock / 测试 / 非默认安装位置）——实例状态，线程安全。</summary>
+    private readonly ConcurrentDictionary<AgentKind, string> _liveRootOverrides = new();
 
-    public static void SetLiveRootOverride(AgentKind kind, string path)
-    {
-        LiveRootOverrides[kind] = path;
-    }
+    public void SetLiveRootOverride(AgentKind kind, string path) => _liveRootOverrides[kind] = path;
 
-    public static CredentialLocationSpec Resolve(AgentKind kind)
+    public CredentialLocationSpec Resolve(AgentKind kind)
     {
         if (Specs.TryGetValue(kind, out var spec))
         {
@@ -87,9 +109,9 @@ public static class CredentialLocationRegistry
     }
 
     /// <summary>Live 主目录（覆盖优先，否则 = 用户主目录 + 注册表相对根）。</summary>
-    public static string ResolveLiveRoot(CredentialLocationSpec spec)
+    public string ResolveLiveRoot(CredentialLocationSpec spec)
     {
-        if (LiveRootOverrides.TryGetValue(spec.Kind, out var root))
+        if (_liveRootOverrides.TryGetValue(spec.Kind, out var root))
         {
             return root;
         }
@@ -98,11 +120,9 @@ public static class CredentialLocationRegistry
         return Path.Combine(home, spec.HomeRelativeRoot);
     }
 
-    /// <summary>Live 侧某个凭证文件的绝对路径。
-    /// 有 Root 覆盖且未单列 FilesRoot 时（Mock/测试）沿用覆盖根；否则 = 用户主目录 + (FilesRoot ?? HomeRelativeRoot)。</summary>
-    public static string ResolveLiveFile(CredentialLocationSpec spec, string relativePath)
+    public string ResolveLiveFile(CredentialLocationSpec spec, string relativePath)
     {
-        var root = spec.FilesRoot is null && LiveRootOverrides.TryGetValue(spec.Kind, out var overridden)
+        var root = spec.FilesRoot is null && _liveRootOverrides.TryGetValue(spec.Kind, out var overridden)
             ? overridden
             : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
                 (spec.FilesRoot ?? spec.HomeRelativeRoot).Replace('/', Path.DirectorySeparatorChar));

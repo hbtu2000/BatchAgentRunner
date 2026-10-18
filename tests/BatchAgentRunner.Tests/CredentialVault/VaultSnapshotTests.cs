@@ -9,7 +9,8 @@ namespace BatchAgentRunner.Tests.CredentialVault;
 
 /// <summary>
 /// Vault 单元测试（DESIGN-账号凭证切换-v1.0 §11 测试要点）。
-/// 所有用例共用静态的 CredentialLocationRegistry（Live 根覆盖），串行执行避免相互覆盖。
+/// P1-16：每个用例自持 <see cref="CredentialLocationRegistry"/> 实例（Live 根覆写到各自的临时目录），
+/// 用例间不再共享静态全局态，互不覆盖。
 /// </summary>
 [Collection("credential-vault")]
 public class VaultSnapshotTests
@@ -28,10 +29,11 @@ public class VaultSnapshotTests
     {
         var vaultRoot = NewDir("bar-vault");
         var liveRoot = NewDir("bar-live");
-        CredentialLocationRegistry.SetLiveRootOverride(AgentKind.Mock, liveRoot);
+        var registry = new CredentialLocationRegistry();
+        registry.SetLiveRootOverride(AgentKind.Mock, liveRoot);
         var fakeClock = clock ?? new FakeClock(T1);
         var vault = new FileCredentialVault(vaultRoot, new TestCredentialProtector(),
-            new FakeCliProcessGuard(cliRunning), fakeClock);
+            new FakeCliProcessGuard(cliRunning), fakeClock, registry: registry);
         return (vault, vaultRoot, liveRoot, fakeClock);
     }
 

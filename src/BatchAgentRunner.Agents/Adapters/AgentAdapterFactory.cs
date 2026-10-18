@@ -1,13 +1,15 @@
 using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Options;
+using BatchAgentRunner.Infrastructure.CredentialVault;
 
 namespace BatchAgentRunner.Agents.Adapters;
 
 /// <summary>适配层工厂：按配置选择 WorkBuddy / CodeBuddy / 仿真适配器。</summary>
 public static class AgentAdapterFactory
 {
-    public static IAgentCliAdapter Create(RunOptions options, Action<string>? log = null)
+    public static IAgentCliAdapter Create(RunOptions options, Action<string>? log = null,
+        ICredentialLocationRegistry? registry = null)
     {
         var settings = new CliAdapterSettings
         {
@@ -19,9 +21,9 @@ public static class AgentAdapterFactory
 
         return options.AgentKind switch
         {
-            AgentKind.CodeBuddy => new CodeBuddyAdapter(settings, options.AutoAnswer),
+            AgentKind.CodeBuddy => new CodeBuddyAdapter(settings, options.AutoAnswer, registry),
             AgentKind.Mock => new MockAdapter(),
-            _ => new WorkBuddyAdapter(settings, options.AutoAnswer)
+            _ => new WorkBuddyAdapter(settings, options.AutoAnswer, registry)
         };
     }
 }
