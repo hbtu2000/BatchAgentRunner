@@ -5,13 +5,20 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
+    <!-- P0-12 / P2-20：测试项目规则豁免（均已登记于治理方案 §4.7 逃逸阀台账）：
+         CA1707（标识符不得含下划线）对测试命名是误报——「下划线 + 中文名」是本仓测试约定；
+         CA2007（await 须 ConfigureAwait）与 xUnit 自家 xUnit1030 直接冲突——xUnit 建议测试方法
+         省略 ConfigureAwait（其同步上下文不模拟 UI，且可 bypass 并行化限制），故在测试项目抑制；
+         CA1861（常量数组提 static readonly）针对生产热路径的重复分配——测试期望值数组一次性
+         使用且内容各异，提字段损害可读性且无性能收益。 -->
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1861</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.collector" Version="6.0.4" />
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
-    <PackageReference Include="xunit" Version="2.9.3" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
   </ItemGroup>
 
   <ItemGroup>
@@ -22,6 +29,14 @@
     <ProjectReference Include="..\..\src\BatchAgentRunner.Core\BatchAgentRunner.Core.csproj" />
     <ProjectReference Include="..\..\src\BatchAgentRunner.Infrastructure\BatchAgentRunner.Infrastructure.csproj" />
     <ProjectReference Include="..\..\src\BatchAgentRunner.Agents\BatchAgentRunner.Agents.csproj" />
+  </ItemGroup>
+
+  <!-- P2-21 / P2-28：测试改读 samples 的嵌入式资源副本（Link 指向真实 samples 文件，避免内容漂移），
+       使测试不再依赖磁盘/克隆路径；samples 目录降级为只读示例。 -->
+  <ItemGroup>
+    <EmbeddedResource Include="..\..\samples\config.example.json" Link="Samples\config.example.json" LogicalName="BatchAgentRunner.Tests.Samples.config.example.json" />
+    <EmbeddedResource Include="..\..\samples\tasks.json" Link="Samples\tasks.json" LogicalName="BatchAgentRunner.Tests.Samples.tasks.json" />
+    <EmbeddedResource Include="..\..\samples\tasks.md" Link="Samples\tasks.md" LogicalName="BatchAgentRunner.Tests.Samples.tasks.md" />
   </ItemGroup>
 
 </Project>

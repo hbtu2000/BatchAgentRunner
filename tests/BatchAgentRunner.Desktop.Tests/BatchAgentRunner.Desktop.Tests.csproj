@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <!-- P0-12 / P2-20：同主测试项目的测试项目规则豁免（登记于治理方案 §4.7）：
+         CA1707 / CA2007（与 xUnit1030 冲突，xUnit 建议测试省略 ConfigureAwait）/ CA1861（测试期望值
+         数组一次性使用，提 static readonly 损害可读性且无性能收益）。 -->
+    <NoWarn>$(NoWarn);CA1707;CA2007;CA1861</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="coverlet.collector" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" />
+    <PackageReference Include="xunit" />
+    <PackageReference Include="xunit.runner.visualstudio" />
+    <!-- Desktop 依赖 Avalonia；冒烟测试只触碰其纯 UI 无关单元（值转换器），不创建窗口/不启动 Application -->
+    <PackageReference Include="Avalonia" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Xunit" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- P0-17：补引用——测试项目首次引用 Desktop 程序集，使其可被测试锁定（原为结构性不可测） -->
+    <ProjectReference Include="..\..\src\BatchAgentRunner.Desktop\BatchAgentRunner.Desktop.csproj" />
+  </ItemGroup>
+
+</Project>

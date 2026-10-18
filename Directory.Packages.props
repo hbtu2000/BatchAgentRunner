@@ -1,0 +1,39 @@
+<Project>
+
+  <!--
+    中央包版本管理（CPM / Central Package Management），对应技术债务治理方案 v2.0 的 P1-17。
+    本文件集中声明全部 NuGet 包版本，各 csproj 的 <PackageReference> 不再写 Version，
+    改为从此处统一取版，杜绝版本漂移、使依赖图可审计。
+
+    启用开关在 Directory.Build.props 的 <ManagePackageVersionsCentrally>。
+    各 csproj 中若需偏离中央版本，使用 VersionOverride（当前无此类情况）。
+  -->
+
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- 运行时依赖 -->
+    <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="10.0.0" />
+    <PackageVersion Include="ClosedXML" Version="0.104.2" />
+    <PackageVersion Include="Avalonia" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.Desktop" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.4" />
+    <PackageVersion Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
+    <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+
+    <!-- 注：Microsoft.Extensions.Logging.Abstractions 已从 Core.csproj 移除（P1-17），
+         全仓 ILogger 使用 0 处，属无效依赖。 -->
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 测试依赖 -->
+    <PackageVersion Include="coverlet.collector" Version="6.0.4" />
+    <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.0" />
+    <PackageVersion Include="xunit" Version="2.9.3" />
+    <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
+  </ItemGroup>
+
+</Project>

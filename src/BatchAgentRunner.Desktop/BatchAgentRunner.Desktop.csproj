@@ -7,6 +7,10 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- 使用反射绑定：避免为每处 XAML 声明 x:DataType，降低维护成本 -->
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
+    <!-- P0-12 / P2-30：Desktop 的 AVLN 警告（Avalonia 绑定命名约定）为样式性告警；
+         且部分 UI await 必须回到 UI 线程（ConfigureAwait(false) 会破坏 P0-6/7 的线程收敛），故登记豁免。
+         登记依据见 TECH-DEBT v2.0 §4.8 / P2-30；待阶段 2 引入 headless 测试基座后再评估逐一修正。 -->
+    <NoWarn>$(NoWarn);AVLN5001;AVLN3001;CA2007</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,15 +21,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="12.1.4" />
-    <PackageReference Include="Avalonia.Desktop" Version="12.1.4" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.4" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.4" />
-    <PackageReference Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3">
+    <PackageReference Include="Avalonia" />
+    <PackageReference Include="Avalonia.Desktop" />
+    <PackageReference Include="Avalonia.Themes.Fluent" />
+    <PackageReference Include="Avalonia.Fonts.Inter" />
+    <PackageReference Include="AvaloniaUI.DiagnosticsSupport">
       <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
-    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="CommunityToolkit.Mvvm" />
   </ItemGroup>
 
   <ItemGroup>

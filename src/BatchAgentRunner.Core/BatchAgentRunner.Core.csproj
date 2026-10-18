@@ -6,8 +6,6 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.13" />
-  </ItemGroup>
+  <!-- P1-17：原 Microsoft.Extensions.Logging.Abstractions 依赖已移除——全仓 ILogger 使用 0 处，属无效依赖。 -->
 
 </Project>
