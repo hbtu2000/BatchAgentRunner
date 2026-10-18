@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Events;
@@ -54,8 +55,6 @@ public sealed class BatchEngine : IBatchEngine
     /// </summary>
     private readonly SemaphoreSlim _writeGate = new(1, 1);
     private readonly object _statsLock = new();
-    /// <summary>兜底成本/用量锁（P0-5）：跨任务共享，且「检查上限 → 累加」是 check-then-act。</summary>
-    private readonly object _fallbackLock = new();
     /// <summary>持久化单写者门（P0-4）：同一时刻只允许一个写者落盘任务文件。</summary>
     private readonly SemaphoreSlim _persistGate = new(1, 1);
     private readonly SemaphoreSlim _waitGate = new(1, 1);
@@ -70,11 +69,17 @@ public sealed class BatchEngine : IBatchEngine
     private bool _terminateRequested;
     private bool _stopAfterCurrentTask;
     private string? _currentTaskId;
-    private decimal _fallbackBatchCost;
-    private int _fallbackUsedCount;
-    private CostBasis _fallbackCostBasis = CostBasis.Estimated;
-    private bool _fallbackStoppedByLimit;
-    private readonly List<string> _fallbackModelsUsed = new();
+    /// <summary>
+    /// 兜底模型选择与计费协作者（P1-1 拆分产物 ③，§3.4 <c>IFallbackBilling</c>）：
+    /// 独占兜底成本/用量状态，承载 P0-1（单任务成本截断）与 P0-5（跨任务累计同锁）不变量。
+    /// </summary>
+    /// <remarks>
+    /// CA1859（§4.7 逃逸阀）：字段刻意保持接口类型——P1-1 拆分后该协作者须可被测试替身替换，
+    /// 拒绝为微性能向具体类型回退（同 EngineHost CA1859 豁免的架构方向理由）。
+    /// </remarks>
+    [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能",
+        Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假计费验证不变量），拒绝向具体类型回退")]
+    private readonly IFallbackBilling _fallback;
     private double _windowWaitSeconds;
     private double _cooldownWaitSeconds;
     /// <summary>单任务级暂停等待累计（DESIGN-额度耗尽暂停续跑：从任务时长中剔除）。key 不区分大小写。</summary>
@@ -136,6 +141,7 @@ public sealed class BatchEngine : IBatchEngine
         _matrix = new DegradationMatrix(options.Accounts, options.ModelCandidates, options.DegradationStrategy);
         _sessionPolicy = new SessionResumePolicy(options.EnableSessionResume);
         _fileSystem = fileSystem ?? new SystemFileSystem();
+        _fallback = new FallbackBilling(_options, () => _matrix, _clock, Raise);
     }
 
     // ---------------- 公开状态 ----------------
@@ -1379,60 +1385,16 @@ public sealed class BatchEngine : IBatchEngine
     private async Task<(bool Success, decimal Cost)> TryFallbackAsync(TaskItem task,
         CancellationToken ct)
     {
-        if (!_options.Fallback.Enabled)
+        var selection = _fallback.TrySelect(task.Id);
+        if (selection is null)
         {
             return (false, 0m);
         }
 
-        // 兜底模型池挂在账号下（REQ-004b，v1.12）：
-        // 按「账号顺序 × 该账号兜底池顺序」选取第一个可用兜底组合；账号仅需启用。
-        // 兜底模型不参与免费时段过滤（R-3）。
-        var (account, fallback) = _matrix.Accounts
-            .Where(a => a.Enabled)
-            .SelectMany(a => (a.FallbackModels ?? new List<FallbackModel>()).Select(fb => (Account: a, Fallback: fb)))
-            .FirstOrDefault();
+        var account = selection.Account;
+        var unitPrice = selection.UnitPrice;
 
-        if (fallback is null)
-        {
-            // 没有任何启用账号配置兜底模型池 → 视为未具备兜底能力（REQ-004b）
-            return (false, 0m);
-        }
-
-        var unitPrice = fallback.EstimatedUnitPrice ?? 0m;
-
-        // P0-5：兜底成本/用量是跨任务共享状态（Concurrency>1 时并发累加），且「检查上限 → 累加」
-        // 属 check-then-act，必须与累加共用同一把锁；事件广播在锁外进行（避免持锁调用订阅方）。
-        string? limitReason = null;
-        lock (_fallbackLock)
-        {
-            if (_fallbackBatchCost + unitPrice > _options.Fallback.MaxCostPerBatch)
-            {
-                limitReason = $"兜底成本已用尽（单批上限 ¥{_options.Fallback.MaxCostPerBatch}），已停用兜底并转为阻塞";
-            }
-            else if (unitPrice > _options.Fallback.MaxCostPerTask)
-            {
-                limitReason = $"兜底单价 ¥{unitPrice} 超出单任务上限 ¥{_options.Fallback.MaxCostPerTask}，已跳过兜底";
-            }
-
-            if (limitReason is not null)
-            {
-                _fallbackStoppedByLimit = true;
-            }
-        }
-
-        if (limitReason is not null)
-        {
-            Raise(new BatchEvent(BatchEventKind.Warning, _clock.Now, limitReason, task.Id));
-            return (false, 0m);
-        }
-
-        // 兜底模型不参与免费时段过滤（R-3）：FreeTimeWindow 恒为 null
-        var fallbackModel = new ModelCandidate
-        {
-            Name = fallback.Name,
-            FreeTimeWindow = null,
-            EstimatedUnitPrice = fallback.EstimatedUnitPrice
-        };
+        var fallbackModel = selection.ToModelCandidate();
         var combo = new AgentCombo(account, fallbackModel);
 
         Raise(new BatchEvent(BatchEventKind.FallbackUsed, _clock.Now,
@@ -1440,13 +1402,7 @@ public sealed class BatchEngine : IBatchEngine
             task.Id, account.Label, fallbackModel.Name));
 
         var request = BuildRequest(task, combo, isFallback: true);
-        lock (_fallbackLock)
-        {
-            if (!_fallbackModelsUsed.Contains(fallbackModel.Name, StringComparer.Ordinal))
-            {
-                _fallbackModelsUsed.Add(fallbackModel.Name);
-            }
-        }
+        _fallback.RecordModelUsed(fallbackModel.Name);
 
         var result = await ExecuteWithTimeoutAsync(request, ct).ConfigureAwait(false);
 
@@ -1455,18 +1411,13 @@ public sealed class BatchEngine : IBatchEngine
 
         // P0-1：原写法 Math.Min(cost, Math.Max(MaxCostPerTask, cost)) 恒等于 cost（no-op），
         // 单任务成本上限完全失效 → 实测花费再高也全额计入。改为按 MaxCostPerTask 真实截断。
-        // 不变量：TryFallbackAsync 记入 _fallbackBatchCost / task.FallbackCost 的 cost
+        // 不变量：TryFallbackAsync 记入兜底累计 / task.FallbackCost 的 cost
         // 必须 ≤ Fallback.MaxCostPerTask（由 BatchEngineTests.兜底成本超单任务上限时按上限截断 锁住）。
-        cost = Math.Min(cost, Math.Max(0m, _options.Fallback.MaxCostPerTask));
+        cost = _fallback.CapCost(cost);
 
         if (result.Succeeded)
         {
-            lock (_fallbackLock)
-            {
-                _fallbackBatchCost += cost;
-                _fallbackUsedCount++;
-                _fallbackCostBasis = basis;
-            }
+            _fallback.RecordSuccess(cost, basis);
 
             using (await EnterWriteGateAsync().ConfigureAwait(false)) // P0-4：与落盘序列化互斥
             {
@@ -1492,11 +1443,7 @@ public sealed class BatchEngine : IBatchEngine
         }
 
         // 兜底本身也失败：按普通失败处理，不循环兜底（边缘情况 10）
-        lock (_fallbackLock)
-        {
-            _fallbackBatchCost += cost;
-            _fallbackCostBasis = basis;
-        }
+        _fallback.RecordFailure(cost, basis);
         await FailTask(task, $"兜底模型 {fallbackModel.Name} 执行失败：{result.Failure?.Message ?? "未知错误"}").ConfigureAwait(false);
         return (false, cost);
     }
@@ -1901,20 +1848,7 @@ public sealed class BatchEngine : IBatchEngine
     }
 
     /// <summary>兜底用量快照（P0-5：读也走同一把锁，避免并发下读到撕裂状态）。</summary>
-    private FallbackSummary BuildFallbackSummary()
-    {
-        lock (_fallbackLock)
-        {
-            return new FallbackSummary
-            {
-                UsedCount = _fallbackUsedCount,
-                Model = _fallbackModelsUsed.Count > 0 ? string.Join("、", _fallbackModelsUsed) : null,
-                TotalCost = _fallbackBatchCost,
-                CostBasis = _fallbackCostBasis,
-                StoppedByLimit = _fallbackStoppedByLimit
-            };
-        }
-    }
+    private FallbackSummary BuildFallbackSummary() => _fallback.BuildSummary();
 
     private BatchReport BuildReport(DateTimeOffset startedAt)
     {
