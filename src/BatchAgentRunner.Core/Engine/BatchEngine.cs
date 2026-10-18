@@ -93,15 +93,21 @@ public sealed class BatchEngine : IBatchEngine
 
     // ---------------- 二期扩展（全部可选，向后兼容） ----------------
     private readonly List<NotificationRule> _notifications;
-    private readonly IDiffCollector? _diffCollector;
-    private readonly IGitIntegration? _git;
-    private readonly List<DiffRecord> _diffs = new();
     private readonly SessionResumePolicy _sessionPolicy;
     private readonly INotificationDispatcher? _notificationDispatcher;
-    private readonly IMarkdownInPlaceWriter? _markdownWriter;
     private readonly GateEvaluator _gateEvaluator;
     /// <summary>文件系统探测端口（P1-10）：引擎零直接 IO，任务文件/工作空间存在性均经此抽象。</summary>
     private readonly IFileSystem _fileSystem;
+    /// <summary>
+    /// Git 工作流协作者（P1-1 拆分产物 ④，§3.4 <c>IGitWorkflow</c>）：
+    /// 项目级任务建分支/开 PR、diff 采集、Markdown 原地回写（均尽力而为）。
+    /// </summary>
+    /// <remarks>
+    /// CA1859（§4.7 逃逸阀）：同 <see cref="_fallback"/>——接口字段是拆分后的测试缝。
+    /// </remarks>
+    [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能",
+        Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假 Git 工作流验证尽力而为语义），拒绝向具体类型回退")]
+    private readonly IGitWorkflow _gitWorkflow;
     /// <summary>
     /// 批处理通知协作者（P1-1 拆分产物 ⑤）：按触发时机组装通知上下文并分发。
     /// </summary>
@@ -137,10 +143,7 @@ public sealed class BatchEngine : IBatchEngine
         _logger = logger;
         _vault = credentialVault;
         _notifications = notifications?.ToList() ?? options.Notifications?.ToList() ?? new List<NotificationRule>();
-        _diffCollector = diffCollector;
-        _git = git;
         _notificationDispatcher = notificationDispatcher;
-        _markdownWriter = markdownWriter;
         _gateEvaluator = gateEvaluator ?? new GateEvaluator(processRunner ?? new NullProcessRunner());
         _clock = clock ?? new SystemClock();
         _classifier = classifier ?? new QuotaErrorClassifier();
@@ -156,8 +159,9 @@ public sealed class BatchEngine : IBatchEngine
         _sessionPolicy = new SessionResumePolicy(options.EnableSessionResume);
         _fileSystem = fileSystem ?? new SystemFileSystem();
         _fallback = new FallbackBilling(_options, () => _matrix, _clock, Raise);
-        _report = new BatchReportBuilder(_clock, () => _options, () => _tasks, () => Status, () => _diffs,
-            BuildFallbackSummary);
+        _gitWorkflow = new GitWorkflow(_options, diffCollector, git, markdownWriter, _logger);
+        _report = new BatchReportBuilder(_clock, () => _options, () => _tasks, () => Status,
+            () => _gitWorkflow.Diffs, BuildFallbackSummary);
         _notifier = new BatchNotifier(_options, _notifications, _notificationDispatcher, () => Status,
             () => _tasks, _clock, _logger);
     }
@@ -692,36 +696,12 @@ public sealed class BatchEngine : IBatchEngine
     /// 单任务执行兜底：引擎自身的未预期异常（如启动进程失败、落盘失败）不允许静默冒泡
     /// 杀死整批（2026-10-16 实测：异常被 UI 吞掉、运行日志无记录、报告不落盘，排障极困难）。
     /// 此处记录 ERROR 日志与事件、任务判失败后继续下一任务；用户取消（OCE）按终止处理。
-    /// 二期扩展（可选）：执行前后采集结果 diff、项目级任务建分支/开 PR、Markdown 原地回写。
+    /// 二期扩展（P1-1 拆分产物 ④）：执行前后的 diff 采集 / Git 分支与 PR / Markdown 回写
+    /// 全部委托 <see cref="IGitWorkflow"/>（尽力而为，失败不阻断任务）。
     /// </summary>
     private async Task<TaskOutcome> ExecuteTaskSafeAsync(TaskItem task, CancellationToken ct)
     {
-        string? snapshotId = null;
-        if (_diffCollector is not null && _options.CollectDiffs && !ct.IsCancellationRequested)
-        {
-            try
-            {
-                snapshotId = await _diffCollector.SnapshotAsync(task, ct).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger.Write("WARN", $"任务 {task.Id} diff 快照失败（已忽略）：{ex.Message}");
-            }
-        }
-
-        // 二期：项目级任务——执行前建分支（尽力而为，失败不阻断任务）
-        var effectiveProject = EffectiveProjectRef(task);
-        if (_git is not null && effectiveProject is not null)
-        {
-            try
-            {
-                await _git.CreateBranchAsync(effectiveProject, task.Id, ct).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger.Write("WARN", $"任务 {task.Id} 创建 Git 分支失败（已忽略）：{ex.Message}");
-            }
-        }
+        var gitContext = await _gitWorkflow.BeginAsync(task, ct).ConfigureAwait(false);
 
         TaskOutcome outcome;
         try
@@ -750,55 +730,7 @@ public sealed class BatchEngine : IBatchEngine
             outcome = TaskOutcome.Finished;
         }
 
-        // 二期：项目级任务成功后开 PR（尽力而为；需任务/全局显式开启 auto_open_pr）
-        if (_git is not null && effectiveProject is not null && task.Status == TaskStatus.Done
-            && effectiveProject.AutoOpenPr
-            && !string.IsNullOrWhiteSpace(effectiveProject.TaskBranch))
-        {
-            try
-            {
-                await _git.OpenPullRequestAsync(effectiveProject, task.Id, effectiveProject.TaskBranch, null, ct)
-                    .ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger.Write("WARN", $"任务 {task.Id} 打开 PR 失败（已忽略）：{ex.Message}");
-            }
-        }
-
-        // 二期：结果 diff 采集
-        if (snapshotId is not null && _diffCollector is not null)
-        {
-            try
-            {
-                var recs = await _diffCollector.CollectAsync(snapshotId, task, ct).ConfigureAwait(false);
-                if (recs.Count > 0)
-                {
-                    lock (_diffs)
-                    {
-                        _diffs.AddRange(recs);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                _logger.Write("WARN", $"任务 {task.Id} diff 采集失败（已忽略）：{ex.Message}");
-            }
-        }
-
-        // 二期：Markdown 任务文件原地回写（仅在显式开启且任务文件为 .md 时）
-        if (_markdownWriter is not null && _options.MarkdownInPlaceWriteback && IsMarkdownTaskFile())
-        {
-            try
-            {
-                await _markdownWriter.WriteBackAsync(_options.TaskFilePath, task, ct).ConfigureAwait(false);
-            }
-            catch (Exception ex)
-            {
-                _logger.Write("WARN", $"任务 {task.Id} Markdown 原回写失败（已忽略）：{ex.Message}");
-            }
-        }
-
+        await _gitWorkflow.CompleteAsync(task, gitContext, ct).ConfigureAwait(false);
         return outcome;
     }
 
@@ -981,10 +913,6 @@ public sealed class BatchEngine : IBatchEngine
     }
 
     // ---------------- 二期：通知推送 ----------------
-
-    private bool IsMarkdownTaskFile() =>
-        !string.IsNullOrWhiteSpace(_options.TaskFilePath) &&
-        _options.TaskFilePath.EndsWith(".md", StringComparison.OrdinalIgnoreCase);
 
     private async Task<TaskOutcome> ExecuteTaskAsync(TaskItem task, CancellationToken ct)
     {
@@ -1766,76 +1694,6 @@ public sealed class BatchEngine : IBatchEngine
         return value.Length <= maxChars
             ? value
             : value[..maxChars] + $"\n…（结果已截断，超过 {maxChars / 1024}KB，完整内容见运行日志）";
-    }
-
-    /// <summary>
-    /// 生效的项目级 Git 配置（二期）：任务级 <see cref="TaskItem.ProjectRef"/> 优先，
-    /// 空字段用全局 <see cref="RunOptions.Git"/> 兜底；任务无 ProjectRef 但全局配置了仓库时按全局合成。
-    /// 全局仓库路径为空 = 未配置 Git 集成，返回 null（不执行任何 Git 操作）。
-    /// </summary>
-    private ProjectRef? EffectiveProjectRef(TaskItem task)
-    {
-        var git = _options.Git;
-        var globalReady = !string.IsNullOrWhiteSpace(git.RepoPath);
-
-        if (task.ProjectRef is null)
-        {
-            if (!globalReady)
-            {
-                return null;
-            }
-
-            var branch = RenderBranchName(git.BranchNaming, task.Id);
-            return new ProjectRef
-            {
-                RepoPath = git.RepoPath,
-                BaseBranch = git.BaseBranch,
-                TaskBranch = branch,
-                PrTargetBranch = git.PrTargetBranch ?? git.BaseBranch,
-                AutoCreateBranch = true,
-                AutoOpenPr = git.AutoOpenPr
-            };
-        }
-
-        if (!globalReady && string.IsNullOrWhiteSpace(task.ProjectRef.RepoPath))
-        {
-            return null; // 两级都没配仓库
-        }
-
-        var effective = task.ProjectRef.Clone();
-        if (string.IsNullOrWhiteSpace(effective.RepoPath))
-        {
-            effective.RepoPath = git.RepoPath;
-        }
-
-        if (string.IsNullOrWhiteSpace(effective.BaseBranch))
-        {
-            effective.BaseBranch = git.BaseBranch;
-        }
-
-        if (string.IsNullOrWhiteSpace(effective.PrTargetBranch))
-        {
-            effective.PrTargetBranch = git.PrTargetBranch ?? effective.BaseBranch;
-        }
-
-        if (string.IsNullOrWhiteSpace(effective.TaskBranch) && effective.AutoCreateBranch)
-        {
-            effective.TaskBranch = RenderBranchName(
-                string.IsNullOrWhiteSpace(git.BranchNaming) ? "bar/{task_id}-{timestamp}" : git.BranchNaming,
-                task.Id);
-        }
-
-        return effective;
-    }
-
-    /// <summary>渲染分支命名模板：{task_id} / {timestamp}(yyyyMMddHHmmss) / {date}(yyyyMMdd)。</summary>
-    private static string RenderBranchName(string template, string taskId)
-    {
-        var now = DateTimeOffset.Now;
-        return template
-            .Replace("{task_id}", taskId, StringComparison.OrdinalIgnoreCase)
-            .Replace("{timestamp}", now.ToString("yyyyMMddHHmmss"), StringComparison.OrdinalIgnoreCase)
-            .Replace("{date}", now.ToString("yyyyMMdd"), StringComparison.OrdinalIgnoreCase);
     }
 
     /// <summary>兜底用量汇总（P1-1 拆分后由 <see cref="IFallbackBilling"/> 记账，此处供报告协作者读取）。</summary>
