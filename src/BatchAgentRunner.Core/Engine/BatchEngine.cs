@@ -102,6 +102,15 @@ public sealed class BatchEngine : IBatchEngine
     private readonly GateEvaluator _gateEvaluator;
     /// <summary>文件系统探测端口（P1-10）：引擎零直接 IO，任务文件/工作空间存在性均经此抽象。</summary>
     private readonly IFileSystem _fileSystem;
+    /// <summary>
+    /// 批处理通知协作者（P1-1 拆分产物 ⑤）：按触发时机组装通知上下文并分发。
+    /// </summary>
+    /// <remarks>
+    /// CA1859（§4.7 逃逸阀）：同 <see cref="_fallback"/>——接口字段是拆分后的测试缝。
+    /// </remarks>
+    [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能",
+        Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假通知器验证分发时机），拒绝向具体类型回退")]
+    private readonly IBatchNotifier _notifier;
 
     public BatchEngine(
         RunOptions options,
@@ -149,6 +158,8 @@ public sealed class BatchEngine : IBatchEngine
         _fallback = new FallbackBilling(_options, () => _matrix, _clock, Raise);
         _report = new BatchReportBuilder(_clock, () => _options, () => _tasks, () => Status, () => _diffs,
             BuildFallbackSummary);
+        _notifier = new BatchNotifier(_options, _notifications, _notificationDispatcher, () => Status,
+            () => _tasks, _clock, _logger);
     }
 
     // ---------------- 公开状态 ----------------
@@ -532,7 +543,7 @@ public sealed class BatchEngine : IBatchEngine
         Report = _report.Build(startedAt);
 
         // 二期：批处理终态通知推送（REQ-018；按规则触发，失败不阻断）
-        await DispatchNotificationsAsync(
+        await _notifier.DispatchAsync(
             Status switch
             {
                 BatchStatus.Completed => NotifyTrigger.BatchCompleted,
@@ -826,7 +837,7 @@ public sealed class BatchEngine : IBatchEngine
 
         if (outcome.FinalStatus == TaskStatus.NeedsAttention)
         {
-            await DispatchNotificationsAsync(NotifyTrigger.NeedsAttention, null, outcome.Error).ConfigureAwait(false);
+            await _notifier.DispatchAsync(NotifyTrigger.NeedsAttention, null, outcome.Error).ConfigureAwait(false);
         }
 
         return outcome.FinalStatus switch
@@ -970,47 +981,6 @@ public sealed class BatchEngine : IBatchEngine
     }
 
     // ---------------- 二期：通知推送 ----------------
-
-    /// <summary>
-    /// 按通知规则推送（REQ-018）。未注入分发器、无规则或 trigger 为 null 时为空操作；
-    /// 推送失败只记日志，绝不阻断批处理。
-    /// </summary>
-    private async Task DispatchNotificationsAsync(NotifyTrigger? trigger, DateTimeOffset? batchStartedAt = null,
-        string? message = null)
-    {
-        if (trigger is null || _notificationDispatcher is null || _notifications.Count == 0)
-        {
-            return;
-        }
-
-        var now = _clock.Now;
-        var context = new NotificationContext
-        {
-            Trigger = trigger.Value,
-            BatchName = string.IsNullOrWhiteSpace(_options.TaskFilePath)
-                ? "批处理"
-                : Path.GetFileNameWithoutExtension(_options.TaskFilePath),
-            BatchStatus = Status,
-            Total = _tasks.Count,
-            Done = _tasks.Count(t => t.Status == TaskStatus.Done),
-            Failed = _tasks.Count(t => t.Status == TaskStatus.Failed),
-            NeedsAttention = _tasks.Count(t => t.Status == TaskStatus.NeedsAttention),
-            Blocked = _tasks.Count(t => t.Status == TaskStatus.Blocked),
-            DurationSeconds = batchStartedAt.HasValue
-                ? Math.Round((now - batchStartedAt.Value).TotalSeconds, 3)
-                : 0,
-            Message = message
-        };
-
-        try
-        {
-            await _notificationDispatcher.DispatchAsync(_notifications, context, default).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            _logger.Write("WARN", $"通知推送失败（已忽略）：{ex.Message}");
-        }
-    }
 
     private bool IsMarkdownTaskFile() =>
         !string.IsNullOrWhiteSpace(_options.TaskFilePath) &&
@@ -1499,7 +1469,7 @@ public sealed class BatchEngine : IBatchEngine
         await PersistAsync(CancellationToken.None).ConfigureAwait(false);
 
         // 二期：任务失败通知（REQ-018；按规则触发，失败不阻断）
-        await DispatchNotificationsAsync(NotifyTrigger.TaskFailed, null, error).ConfigureAwait(false);
+        await _notifier.DispatchAsync(NotifyTrigger.TaskFailed, null, error).ConfigureAwait(false);
     }
 
     private async Task MarkInterrupted(TaskItem task, string reason)
