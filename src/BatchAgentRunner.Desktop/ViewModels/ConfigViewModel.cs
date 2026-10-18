@@ -21,7 +21,7 @@ public enum ModelPoolMode
 /// <summary>配置页：承载 PRD 第 9 章的 9 个配置域（分组布局）。</summary>
 public sealed class ConfigViewModel : ViewModelBase
 {
-    private readonly EngineHost _host;
+    private readonly IEngineHost _host;
 
     // ---------------- 模型池模式（单一数据源，消除全局列表与每账号池双写造成的重复） ----------------
 
@@ -71,7 +71,7 @@ public sealed class ConfigViewModel : ViewModelBase
     private string _gitPrTargetBranch = string.Empty;
     private bool _gitAutoOpenPr;
 
-    public ConfigViewModel(EngineHost host)
+    public ConfigViewModel(IEngineHost host)
     {
         _host = host;
         Reload();

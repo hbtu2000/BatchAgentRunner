@@ -2,23 +2,15 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
-using BatchAgentRunner.Agents.Adapters;
 using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Engine;
 using BatchAgentRunner.Core.Events;
 using BatchAgentRunner.Core.Options;
+using BatchAgentRunner.Desktop.Composition;
 using BatchAgentRunner.Desktop.Views;
 using BatchAgentRunner.Infrastructure.CredentialVault;
-using BatchAgentRunner.Infrastructure.Diff;
-using BatchAgentRunner.Infrastructure.Git;
-using BatchAgentRunner.Infrastructure.Http;
-using BatchAgentRunner.Infrastructure.Logging;
-using BatchAgentRunner.Infrastructure.Notification;
-using BatchAgentRunner.Infrastructure.Persistence;
 using BatchAgentRunner.Infrastructure.Platform;
-using BatchAgentRunner.Infrastructure.Reporting;
-using BatchAgentRunner.Infrastructure.TaskFiles;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace BatchAgentRunner.Desktop.Services;
@@ -28,37 +20,34 @@ namespace BatchAgentRunner.Desktop.Services;
 /// 界面只通过本类与引擎交互，保证「引擎与 UI 解耦、UI 线程安全」。
 /// </summary>
 /// <remarks>
-/// CA1001（P0-12）：持有可释放成员（运行日志 / 引擎门 / Vault 门），实现 <see cref="IDisposable"/>。
-/// 宿主为应用级单例，正常随进程退出；测试或提前销毁场景可显式调用。
+/// 阶段 2（P1-4/P1-5）：具体类型装配已下沉到 <see cref="Composition.EngineFactory"/>（唯一允许直引
+/// Infrastructure/Agents 具体实现的位置）。本类只持有 Core 抽象契约与 <see cref="IEngineFactory"/>，
+/// 解除「UI 直引 Infrastructure/Agents 具体类型」的架构倒置（§4.3 架构断言）。
 /// </remarks>
-public sealed class EngineHost : ObservableObject, IDisposable
+public sealed class EngineHost : ObservableObject, IEngineHost
 {
-    // CA1859（P0-12）显式豁免并登记于治理方案 §4.7 逃逸阀台账：以下三个成员保持接口类型是
-    // P1-4/P1-5「UI 只依赖 Core 抽象 + DI 化」的目标形态（Desktop 作为组合根目前注入唯一实现），
-    // 虚调用性能差异可忽略；改具体类型会加固 P1-4 要拆的倒置，拒绝该建议。
-    [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能", Justification = "接口类型是 P1-4/P1-5 DI 目标形态，拒绝向具体类型回退")]
-    private readonly IConfigStore _configStore = new JsonConfigStore();
-    private readonly ICooldownStore _cooldownStore = new JsonCooldownStore();
-    private readonly ITaskFileStore _taskFileStore = new TaskFileStore();
-    [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能", Justification = "接口类型是 P1-4/P1-5 DI 目标形态，拒绝向具体类型回退")]
-    private readonly IReportWriter _reportWriter = new ReportWriter();
-    /// <summary>
-    /// 自动关机协调器（REQ-015 / P0-10）：负责触发条件判定与可撤销倒计时策略，
-    /// Desktop 只提供倒计时窗口。策略不再散落在 UI 宿主里。
-    /// </summary>
+    /// <summary>组合根：集中 new 全部 Infrastructure/Agents 具体类型（§4.3 唯一豁免位置）。</summary>
+    private readonly EngineFactory _factory = new();
+
+    /// <summary>自动关机协调器（REQ-015 / P0-10）：负责触发条件判定与可撤销倒计时策略，Desktop 只提供倒计时窗口。</summary>
     private readonly AutoShutdownCoordinator _shutdownCoordinator = new(new ShutdownService());
 
-    /// <summary>凭证 Vault 宿主（DESIGN-账号凭证切换-v1.0）：Vault 本体随引擎生命周期复用。</summary>
-    public CredentialVaultHost VaultHost { get; } = CreateVaultHost();
-
-    private BatchEngine? _engine;
-    private FileRunLogger? _logger;
+    private IBatchEngine? _engine;
+    private IRunLogger? _logger;
     private BatchStatus _status = BatchStatus.Idle;
     private bool _running;
 
-    public RunOptions Options { get; private set; } = JsonConfigStore.CreateSample();
+    public EngineHost()
+    {
+        Options = EngineFactory.CreateSampleRunOptions();
+    }
+
+    public RunOptions Options { get; private set; }
 
     public IBatchEngine? Engine => _engine;
+
+    /// <summary>凭证 Vault 宿主（DESIGN-账号凭证切换-v1.0）。Vault 本体随引擎生命周期复用。</summary>
+    public CredentialVaultHost VaultHost => _factory.VaultHost;
 
     public BatchStatus Status
     {
@@ -93,52 +82,29 @@ public sealed class EngineHost : ObservableObject, IDisposable
     /// <summary>唯一的事件广播出口（P0-7）：保证订阅方永远在 UI 线程被调用。</summary>
     private void Raise(BatchEvent ev) => UiThread.Post(() => EventRaised?.Invoke(this, ev));
 
-    public string ConfigDirectory => _configStore.ConfigDirectory;
+    public string ConfigDirectory => _factory.ConfigStore.ConfigDirectory;
 
     public async Task InitializeAsync()
     {
-        Options = await _configStore.LoadAsync().ConfigureAwait(false);
+        Options = await _factory.ConfigStore.LoadAsync().ConfigureAwait(false);
         _engine = CreateEngine();
         await _engine.InitializeAsync().ConfigureAwait(false);
         Status = _engine.Status;
     }
 
-    /// <summary>
-    /// 默认 Vault 装配：DPAPI 静态加密 + 真实进程守卫；Mock 适配器把 Live 指到工具私有目录，
-    /// 保证「MockAdapter 模拟同一套 Vault 流程，全链路可先行联调」（DESIGN §7）。
-    /// </summary>
-    private static CredentialVaultHost CreateVaultHost()
-    {
-        var mockLiveRoot = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "BatchAgentRunner", "mock-live");
-        CredentialLocationRegistry.SetLiveRootOverride(AgentKind.Mock, mockLiveRoot);
-        return CredentialVaultHost.CreateDefault();
-    }
-
-    private BatchEngine CreateEngine()
+    /// <summary>装配引擎实例：适配器 / 日志 / 通知 / Git / Markdown 等具体实现全部来自组合根。</summary>
+    private IBatchEngine CreateEngine()
     {
         _logger?.Dispose();
         // P0-12 / CA1001：BatchEngine 现为 IDisposable（SemaphoreSlim 门 + 运行 CTS），
         // 替换旧引擎前先释放，避免每次重建泄漏三座门。
         _engine?.Dispose();
-        _logger = new FileRunLogger(Options.TaskFilePath);
-        var adapter = AgentAdapterFactory.Create(Options, msg => _logger.Write("INFO", msg));
-        if (adapter is MockAdapter mock)
-        {
-            // Mock 的「Live 凭证文件」与 Vault 共用同一位置，保活回写/切换全链路可用 Mock 联调
-            mock.MockLiveCredentialPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "BatchAgentRunner", "mock-live", ".credentials.json");
-        }
-
-        var engine = new BatchEngine(Options, adapter, _taskFileStore, _cooldownStore, _logger,
-            credentialVault: VaultHost.Vault,
-            notifications: Options.Notifications,
-            notificationDispatcher: CreateNotificationDispatcher(),
-            diffCollector: Options.CollectDiffs ? new DiffCollector(_logger, Options) : null,
-            git: new LocalGitIntegration(),
-            markdownWriter: new MarkdownInPlaceWriter());
+        _logger = EngineFactory.CreateLogger(Options);
+        var engine = _factory.CreateEngine(
+            Options,
+            _logger,
+            VaultHost.Vault,
+            (title, message) => Raise(new BatchEvent(BatchEventKind.Info, DateTimeOffset.Now, $"[通知] {title}：{message}")));
         // P0-7：单一收敛点。引擎事件在后台线程触发，这里统一切到 UI 线程后再广播，
         // 订阅方（7 处）不必再各自记得 Dispatcher.UIThread.Post —— 由构造保证，而不是靠约定。
         engine.EventRaised += (_, ev) => UiThread.Post(() =>
@@ -164,25 +130,9 @@ public sealed class EngineHost : ObservableObject, IDisposable
         TasksChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    /// <summary>
-    /// 二期通知分发器（REQ-018）：Desktop 通道转为主界面 toast（经引擎事件广播），
-    /// Webhook / SMTP 走各自 notifier。仅当配置了通知规则时才需要，无规则时不构造也不分发。
-    /// </summary>
-    [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能", Justification = "接口返回类型是 P1-4/P1-5 DI 目标形态，拒绝向具体类型回退")]
-    private INotificationDispatcher CreateNotificationDispatcher()
-    {
-        var notifiers = new List<INotifier>
-        {
-            new DesktopNotifier((title, message) => Raise(new BatchEvent(BatchEventKind.Info, DateTimeOffset.Now, $"[通知] {title}：{message}"))),
-            new WebhookNotifier(),
-            new SmtpNotifier(_logger)
-        };
-        return new NotificationDispatcher(notifiers);
-    }
-
     public async Task SaveConfigAsync()
     {
-        await _configStore.SaveAsync(Options).ConfigureAwait(false);
+        await _factory.ConfigStore.SaveAsync(Options).ConfigureAwait(false);
     }
 
     /// <summary>
@@ -190,15 +140,14 @@ public sealed class EngineHost : ObservableObject, IDisposable
     /// 底层按当前执行工具创建适配器并以该账号的凭据环境运行 CLI，因此结果是「按账号视角」的可用模型。
     /// 读取失败或当前 CLI 不支持时返回空列表，调用方降级为手填。Mock 返回样例清单供联调。
     /// </summary>
-    /// <summary>拉取模型目录（模型名 + 官方倍率）。倍率来自官方产品配置缓存，拉不到时倍率为 null。</summary>
     public async Task<IReadOnlyList<ModelCatalogEntry>> FetchModelsAsync(AccountConfig? account = null,
         CancellationToken cancellationToken = default)
     {
-        var adapter = AgentAdapterFactory.Create(Options);
+        var adapter = EngineFactory.CreateAdapter(Options);
         return await adapter.ListModelCatalogAsync(account ?? new AccountConfig(), cancellationToken).ConfigureAwait(false);
     }
 
-    public async Task<IReadOnlyList<BatchAgentRunner.Core.Domain.TaskItem>> LoadTasksAsync()
+    public async Task<IReadOnlyList<TaskItem>> LoadTasksAsync()
     {
         var engine = _engine ??= CreateEngine();
         var tasks = await engine.LoadTasksAsync().ConfigureAwait(false);
@@ -206,11 +155,6 @@ public sealed class EngineHost : ObservableObject, IDisposable
         return tasks;
     }
 
-    /// <summary>
-    /// 一键领取所有启用账号的每日积分：逐账号「切换凭证 → 读领取前积分 → 领取 → 读领取后积分 → 记录」。
-    /// 结果写入台账（配置目录 credits-claims.json，跨日去重）与报告文件（credits-claim-*.md/.json）。
-    /// Mock 执行工具使用仿真积分客户端，供无服务端环境演练完整流程。
-    /// </summary>
     /// <summary>
     /// 一键领取所有启用账号的每日积分：逐账号「切换凭证 → 读领取前积分 → 领取 → 读领取后积分 → 记录」。
     /// 结果写入台账（配置目录 credits-claims.json，跨日去重）与报告文件（credits-claim-*.md/.json）。
@@ -225,17 +169,17 @@ public sealed class EngineHost : ObservableObject, IDisposable
         }
 
         var cli = Options.AgentKind;
-        ICreditsApiClient api = cli == AgentKind.Mock
-            ? new MockCreditsApiClient()
-            : new CodeBuddyCreditsApiClient(Options.CreditsClaim);
-
-        var orchestrator = new CreditsClaimOrchestrator(
-            VaultHost.Vault, api, new JsonCreditsClaimStore(ConfigDirectory),
-            logger: _logger,
-            progress: p => UiThread.Post(() => CreditsClaimProgressRaised?.Invoke(this, p)));
+        ICreditsApiClient api = EngineFactory.CreateApiClient(cli, Options.CreditsClaim);
 
         var accounts = Options.Accounts.Where(a => a.Enabled).ToList();
-        var summary = await orchestrator.RunAllAsync(cli, accounts, force, cancellationToken)
+        var summary = await EngineFactory
+            .CreateCreditsOrchestrator(
+                VaultHost.Vault,
+                api,
+                _logger,
+                ConfigDirectory,
+                p => UiThread.Post(() => CreditsClaimProgressRaised?.Invoke(this, p)))
+            .RunAllAsync(cli, accounts, force, cancellationToken)
             .ConfigureAwait(false);
 
         if (summary.Records.Count > 0)
@@ -243,8 +187,9 @@ public sealed class EngineHost : ObservableObject, IDisposable
             var directory = string.IsNullOrWhiteSpace(Options.TaskFilePath)
                 ? ConfigDirectory
                 : Path.GetDirectoryName(Path.GetFullPath(Options.TaskFilePath)) ?? ConfigDirectory;
-            LastCreditsClaimReportPath = await CreditsClaimReportWriter
-                .WriteAsync(summary, directory, cancellationToken).ConfigureAwait(false);
+            LastCreditsClaimReportPath = await EngineFactory
+                .WriteCreditsClaimReportAsync(summary, directory, cancellationToken)
+                .ConfigureAwait(false);
         }
 
         return summary;
@@ -292,7 +237,7 @@ public sealed class EngineHost : ObservableObject, IDisposable
             }
 
             LastReport = report;
-            LastReportPath = await _reportWriter.WriteAsync(report, Options.TaskFilePath, cancellationToken)
+            LastReportPath = await _factory.ReportWriter.WriteAsync(report, Options.TaskFilePath, cancellationToken)
                 .ConfigureAwait(false);
             Status = report.BatchStatus;
             await MaybeShutdownAsync(report).ConfigureAwait(false);

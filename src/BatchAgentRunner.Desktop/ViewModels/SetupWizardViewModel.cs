@@ -15,7 +15,7 @@ public sealed class SetupWizardViewModel : ViewModelBase
 {
     private const int LastStep = 1;
 
-    private readonly EngineHost _host;
+    private readonly IEngineHost _host;
 
     private int _step;
     private string _stepError = string.Empty;
@@ -27,7 +27,7 @@ public sealed class SetupWizardViewModel : ViewModelBase
     private string _loginHint = string.Empty;
     private string _completedMessage = string.Empty;
 
-    public SetupWizardViewModel(EngineHost host)
+    public SetupWizardViewModel(IEngineHost host)
     {
         _host = host;
         var o = host.Options;

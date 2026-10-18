@@ -147,7 +147,7 @@ public sealed class LoginAccountRow : ObservableObject
 /// <remarks>CA1001（P0-12）：持有 <see cref="CancellationTokenSource"/>（登录/领积分可取消操作），实现 <see cref="IDisposable"/>。</remarks>
 public sealed class LoginViewModel : ViewModelBase, IDisposable
 {
-    private readonly EngineHost _host;
+    private readonly IEngineHost _host;
 
     private AgentKind _agentKind;
     private string _newAccountDisplayName = string.Empty;
@@ -159,7 +159,7 @@ public sealed class LoginViewModel : ViewModelBase, IDisposable
     private bool _isError;
     private CancellationTokenSource? _cts;
 
-    public LoginViewModel(EngineHost host)
+    public LoginViewModel(IEngineHost host)
     {
         _host = host;
         _agentKind = host.Options.AgentKind;

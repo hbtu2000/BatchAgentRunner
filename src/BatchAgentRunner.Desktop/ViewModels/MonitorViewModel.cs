@@ -16,7 +16,7 @@ namespace BatchAgentRunner.Desktop.ViewModels;
 /// </summary>
 public sealed class MonitorViewModel : ViewModelBase
 {
-    private readonly EngineHost _host;
+    private readonly IEngineHost _host;
     private readonly DispatcherTimer _timer;
 
     private TaskRowViewModel? _selectedTask;
@@ -39,7 +39,7 @@ public sealed class MonitorViewModel : ViewModelBase
     private bool _waitIfUnavailable = true;
     private string _statusMessage = string.Empty;
 
-    public MonitorViewModel(EngineHost host)
+    public MonitorViewModel(IEngineHost host)
     {
         _host = host;
         Tasks = new ObservableCollection<TaskRowViewModel>();

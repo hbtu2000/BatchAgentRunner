@@ -29,7 +29,7 @@ public sealed class TemplateEditorViewModel : ViewModelBase
     private string _flowSummary = string.Empty;
     private bool _isFlowExpanded = true;
 
-    public TemplateEditorViewModel(EngineHost host)
+    public TemplateEditorViewModel(IEngineHost host)
     {
         _store = new FileWorkflowTemplateStore();
         _baseDir = host.Options.DefaultWorkspace ?? Directory.GetCurrentDirectory();

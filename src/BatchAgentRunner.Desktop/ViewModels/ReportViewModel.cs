@@ -9,9 +9,9 @@ namespace BatchAgentRunner.Desktop.ViewModels;
 /// <summary>报告页：批处理结束后的汇总视图（REQ-011）。</summary>
 public sealed class ReportViewModel : ViewModelBase
 {
-    private readonly EngineHost _host;
+    private readonly IEngineHost _host;
 
-    public ReportViewModel(EngineHost host)
+    public ReportViewModel(IEngineHost host)
     {
         _host = host;
         RefreshCommand = new RelayCommand(Refresh);

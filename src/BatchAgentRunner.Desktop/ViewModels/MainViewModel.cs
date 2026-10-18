@@ -37,7 +37,7 @@ public sealed class MainViewModel : ViewModelBase
         ToggleThemeCommand = new RelayCommand(ToggleTheme);
         Host.PropertyChanged += (_, e) =>
         {
-            if (e.PropertyName == nameof(EngineHost.Status))
+            if (e.PropertyName == nameof(IEngineHost.Status))
             {
                 OnPropertyChanged(nameof(StatusText));
                 OnPropertyChanged(nameof(Status));
@@ -45,7 +45,7 @@ public sealed class MainViewModel : ViewModelBase
         };
     }
 
-    public EngineHost Host { get; }
+    public IEngineHost Host { get; }
 
     public ConfigViewModel Config { get; }
 

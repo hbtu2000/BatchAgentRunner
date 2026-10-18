@@ -16,14 +16,14 @@ public sealed class DiffViewModel : ViewModelBase
 {
     private static readonly Regex HunkHeader = new(@"^@@\s+-\d+(?:,\d+)?\s+\+\d+(?:,\d+)?\s@@", RegexOptions.Compiled);
 
-    private readonly EngineHost _host;
+    private readonly IEngineHost _host;
 
     private bool _onlyModified;
     private string _stageFilter = string.Empty;
     private DiffRowViewModel? _selectedDiff;
     private string _reportPathText = string.Empty;
 
-    public DiffViewModel(EngineHost host)
+    public DiffViewModel(IEngineHost host)
     {
         _host = host;
         Diffs = new ObservableCollection<DiffRowViewModel>();
