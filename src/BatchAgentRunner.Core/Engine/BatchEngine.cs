@@ -58,9 +58,6 @@ public sealed class BatchEngine : IBatchEngine
     /// <summary>持久化单写者门（P0-4）：同一时刻只允许一个写者落盘任务文件。</summary>
     private readonly SemaphoreSlim _persistGate = new(1, 1);
     private readonly SemaphoreSlim _waitGate = new(1, 1);
-    private readonly List<TimelineEntry> _timeline = new();
-    private readonly Dictionary<string, UsageEntry> _accountUsage = new(StringComparer.OrdinalIgnoreCase);
-    private readonly Dictionary<string, UsageEntry> _modelUsage = new(StringComparer.OrdinalIgnoreCase);
 
     private DegradationMatrix _matrix;
     private CancellationTokenSource? _runCts;
@@ -80,8 +77,16 @@ public sealed class BatchEngine : IBatchEngine
     [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能",
         Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假计费验证不变量），拒绝向具体类型回退")]
     private readonly IFallbackBilling _fallback;
-    private double _windowWaitSeconds;
-    private double _cooldownWaitSeconds;
+    /// <summary>
+    /// 报告聚合协作者（P1-1 拆分产物 ⑤，§3.4 <c>IReportBuilder</c>）：
+    /// 独占用量统计 / 时间线 / 等待累计，负责组装 <see cref="BatchReport"/>。
+    /// </summary>
+    /// <remarks>
+    /// CA1859（§4.7 逃逸阀）：同 <see cref="_fallback"/>——接口字段是拆分后的测试缝。
+    /// </remarks>
+    [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能",
+        Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假报告构建器验证聚合），拒绝向具体类型回退")]
+    private readonly IBatchReportBuilder _report;
     /// <summary>单任务级暂停等待累计（DESIGN-额度耗尽暂停续跑：从任务时长中剔除）。key 不区分大小写。</summary>
     private readonly Dictionary<string, double> _taskWaitSeconds = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string>? _idSnapshot;
@@ -142,6 +147,8 @@ public sealed class BatchEngine : IBatchEngine
         _sessionPolicy = new SessionResumePolicy(options.EnableSessionResume);
         _fileSystem = fileSystem ?? new SystemFileSystem();
         _fallback = new FallbackBilling(_options, () => _matrix, _clock, Raise);
+        _report = new BatchReportBuilder(_clock, () => _options, () => _tasks, () => Status, () => _diffs,
+            BuildFallbackSummary);
     }
 
     // ---------------- 公开状态 ----------------
@@ -156,7 +163,8 @@ public sealed class BatchEngine : IBatchEngine
 
     public BatchStatus Status { get; private set; } = BatchStatus.Idle;
 
-    public int SkippedDoneCount { get; private set; }
+    /// <summary>本批跳过的已完成任务数（ForceRerun 时为 0；P1-1 拆分后由报告协作者持有）。</summary>
+    public int SkippedDoneCount => _report.SkippedDoneCount;
 
     public BatchReport? Report { get; private set; }
 
@@ -440,14 +448,15 @@ public sealed class BatchEngine : IBatchEngine
                 SetStatus(BatchStatus.Blocked);
                 RaiseBlocked($"任务依赖存在环：{ex.Message}");
                 await PersistAsync(token).ConfigureAwait(false);
-                Report = BuildReport(startedAt);
+                Report = _report.Build(startedAt);
                 return Report;
             }
         }
 
-        SkippedDoneCount = _options.ForceRerun
+        _report.SetSkippedDoneCount(_options.ForceRerun
             ? 0
-            : _tasks.Count(t => t.Status is TaskStatus.Done or TaskStatus.Failed);
+            : _tasks.Count(t => t.Status is TaskStatus.Done or TaskStatus.Failed));
+        var SkippedDoneCount = _report.SkippedDoneCount;
 
         if (SkippedDoneCount > 0)
         {
@@ -464,7 +473,7 @@ public sealed class BatchEngine : IBatchEngine
             SetStatus(BatchStatus.Blocked);
             RaiseBlocked($"启动前预检未通过：{env.Message}");
             await PersistAsync(token).ConfigureAwait(false);
-            Report = BuildReport(startedAt);
+            Report = _report.Build(startedAt);
             return Report;
         }
 
@@ -520,7 +529,7 @@ public sealed class BatchEngine : IBatchEngine
         }
 
         await PersistAsync(token).ConfigureAwait(false);
-        Report = BuildReport(startedAt);
+        Report = _report.Build(startedAt);
 
         // 二期：批处理终态通知推送（REQ-018；按规则触发，失败不阻断）
         await DispatchNotificationsAsync(
@@ -845,7 +854,7 @@ public sealed class BatchEngine : IBatchEngine
         Persist = () => PersistAsync(CancellationToken.None),
         TrackUsage = (account, model, usage) =>
         {
-            TrackUsage(account, model, usage);
+            _report.TrackUsage(account, model, usage);
             return Task.CompletedTask;
         },
         EnsureCredential = _vault is not null ? EnsureLiveCredentialAsync : null,
@@ -1003,7 +1012,6 @@ public sealed class BatchEngine : IBatchEngine
         }
     }
 
-    /// <summary>任务文件是否为 Markdown（决定二期原地回写是否适用）。</summary>
     private bool IsMarkdownTaskFile() =>
         !string.IsNullOrWhiteSpace(_options.TaskFilePath) &&
         _options.TaskFilePath.EndsWith(".md", StringComparison.OrdinalIgnoreCase);
@@ -1331,14 +1339,7 @@ public sealed class BatchEngine : IBatchEngine
             }
 
             var elapsed = (_clock.Now - waitStart).TotalSeconds;
-            if (candidate.WaitKind == WaitKind.FreeWindow || candidate.WaitKind == WaitKind.Mixed)
-            {
-                _windowWaitSeconds += elapsed;
-            }
-            else
-            {
-                _cooldownWaitSeconds += elapsed;
-            }
+            _report.AddWaitSeconds(candidate.WaitKind, elapsed);
 
             // 单任务级暂停累计（用于从任务时长中剔除，DESIGN-额度耗尽暂停续跑）
             if (!string.IsNullOrEmpty(taskId))
@@ -1468,7 +1469,7 @@ public sealed class BatchEngine : IBatchEngine
             task.Finish(TaskStatus.Done, _clock.Now);
             ApplyPausedExclusion(task);
 
-            TrackUsageCore(combo.Account.Label, combo.Model.Name, result.Usage);
+            _report.TrackUsage(combo.Account.Label, combo.Model.Name, result.Usage);
         }
 
         Raise(new BatchEvent(BatchEventKind.TaskFinished, _clock.Now,
@@ -1648,7 +1649,7 @@ public sealed class BatchEngine : IBatchEngine
                 "额度耗尽", taskId);
         }
 
-        AddTimeline("切换", $"{from} → {to}", taskId, to.Account.Label, to.Model.Name);
+        _report.AddTimeline("切换", $"{from} → {to}", taskId, to.Account.Label, to.Model.Name);
     }
 
     private void RaiseSkipEvent(ComboAvailability skipped)
@@ -1659,7 +1660,7 @@ public sealed class BatchEngine : IBatchEngine
                 Raise(new BatchEvent(BatchEventKind.ModelWindowSkipped, _clock.Now, skipped.DescribeSkip(),
                     null, skipped.Combo.Account.Label, skipped.Combo.Model.Name));
                 _logger.WriteWindowSkipped(skipped.Combo.Model.Name, skipped.NextWindowStart);
-                AddTimeline("时段外跳过", skipped.DescribeSkip(), null, null, skipped.Combo.Model.Name);
+                _report.AddTimeline("时段外跳过", skipped.DescribeSkip(), null, null, skipped.Combo.Model.Name);
                 break;
             case ComboSkipReason.Cooldown:
                 Raise(new BatchEvent(BatchEventKind.ModelCooldownSkipped, _clock.Now, skipped.DescribeSkip(),
@@ -1670,7 +1671,7 @@ public sealed class BatchEngine : IBatchEngine
                         skipped.ResetAt.Value);
                 }
 
-                AddTimeline("冷却跳过", skipped.DescribeSkip(), null, skipped.Combo.Account.Label,
+                _report.AddTimeline("冷却跳过", skipped.DescribeSkip(), null, skipped.Combo.Account.Label,
                     skipped.Combo.Model.Name);
                 break;
         }
@@ -1697,56 +1698,6 @@ public sealed class BatchEngine : IBatchEngine
         }
 
         _idSnapshot = current;
-    }
-
-    private void TrackUsage(string account, string model, AgentUsage? usage)
-    {
-        lock (_statsLock)
-        {
-            TrackUsageCore(account, model, usage);
-        }
-    }
-
-    private void TrackUsageCore(string account, string model, AgentUsage? usage)
-    {
-        if (!_accountUsage.TryGetValue(account, out var au))
-        {
-            au = new UsageEntry { Name = account };
-            _accountUsage[account] = au;
-        }
-
-        if (!_modelUsage.TryGetValue(model, out var mu))
-        {
-            mu = new UsageEntry { Name = model };
-            _modelUsage[model] = mu;
-        }
-
-        au.TaskCount++;
-        mu.TaskCount++;
-        if (usage?.Cost is { } cost)
-        {
-            au.Cost = (au.Cost ?? 0m) + cost;
-            mu.Cost = (mu.Cost ?? 0m) + cost;
-            au.CostBasis = usage.Basis;
-            mu.CostBasis = usage.Basis;
-        }
-    }
-
-    private void AddTimeline(string kind, string message, string? taskId, string? account, string? model)
-    {
-        var entry = new TimelineEntry
-        {
-            At = _clock.Now,
-            Kind = kind,
-            Message = message,
-            TaskId = taskId,
-            Account = account,
-            Model = model
-        };
-        lock (_statsLock)
-        {
-            _timeline.Add(entry);
-        }
     }
 
     private void RebuildMatrix() =>
@@ -1808,7 +1759,7 @@ public sealed class BatchEngine : IBatchEngine
 
     private void RaiseBlocked(string reason, string? taskId = null)
     {
-        AddTimeline("阻塞", reason, taskId, null, null);
+        _report.AddTimeline("阻塞", reason, taskId, null, null);
         Raise(new BatchEvent(BatchEventKind.BatchBlocked, _clock.Now, reason, taskId)
         {
             BatchStatus = BatchStatus.Blocked,
@@ -1845,63 +1796,6 @@ public sealed class BatchEngine : IBatchEngine
         return value.Length <= maxChars
             ? value
             : value[..maxChars] + $"\n…（结果已截断，超过 {maxChars / 1024}KB，完整内容见运行日志）";
-    }
-
-    /// <summary>兜底用量快照（P0-5：读也走同一把锁，避免并发下读到撕裂状态）。</summary>
-    private FallbackSummary BuildFallbackSummary() => _fallback.BuildSummary();
-
-    private BatchReport BuildReport(DateTimeOffset startedAt)
-    {
-        var finishedAt = _clock.Now;
-        return new BatchReport
-        {
-            GeneratedAt = finishedAt,
-            BatchStatus = Status,
-            TaskFilePath = _options.TaskFilePath,
-            Total = _tasks.Count,
-            Done = _tasks.Count(t => t.Status == TaskStatus.Done),
-            Failed = _tasks.Count(t => t.Status == TaskStatus.Failed),
-            Interrupted = _tasks.Count(t => t.Status == TaskStatus.Interrupted),
-            Pending = _tasks.Count(t => t.Status == TaskStatus.Pending),
-            NeedsAttention = _tasks.Count(t => t.Status == TaskStatus.NeedsAttention),
-            Blocked = _tasks.Count(t => t.Status == TaskStatus.Blocked),
-            SkippedAlreadyDone = SkippedDoneCount,
-            StartedAt = startedAt,
-            FinishedAt = finishedAt,
-            DurationSeconds = Math.Round((finishedAt - startedAt).TotalSeconds, 1),
-            ActiveDurationSeconds = Math.Round(
-                Math.Max(0, (finishedAt - startedAt).TotalSeconds - _windowWaitSeconds - _cooldownWaitSeconds), 1),
-            AccountUsage = _accountUsage.Values.ToList(),
-            ModelUsage = _modelUsage.Values.ToList(),
-            Timeline = _timeline.ToList(),
-            Fallback = BuildFallbackSummary(),
-            FailedTasks = _tasks.Where(t => t.Status == TaskStatus.Failed)
-                .Select(t => new FailedTaskEntry
-                {
-                    TaskId = t.Id,
-                    Error = t.Error,
-                    RetryCount = t.RetryCount,
-                    Model = t.ModelUsed,
-                    Account = t.AccountUsed
-                }).ToList(),
-            WindowWaitSeconds = Math.Round(_windowWaitSeconds, 1),
-            CooldownWaitSeconds = Math.Round(_cooldownWaitSeconds, 1),
-            Diffs = _diffs.ToList(),
-            Tasks = _tasks.Select(t => new TaskReportEntry
-            {
-                TaskId = t.Id,
-                Status = t.Status,
-                DependsOn = t.DependsOn is null ? null : new List<string>(t.DependsOn),
-                BlockedBy = ComputeBlockedBy(t),
-                Error = t.Error,
-                Leftover = ComputeLeftover(t),
-                StageResults = t.StageResults is null ? null : new List<StageResult>(t.StageResults),
-                TemplateId = t.TemplateVars?.TemplateId,
-                DurationSeconds = t.DurationSeconds,
-                ModelUsed = t.ModelUsed,
-                AccountUsed = t.AccountUsed
-            }).ToList()
-        };
     }
 
     /// <summary>
@@ -1974,52 +1868,8 @@ public sealed class BatchEngine : IBatchEngine
             .Replace("{date}", now.ToString("yyyyMMdd"), StringComparison.OrdinalIgnoreCase);
     }
 
-    /// <summary>阻断来源：依赖失败（Failed/Blocked）或悬空（不存在）的依赖 Id。</summary>
-    private List<string>? ComputeBlockedBy(TaskItem task)
-    {
-        if (task.Status != TaskStatus.Blocked || task.DependsOn is not { Count: > 0 })
-        {
-            return null;
-        }
-
-        var byId = _tasks.ToDictionary(t => t.Id, StringComparer.OrdinalIgnoreCase);
-        var sources = new List<string>();
-        foreach (var dep in task.DependsOn)
-        {
-            if (!byId.TryGetValue(dep, out var depTask))
-            {
-                sources.Add($"{dep}（不存在）"); // 悬空依赖
-            }
-            else if (depTask.Status is TaskStatus.Failed or TaskStatus.Blocked)
-            {
-                sources.Add(dep);
-            }
-        }
-
-        return sources.Count > 0 ? sources : null;
-    }
-
-    /// <summary>待人工原因：任务错误，或首个未完成阶段的门禁遗留/产出摘要。</summary>
-    private static string? ComputeLeftover(TaskItem task)
-    {
-        if (!string.IsNullOrWhiteSpace(task.Error))
-        {
-            return task.Error;
-        }
-
-        if (task.StageResults is null)
-        {
-            return null;
-        }
-
-        var pending = task.StageResults.FirstOrDefault(s => s.Status != TaskStatus.Done);
-        if (pending is null)
-        {
-            return null;
-        }
-
-        return pending.GateLeftover ?? pending.OutputSummary ?? $"阶段 {pending.Name ?? pending.StageId} 未完成";
-    }
+    /// <summary>兜底用量汇总（P1-1 拆分后由 <see cref="IFallbackBilling"/> 记账，此处供报告协作者读取）。</summary>
+    private FallbackSummary BuildFallbackSummary() => _fallback.BuildSummary();
 
     /// <summary>
     /// 释放三座 <see cref="SemaphoreSlim"/> 门与运行级 <see cref="CancellationTokenSource"/>（CA1001）。
