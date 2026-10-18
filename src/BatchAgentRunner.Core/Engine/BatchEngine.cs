@@ -117,6 +117,15 @@ public sealed class BatchEngine : IBatchEngine
     [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能",
         Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假通知器验证分发时机），拒绝向具体类型回退")]
     private readonly IBatchNotifier _notifier;
+    /// <summary>
+    /// 启动前预检协作者（P1-1 拆分产物 ⑥，§3.4 <c>IPreflight</c>）：承接「启动前预检（REQ-010）」全部逻辑。
+    /// </summary>
+    /// <remarks>
+    /// CA1859（§4.7 逃逸阀）：同 <see cref="_fallback"/>——接口字段是拆分后的测试缝。
+    /// </remarks>
+    [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能",
+        Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假预检验证报告契约），拒绝向具体类型回退")]
+    private readonly IPreflight _preflight;
 
     public BatchEngine(
         RunOptions options,
@@ -164,6 +173,8 @@ public sealed class BatchEngine : IBatchEngine
             () => _gitWorkflow.Diffs, BuildFallbackSummary);
         _notifier = new BatchNotifier(_options, _notifications, _notificationDispatcher, () => Status,
             () => _tasks, _clock, _logger);
+        _preflight = new StartupPreflight(_options, _taskStore, _fileSystem, _adapter, _clock, _cooldowns,
+            Raise, ResolveWorkspacePath, _vault);
     }
 
     // ---------------- 公开状态 ----------------
@@ -232,197 +243,25 @@ public sealed class BatchEngine : IBatchEngine
         return _tasks;
     }
 
-    /// <summary>启动前预检（REQ-010）。</summary>
+    /// <summary>启动前预检（REQ-010）。委托 <see cref="IPreflight"/> 协作者（P1-1 拆分产物 ⑥）。</summary>
     public async Task<PreflightReport> PreflightAsync(CancellationToken cancellationToken = default)
     {
-        var report = new PreflightReport();
+        var outcome = await _preflight.RunAsync(cancellationToken).ConfigureAwait(false);
 
-        if (string.IsNullOrWhiteSpace(_options.TaskFilePath))
+        // 同步预检重建后的降级矩阵（原 PreflightAsync 内 RebuildMatrix 的语义：反映预检期停用的账号）
+        _matrix = outcome.Matrix;
+
+        // 任务文件成功加载才覆盖既有 _tasks（与原行为一致：加载失败不破坏已加载的任务集合）
+        if (outcome.Loaded)
         {
-            report.AddError("未选择任务文件");
-        }
-        else if (!_fileSystem.FileExists(_options.TaskFilePath))
-        {
-            report.AddError($"任务文件不存在：{_options.TaskFilePath}");
-        }
-        else
-        {
-            try
+            using (await EnterWriteGateAsync().ConfigureAwait(false))
             {
-                var loaded = await _taskStore.LoadAsync(_options.TaskFilePath, cancellationToken).ConfigureAwait(false);
-                using (await EnterWriteGateAsync().ConfigureAwait(false))
-                {
-                    _tasks.Clear();
-                    _tasks.AddRange(loaded.Tasks);
-                }
-
-                report.LoadedTaskCount = loaded.Tasks.Count;
-                report.PendingTaskCount = loaded.Tasks.Count(t => t.Status is TaskStatus.Pending or TaskStatus.Interrupted);
-                foreach (var issue in loaded.Issues)
-                {
-                    report.AddWarning(issue.Message);
-                }
-
-                if (_tasks.Count == 0)
-                {
-                    report.AddError("任务文件中没有解析到任何任务");
-                }
-
-                // 工作空间校验（REQ-003a）
-                foreach (var ws in _options.Workspaces.Where(w => w.IsValid))
-                {
-                    if (!_fileSystem.DirectoryExists(ws.Path))
-                    {
-                        report.AddError($"工作空间「{ws.Name}」目录不存在或无访问权限：{ws.Path}");
-                    }
-                }
-
-                foreach (var t in _tasks.Where(t => !string.IsNullOrWhiteSpace(t.Workspace)))
-                {
-                    var resolved = ResolveWorkspacePath(t.Workspace!);
-                    if (resolved is null)
-                    {
-                        report.AddError($"任务 {t.Id} 引用的工作空间「{t.Workspace}」不存在（命名空间悬空）");
-                    }
-                }
-
-                // 二期 DAG 预检：环检测（错误，阻止启动）+ 悬空依赖（告警，执行时保守阻断）
-                if (_tasks.Any(t => t.DependsOn is { Count: > 0 }))
-                {
-                    try
-                    {
-                        DagScheduler.TopoSort(_tasks);
-                    }
-                    catch (DagCycleException ex)
-                    {
-                        report.AddError($"任务依赖存在环：{ex.Message}");
-                    }
-
-                    var ids = new HashSet<string>(_tasks.Select(t => t.Id), StringComparer.OrdinalIgnoreCase);
-                    foreach (var t in _tasks.Where(t => t.DependsOn is { Count: > 0 }))
-                    {
-                        foreach (var dep in t.DependsOn!)
-                        {
-                            if (!ids.Contains(dep))
-                            {
-                                report.AddWarning($"任务 {t.Id} 的依赖 {dep} 不存在（悬空依赖，执行时将保守阻断）");
-                            }
-                        }
-                    }
-                }
-            }
-            catch (TaskFileFormatException ex)
-            {
-                report.AddError($"任务文件解析失败：{ex.Message}");
+                _tasks.Clear();
+                _tasks.AddRange(outcome.Tasks);
             }
         }
 
-        // CLI 可用性
-        var env = await _adapter.ValidateEnvironmentAsync(cancellationToken).ConfigureAwait(false);
-        if (!env.Ok)
-        {
-            report.AddError($"Agent CLI 不可用：{env.Message}");
-        }
-
-        // 账号池预检：失效账号自动停用（REQ-010）
-        var enabledAccounts = _options.Accounts.Where(a => a.Enabled).ToList();
-        if (_vault is not null && _options.Concurrency > 1)
-        {
-            // DESIGN §3：同一时刻每个 CLI 只有一个身份，多账号并发切换会互相覆盖 Live
-            report.AddWarning("已启用凭证 Vault：同一时刻每个 CLI 只有一个登录身份，并发 > 1 时多账号切换会互相覆盖，建议 concurrency = 1");
-        }
-        if (enabledAccounts.Count == 0)
-        {
-            report.AddError("账号池为空：请至少添加一个启用账号");
-        }
-
-        foreach (var account in enabledAccounts)
-        {
-            // 凭证 Vault 集成（DESIGN §7）：预检前先切换到该账号；预检即验证快照有效性。
-            if (_vault is not null)
-            {
-                if (!_vault.SnapshotExists(_options.AgentKind, account.Id))
-                {
-                    account.Enabled = false;
-                    report.DisabledAccounts.Add(account.Label);
-                    report.AddWarning($"账号 {account.Label} 尚无凭证快照，已停用：请在配置页对该账号执行「引导登录」");
-                    continue;
-                }
-
-                try
-                {
-                    await _vault.SwitchToAsync(_options.AgentKind, account.Id, "preflight", cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                catch (CredentialVaultException ex)
-                {
-                    account.Enabled = false;
-                    report.DisabledAccounts.Add(account.Label);
-                    report.AddWarning($"账号 {account.Label} 凭证切换失败已停用：{ex.Message}");
-                    continue;
-                }
-            }
-
-            var r = await _adapter.ValidateAccountAsync(account, cancellationToken).ConfigureAwait(false);
-            if (!r.Ok)
-            {
-                account.Enabled = false;
-                report.DisabledAccounts.Add(account.Label);
-                report.AddWarning($"账号 {account.Label} 预检失败已停用：{r.Message}");
-                continue;
-            }
-
-            if (_vault is not null)
-            {
-                try
-                {
-                    await _vault.MarkVerifiedAsync(_options.AgentKind, account.Id, cancellationToken)
-                        .ConfigureAwait(false);
-                }
-                catch (CredentialVaultException ex)
-                {
-                    report.AddWarning($"账号 {account.Label} 快照验证时间更新失败：{ex.Message}");
-                }
-            }
-        }
-
-        if (_options.Fallback.Enabled && _options.Accounts.All(a => !a.Enabled || !a.HasFallbackModels))
-        {
-            report.AddWarning("已启用兜底，但没有任何启用账号配置兜底模型池（accounts[].fallback_models），兜底不会生效");
-        }
-
-        // 专家（REQ-004a）
-        if (_options.Expert.IsSpecified && _adapter.Kind == AgentKind.Mock)
-        {
-            report.AddWarning("当前使用仿真适配器，专家参数不会被真实消费");
-        }
-
-        RebuildMatrix();
-
-        // 降级矩阵为空 = 所有启用账号既没有自有候选池、全局共享列表也为空（REQ-003，故事 2.1）
-        if (_matrix.IsEmpty)
-        {
-            report.AddError("降级矩阵为空：请为至少一个启用账号配置候选模型池（accounts[].model_candidates），或填写全局共享候选模型列表");
-        }
-
-        // 时段 / 冷却可用性评估（REQ-003b / REQ-004c）
-        var now = _clock.Now;
-        if (!_matrix.IsEmpty)
-        {
-            var selection = _matrix.SelectFirst(now, _evaluator);
-            if (!selection.Found)
-            {
-                report.AllCombosUnavailable = true;
-                var earliest = _matrix.EarliestRestore(now, _evaluator);
-                report.EarliestRestoreAt = earliest?.RestoreAt;
-                report.WaitKind = earliest?.WaitKind ?? WaitKind.None;
-                report.UnavailableReason = earliest is null
-                    ? "无可用组合"
-                    : string.Join("；", selection.Skipped.Take(3).Select(s => s.DescribeSkip()));
-            }
-        }
-
-        return report;
+        return outcome.Report;
     }
 
     /// <summary>
