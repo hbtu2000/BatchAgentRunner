@@ -620,8 +620,6 @@ public sealed class BatchEngine : IBatchEngine
         DefaultMaxGateLoops = _options.DefaultMaxGateLoops
     };
 
-    // ---------------- 二期：通知推送 ----------------
-
     // ---------------- waiting（REQ-003b / REQ-004c） ----------------
 
     private async Task<bool> WaitForRestoreAsync(RestoreCandidate candidate, string? taskId, CancellationToken ct)
@@ -720,10 +718,6 @@ public sealed class BatchEngine : IBatchEngine
             $"当前无可用组合（时段外 + 冷却中），将于 {candidate.RestoreAt:HH:mm} 恢复（{candidate.Combo.Model.Name}），等待中，可取消",
         _ => $"等待至 {candidate.RestoreAt:HH:mm} 后继续"
     };
-
-    // ---------------- 兜底（REQ-004b） ----------------
-
-    // ---------------- 任务状态写入 ----------------
 
     // ---------------- 辅助 ----------------
 
