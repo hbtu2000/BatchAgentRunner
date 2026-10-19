@@ -19,11 +19,12 @@ public sealed class TemplateEditorViewModel : ViewModelBase
     /// <summary>变量多值输入分隔符（CA1861：常量数组提为 static readonly）。</summary>
     private static readonly char[] VarValueSeparators = { ',', '\n', ';' };
 
+    private readonly IEngineHost _host;
     private readonly FileWorkflowTemplateStore _store;
 
     private ObservableCollection<TemplateRowViewModel> _templates = new();
     private TemplateRowViewModel? _selectedTemplate;
-    private string _baseDir = string.Empty;
+    private string _workspace = string.Empty;
     private string _outputPath = string.Empty;
     private string _statusMessage = string.Empty;
     private string _flowSummary = string.Empty;
@@ -31,8 +32,9 @@ public sealed class TemplateEditorViewModel : ViewModelBase
 
     public TemplateEditorViewModel(IEngineHost host)
     {
+        _host = host;
         _store = new FileWorkflowTemplateStore();
-        _baseDir = host.Options.DefaultWorkspace ?? Directory.GetCurrentDirectory();
+        _workspace = host.Options.DefaultWorkspace ?? Directory.GetCurrentDirectory();
         var generatedDir = Path.Combine(host.ConfigDirectory, "generated");
         _outputPath = Path.Combine(generatedDir, "template-output.tasks.json");
         PreviewTasks = new ObservableCollection<PreviewTaskRowViewModel>();
@@ -131,11 +133,14 @@ public sealed class TemplateEditorViewModel : ViewModelBase
         ? "链式依赖：开启（任务依次 depends_on 前一个）"
         : "链式依赖：关闭";
 
-    /// <summary>变量取值基准目录（FileList / CsvColumn 相对路径的解析根）。</summary>
-    public string BaseDir
+    /// <summary>
+    /// 工作空间（REQ-003a）：命名空间名或目录路径。作为变量文件 glob / CSV 的相对路径解析根，
+    /// 并写入每条生成任务（<see cref="TaskItem.Workspace"/>），使其可直接运行。
+    /// </summary>
+    public string Workspace
     {
-        get => _baseDir;
-        set => SetProperty(ref _baseDir, value);
+        get => _workspace;
+        set => SetProperty(ref _workspace, value);
     }
 
     /// <summary>生成任务文件的输出路径（JSON 数组，可直接在高级配置中选用）。</summary>
@@ -179,7 +184,7 @@ public sealed class TemplateEditorViewModel : ViewModelBase
 
         try
         {
-            var tasks = TemplateExpander.Expand(BuildSpec(), _baseDir);
+            var tasks = TemplateExpander.Expand(BuildSpec(), ResolveWorkspaceRoot(_workspace), NormalizeWorkspaceForTask(_workspace));
             foreach (var t in tasks)
             {
                 PreviewTasks.Add(new PreviewTaskRowViewModel(t));
@@ -203,7 +208,7 @@ public sealed class TemplateEditorViewModel : ViewModelBase
 
         try
         {
-            var tasks = TemplateExpander.Expand(BuildSpec(), _baseDir);
+            var tasks = TemplateExpander.Expand(BuildSpec(), ResolveWorkspaceRoot(_workspace), NormalizeWorkspaceForTask(_workspace));
             var dir = Path.GetDirectoryName(_outputPath);
             if (!string.IsNullOrEmpty(dir))
             {
@@ -238,6 +243,49 @@ public sealed class TemplateEditorViewModel : ViewModelBase
         }
 
         return spec;
+    }
+
+    /// <summary>
+    /// 把界面填写的「工作空间」（命名空间名或目录路径）解析为变量文件 glob / CSV 的实际目录根。
+    /// 命中命名工作空间则用其 Path；否则按目录路径处理（相对路径就地展开为绝对路径）；
+    /// 为空时退回当前目录（仅用于文件解析，任务级 workspace 仍按 <see cref="NormalizeWorkspaceForTask"/> 处理）。
+    /// </summary>
+    private string? ResolveWorkspaceRoot(string? ws)
+    {
+        if (string.IsNullOrWhiteSpace(ws))
+        {
+            return Directory.GetCurrentDirectory();
+        }
+
+        var named = _host.Options.Workspaces.FirstOrDefault(w =>
+            string.Equals(w.Name, ws, StringComparison.OrdinalIgnoreCase));
+        if (named is not null)
+        {
+            return named.Path;
+        }
+
+        return Path.IsPathRooted(ws) ? ws : Path.GetFullPath(ws);
+    }
+
+    /// <summary>
+    /// 规整为可直接落盘到任务的工作空间值：命中命名工作空间则存其 Name（便于随配置漂移重新解析），
+    /// 否则存绝对目录路径（保证任务可直接运行）；空 = 不写，运行时由引擎套用默认 / 全局默认工作空间。
+    /// </summary>
+    private string? NormalizeWorkspaceForTask(string? ws)
+    {
+        if (string.IsNullOrWhiteSpace(ws))
+        {
+            return null;
+        }
+
+        var named = _host.Options.Workspaces.FirstOrDefault(w =>
+            string.Equals(w.Name, ws, StringComparison.OrdinalIgnoreCase));
+        if (named is not null)
+        {
+            return named.Name;
+        }
+
+        return Path.IsPathRooted(ws) ? ws : Path.GetFullPath(ws);
     }
 
     /// <summary>
@@ -616,4 +664,10 @@ public sealed class PreviewTaskRowViewModel : ObservableObject
     public bool HasDepends => Task.DependsOn is { Count: > 0 };
 
     public string StageText => Task.IsWorkflow ? $"{Task.Workflow!.Stages.Count} 阶段" : "单指令";
+
+    public string WorkspaceText => string.IsNullOrWhiteSpace(Task.Workspace)
+        ? "工作空间：（默认）"
+        : $"工作空间：{Task.Workspace}";
+
+    public bool HasWorkspace => !string.IsNullOrWhiteSpace(Task.Workspace);
 }

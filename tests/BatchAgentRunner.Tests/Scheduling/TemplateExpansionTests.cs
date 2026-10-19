@@ -160,4 +160,35 @@ public class TemplateExpanderTests
         var single = Assert.Single(tasks);
         Assert.Equal("固定指令（无变量）", single.Instruction);
     }
+
+    [Fact]
+    public void 工作空间参数写入每条生成的任务()
+    {
+        var template = new TemplateSpec
+        {
+            Id = "ws",
+            InstructionTemplate = "处理 {var:n}",
+            Vars = new List<TemplateVarDef> { new() { Name = "n", Values = new List<string> { "1", "2" } } }
+        };
+
+        var tasks = TemplateExpander.Expand(template, baseDir: null, workspace: "ws-x");
+
+        Assert.Equal(2, tasks.Count);
+        Assert.All(tasks, t => Assert.Equal("ws-x", t.Workspace));
+    }
+
+    [Fact]
+    public void 未传工作空间_任务不携带工作空间()
+    {
+        var template = new TemplateSpec
+        {
+            Id = "nows",
+            InstructionTemplate = "处理 {var:n}",
+            Vars = new List<TemplateVarDef> { new() { Name = "n", Values = new List<string> { "1" } } }
+        };
+
+        var tasks = TemplateExpander.Expand(template);
+
+        Assert.Null(Assert.Single(tasks).Workspace);
+    }
 }

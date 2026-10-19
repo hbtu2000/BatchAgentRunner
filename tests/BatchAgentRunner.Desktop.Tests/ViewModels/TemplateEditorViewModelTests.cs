@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.IO;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Desktop.Tests.Infrastructure;
 using BatchAgentRunner.Desktop.ViewModels;
@@ -21,7 +22,53 @@ public class TemplateEditorViewModelTests
         Assert.EndsWith("template-output.tasks.json", vm.OutputPath);
         Assert.Empty(vm.Templates);
         Assert.False(vm.HasPreviewTasks);
-        Assert.False(string.IsNullOrEmpty(vm.BaseDir));
+        Assert.False(string.IsNullOrEmpty(vm.Workspace));
+    }
+
+    [Fact]
+    public void Preview_命名工作空间按名称写入生成的任务()
+    {
+        var spec = new TemplateSpec
+        {
+            Name = "demo",
+            InstructionTemplate = "处理 {var:topic}",
+            Vars = new List<TemplateVarDef> { new() { Name = "topic", Default = "X" } },
+        };
+        var fake = new FakeEngineHost();
+        fake.Options.Workspaces.Add(new WorkspaceConfig
+        {
+            Name = "ws-a",
+            Path = Path.Combine(Path.GetTempPath(), "wsdir")
+        });
+        var vm = new TemplateEditorViewModel(fake);
+        vm.SelectedTemplate = new TemplateRowViewModel(spec);
+        vm.Workspace = "ws-a";
+
+        vm.Preview();
+
+        var task = Assert.Single(vm.PreviewTasks);
+        Assert.Equal("ws-a", task.Task.Workspace);
+    }
+
+    [Fact]
+    public void Preview_目录路径工作空间按绝对路径写入生成的任务()
+    {
+        var spec = new TemplateSpec
+        {
+            Name = "demo",
+            InstructionTemplate = "处理 {var:topic}",
+            Vars = new List<TemplateVarDef> { new() { Name = "topic", Default = "X" } },
+        };
+        var fake = new FakeEngineHost();
+        var vm = new TemplateEditorViewModel(fake);
+        vm.SelectedTemplate = new TemplateRowViewModel(spec);
+        var dir = Path.Combine(Path.GetTempPath(), "myproject");
+        vm.Workspace = dir;
+
+        vm.Preview();
+
+        var task = Assert.Single(vm.PreviewTasks);
+        Assert.Equal(dir, task.Task.Workspace);
     }
 
     [Fact]

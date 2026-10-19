@@ -22,6 +22,20 @@
             <Setter Property="Margin" Value="4,0" />
         </Style>
 
+        <!-- 可拖拽分隔条（任务列表 ↔ 右侧详情区域） -->
+        <Style Selector="GridSplitter.gutter">
+            <Setter Property="Width" Value="6" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="ResizeDirection" Value="Columns" />
+            <Setter Property="ResizeBehavior" Value="PreviousAndNext" />
+            <Setter Property="Cursor" Value="SizeWestEast" />
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="VerticalAlignment" Value="Stretch" />
+        </Style>
+        <Style Selector="GridSplitter.gutter:pointerover">
+            <Setter Property="Background" Value="{DynamicResource BorderStrongBrush}" />
+        </Style>
+
         <!-- 筛选 chip（ToggleButton 充当单选胶囊） -->
         <Style Selector="ToggleButton.chip">
             <Setter Property="FontSize" Value="12" />
@@ -121,10 +135,10 @@
         </Style>
     </UserControl.Styles>
 
-    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" ColumnDefinitions="*,480" Margin="0">
+    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" ColumnDefinitions="*,Auto,480" Margin="0">
 
         <!-- ===================== 批级状态带（合并：进度 + 内联统计胶囊 + 当前任务） ===================== -->
-        <Border Grid.Row="0" Grid.ColumnSpan="2" Padding="14,12" Theme="{StaticResource Card}" Margin="12,12,12,8">
+        <Border Grid.Row="0" Grid.ColumnSpan="3" Padding="14,12" Theme="{StaticResource Card}" Margin="12,12,12,8">
             <StackPanel Spacing="10">
                 <!-- row1：批次进度 -->
                 <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">
@@ -222,7 +236,7 @@
         </Border>
 
         <!-- ===================== 工具栏（语义分组，危险操作独立成区） ===================== -->
-        <Border Grid.Row="1" Grid.ColumnSpan="2" Padding="10,8" Theme="{StaticResource Card}" Margin="12,0,12,8">
+        <Border Grid.Row="1" Grid.ColumnSpan="3" Padding="10,8" Theme="{StaticResource Card}" Margin="12,0,12,8">
             <Grid ColumnDefinitions="*,Auto">
                 <!-- 左侧按钮组：窗口过窄时横向滚动，避免溢出盖住右侧文件路径 -->
                 <ScrollViewer Grid.Column="0" HorizontalScrollBarVisibility="Hidden"
@@ -253,7 +267,7 @@
         </Border>
 
         <!-- ===================== 批级空状态 / 已完成报告入口 ===================== -->
-        <Border Grid.Row="2" Grid.ColumnSpan="2" Padding="12" Theme="{StaticResource Card}" Margin="12,0,12,8"
+        <Border Grid.Row="2" Grid.ColumnSpan="3" Padding="12" Theme="{StaticResource Card}" Margin="12,0,12,8"
                 IsVisible="{Binding StatusText, Converter={StaticResource EqualsTextConverter}, ConverterParameter='空闲|已完成'}">
             <StackPanel Spacing="4">
                 <TextBlock Text="{Binding StatusText}" FontWeight="SemiBold" Foreground="{DynamicResource TextPrimaryBrush}" />
@@ -371,8 +385,11 @@
             </Grid>
         </Border>
 
+        <!-- ===================== 可拖拽分隔条：调整任务列表与右侧详情区域宽度 ===================== -->
+        <GridSplitter Grid.Row="3" Grid.Column="1" Classes="gutter" />
+
         <!-- ===================== 右侧：Tab 化详情（输出流 / 事件 / 错误 / 阶段） ===================== -->
-        <Border Grid.Row="3" Grid.Column="1" Padding="0" Theme="{StaticResource Card}" Margin="0,0,12,0">
+        <Border Grid.Row="3" Grid.Column="2" Padding="0" Theme="{StaticResource Card}" Margin="0,0,12,0">
             <TabControl Classes="mon">
                 <!-- 实时输出流 -->
                 <TabItem Header="实时输出流">
@@ -416,9 +433,15 @@
                                                Foreground="{DynamicResource TextSecondaryBrush}" MaxHeight="160" />
                                 </StackPanel>
 
-                                <TextBlock Text="实时输出流" FontWeight="SemiBold" FontSize="12"
-                                           Foreground="{DynamicResource TextPrimaryBrush}" />
-                                <ListBox ItemsSource="{Binding OutputLines}" Background="Transparent" BorderThickness="0"
+                                <Grid ColumnDefinitions="*,Auto" Margin="0,0,0,4">
+                                    <TextBlock Grid.Column="0" Text="{Binding OutputFollowTitle}" FontWeight="SemiBold"
+                                               FontSize="12" Foreground="{DynamicResource TextPrimaryBrush}"
+                                               VerticalAlignment="Center" />
+                                    <CheckBox Grid.Column="1" Content="全部任务" IsChecked="{Binding ShowAllOutput}"
+                                              FontSize="11" VerticalAlignment="Center"
+                                              ToolTip.Tip="关闭时仅显示联动任务（选中/运行中）的输出，避免并发任务输出混在一起" />
+                                </Grid>
+                                <ListBox ItemsSource="{Binding DisplayedOutputLines}" Background="Transparent" BorderThickness="0"
                                          Padding="0">
                                     <ListBox.Styles>
                                         <Style Selector="ListBoxItem">
@@ -447,6 +470,10 @@
                                         </DataTemplate>
                                     </ListBox.ItemTemplate>
                                 </ListBox>
+                                <TextBlock Text="{Binding OutputEmptyHint}" FontSize="12"
+                                           Foreground="{DynamicResource TextMutedBrush}" TextWrapping="Wrap"
+                                           Margin="0,4,0,0"
+                                           IsVisible="{Binding HasDisplayedOutput, Converter={StaticResource BoolInvertConverter}}" />
                             </StackPanel>
                         </ScrollViewer>
                     </Grid>
@@ -550,7 +577,7 @@
         </Border>
 
         <!-- ===================== 底部状态栏 ===================== -->
-        <Border Grid.Row="4" Grid.ColumnSpan="2" Height="30" Padding="12,0"
+        <Border Grid.Row="4" Grid.ColumnSpan="3" Height="30" Padding="12,0"
                 Background="{DynamicResource BgSurfaceBrush}" BorderThickness="1,0,0,0"
                 BorderBrush="{DynamicResource BorderSubtleBrush}">
             <Grid ColumnDefinitions="Auto,*,Auto" VerticalAlignment="Center">

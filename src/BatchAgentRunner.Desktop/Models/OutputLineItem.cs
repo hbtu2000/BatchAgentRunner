@@ -31,13 +31,14 @@ public enum OutputTagKind
 /// <summary>实时输出流单行视图模型（仅承载展示数据，无 UI 依赖）。</summary>
 public sealed class OutputLineItem
 {
-    public OutputLineItem(DateTimeOffset at, OutputTagKind kind, string tagText, string message, bool dim = false)
+    public OutputLineItem(DateTimeOffset at, OutputTagKind kind, string tagText, string message, bool dim = false, string? taskId = null)
     {
         At = at;
         Kind = kind;
         TagText = tagText;
         Message = message;
         Dim = dim;
+        TaskId = taskId;
     }
 
     public DateTimeOffset At { get; }
@@ -52,6 +53,9 @@ public sealed class OutputLineItem
 
     /// <summary>是否去强调（完成确认等次要行，颜色降为次级）。</summary>
     public bool Dim { get; }
+
+    /// <summary>所属任务 Id（实时输出流按任务联动：选中任务或运行中自动跟随的任务；空表示批处理级事件，不归属特定任务）。</summary>
+    public string? TaskId { get; }
 
     public string TimeText => At.ToString("HH:mm:ss");
 }

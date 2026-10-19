@@ -205,9 +205,10 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
                     <StackPanel Orientation="Horizontal" Spacing="12">
-                        <TextBlock Text="基准目录：" VerticalAlignment="Center"
+                        <TextBlock Text="工作空间：" VerticalAlignment="Center"
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
-                        <TextBox Width="280" Text="{Binding BaseDir}" />
+                        <TextBox Width="280" Text="{Binding Workspace}"
+                                 Watermark="命名工作空间名或目录路径（将写入生成的任务）" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button Content="展开预览" Classes="primary" Command="{Binding PreviewCommand}" />
@@ -234,6 +235,8 @@
                                         <TextBlock Text="{Binding DependsText}" FontSize="12"
                                                    Foreground="{DynamicResource TextMutedBrush}"
                                                    IsVisible="{Binding HasDepends}" />
+                                        <TextBlock Text="{Binding WorkspaceText}" FontSize="12"
+                                                   Foreground="{DynamicResource SuccessBrush}" />
                                     </StackPanel>
                                     <TextBlock Text="{Binding Instruction}" FontSize="12" TextWrapping="Wrap"
                                                MaxHeight="60" FontFamily="{DynamicResource FontMono}"

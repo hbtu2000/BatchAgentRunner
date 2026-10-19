@@ -11,6 +11,20 @@ using CommunityToolkit.Mvvm.Input;
 namespace BatchAgentRunner.Desktop.ViewModels;
 
 /// <summary>
+/// 实时输出流的跟随模式：
+/// <see cref="Selected"/> = 随任务联动（默认，仅显示联动任务的输出，避免并发任务混在一起）；
+/// <see cref="All"/> = 显示全部并发任务的混合输出（旧行为，按需开启）。
+/// </summary>
+internal enum OutputFollowMode
+{
+    /// <summary>仅显示当前联动任务（选中任务优先；未选中时自动跟随运行中任务）的输出。</summary>
+    Selected,
+
+    /// <summary>显示全部并发任务的混合输出（旧行为，按需开启）。</summary>
+    All
+}
+
+/// <summary>
 /// 执行监控页（主页面）：总进度 + 状态统计卡 + 任务列表 + 实时输出流 + 提示区。
 /// 引擎事件驱动刷新（≤2 秒），非轮询。
 /// </summary>
@@ -20,6 +34,22 @@ public sealed class MonitorViewModel : ViewModelBase
     private readonly DispatcherTimer _timer;
 
     private TaskRowViewModel? _selectedTask;
+
+    /// <summary>实时输出流跟随目标任务 Id（随任务联动模式下的有效过滤键）。</summary>
+    private string? _followTaskId;
+
+    /// <summary>跟随目标是否被用户手动固定（点选任务=固定；取消选中/自动跟随=非固定）。</summary>
+    private bool _followPinned;
+
+    /// <summary>实时输出流跟随模式（默认随任务联动）。</summary>
+    private OutputFollowMode _followMode = OutputFollowMode.Selected;
+
+    /// <summary>实际展示在输出流 ListBox 中的行（按联动任务过滤后的视图）。</summary>
+    private readonly ObservableCollection<OutputLineItem> _displayedOutput = new();
+
+    private string _outputFollowTitle = "实时输出流";
+    private bool _hasDisplayedOutput;
+    private string _outputEmptyHint = "选择左侧任务可查看其输出；运行中将自动跟随当前执行任务";
     private BatchStatus _status = BatchStatus.Idle;
     private int _total;
     private int _done;
@@ -68,6 +98,8 @@ public sealed class MonitorViewModel : ViewModelBase
         _timer.Start();
 
         _forceRerun = host.Options.ForceRerun;
+
+        UpdateOutputFollowTitle();
     }
 
     public ObservableCollection<TaskRowViewModel> Tasks { get; }
@@ -75,6 +107,52 @@ public sealed class MonitorViewModel : ViewModelBase
     public ObservableCollection<ToastItem> Toasts { get; }
 
     public ObservableCollection<OutputLineItem> OutputLines { get; }
+
+    /// <summary>
+    /// 实时输出流 ListBox 的实际数据源：按「联动任务」过滤后的行（随任务联动模式），
+    /// 或「全部任务」混合行（全部模式）。解决并发任务输出混在一起的问题。
+    /// </summary>
+    public ObservableCollection<OutputLineItem> DisplayedOutputLines => _displayedOutput;
+
+    /// <summary>是否显示全部任务的混合输出（false = 随任务联动，仅显示联动任务，默认）。</summary>
+    public bool ShowAllOutput
+    {
+        get => _followMode == OutputFollowMode.All;
+        set
+        {
+            var next = value ? OutputFollowMode.All : OutputFollowMode.Selected;
+            if (_followMode == next)
+            {
+                return;
+            }
+
+            _followMode = next;
+            RebuildDisplayedOutput();
+            UpdateOutputFollowTitle();
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>输出流标题：展示当前联动目标任务（如「实时输出流 · T3」）。</summary>
+    public string OutputFollowTitle
+    {
+        get => _outputFollowTitle;
+        private set => SetProperty(ref _outputFollowTitle, value);
+    }
+
+    /// <summary>当前是否有可展示的输出行（用于切换空状态提示）。</summary>
+    public bool HasDisplayedOutput
+    {
+        get => _hasDisplayedOutput;
+        private set => SetProperty(ref _hasDisplayedOutput, value);
+    }
+
+    /// <summary>无输出时的提示文案（随选择/跟随状态变化）。</summary>
+    public string OutputEmptyHint
+    {
+        get => _outputEmptyHint;
+        private set => SetProperty(ref _outputEmptyHint, value);
+    }
 
     /// <summary>选中任务的工作流阶段树（WorkflowView / GateResultView 数据源；非工作流任务为空）。</summary>
     public ObservableCollection<StageRowViewModel> SelectedStages { get; }
@@ -99,6 +177,24 @@ public sealed class MonitorViewModel : ViewModelBase
                 OnPropertyChanged(nameof(HasSelectedTask));
                 OnPropertyChanged(nameof(SelectedHasError));
                 RefreshSelectedStages();
+
+                // 随任务联动：选中任务即固定为输出流跟随目标；取消选中则解除固定（回归自动跟随运行中任务）。
+                if (value is not null)
+                {
+                    _followTaskId = value.Id;
+                    _followPinned = true;
+                }
+                else
+                {
+                    _followPinned = false;
+                    _followTaskId = null;
+                }
+
+                if (_followMode == OutputFollowMode.Selected)
+                {
+                    RebuildDisplayedOutput();
+                    UpdateOutputFollowTitle();
+                }
             }
         }
     }
@@ -353,7 +449,17 @@ public sealed class MonitorViewModel : ViewModelBase
 
                     break;
                 case BatchEventKind.TaskOutput:
-                    AppendOutputChunk(ev.At, ev.Message);
+                    AppendOutputChunk(ev.At, ev.Message, ev.TaskId);
+                    break;
+                case BatchEventKind.TaskStarted:
+                    // 随任务联动：未手动固定跟随目标时，自动跟随新启动的运行中任务（避免并发任务输出混在一起）。
+                    if (!_followPinned && _followMode == OutputFollowMode.Selected && !string.IsNullOrEmpty(ev.TaskId))
+                    {
+                        _followTaskId = ev.TaskId;
+                        RebuildDisplayedOutput();
+                        UpdateOutputFollowTitle();
+                    }
+
                     break;
                 case BatchEventKind.BatchWaiting:
                     _resumeAt = ev.ResumeAt;
@@ -368,7 +474,7 @@ public sealed class MonitorViewModel : ViewModelBase
             if (!string.IsNullOrEmpty(ev.Message) && ev.Kind is not (BatchEventKind.TaskOutput or BatchEventKind.StatusChanged))
             {
                 AddToast(ev);
-                AppendEventToStream(ev);
+                AppendEventToStream(ev, ev.TaskId ?? ev.Task?.Id);
             }
 
             if (ev.Task is not null)
@@ -415,8 +521,8 @@ public sealed class MonitorViewModel : ViewModelBase
 
     // ---------------- 实时输出流（带标签胶囊，对齐 mockup） ----------------
 
-    /// <summary>把一段原始 stdout 按行拆分并逐行分类写入输出流。</summary>
-    private void AppendOutputChunk(DateTimeOffset at, string? chunk)
+    /// <summary>把一段原始 stdout 按行拆分并逐行分类写入输出流（taskId 用于按任务联动过滤）。</summary>
+    private void AppendOutputChunk(DateTimeOffset at, string? chunk, string? taskId)
     {
         if (string.IsNullOrEmpty(chunk))
         {
@@ -432,12 +538,12 @@ public sealed class MonitorViewModel : ViewModelBase
             }
 
             var (kind, tag, dim) = ClassifyOutput(line);
-            AppendOutputLine(at, kind, tag, line, dim);
+            AppendOutputLine(at, kind, tag, line, dim, taskId);
         }
     }
 
     /// <summary>把引擎调度类事件（切换 / 额度 / 错误 / 提示）也并入输出流，使流内可见降级轨迹（对齐 mockup）。</summary>
-    private void AppendEventToStream(BatchEvent ev)
+    private void AppendEventToStream(BatchEvent ev, string? taskId)
     {
         var (kind, tag) = ev.Kind switch
         {
@@ -455,11 +561,11 @@ public sealed class MonitorViewModel : ViewModelBase
         if (ev.Kind is BatchEventKind.AutoAnswered)
         {
             // 自动应答算成功类，去强调
-            AppendOutputLine(ev.At, OutputTagKind.Ok, "应答", ev.Message, dim: true);
+            AppendOutputLine(ev.At, OutputTagKind.Ok, "应答", ev.Message, dim: true, taskId: taskId);
             return;
         }
 
-        AppendOutputLine(ev.At, kind, tag, ev.Message, dim: false);
+        AppendOutputLine(ev.At, kind, tag, ev.Message, dim: false, taskId: taskId);
     }
 
     /// <summary>对单行原始输出做轻量分类（关键字启发式，无需改动引擎输出格式）。</summary>
@@ -482,13 +588,78 @@ public sealed class MonitorViewModel : ViewModelBase
         return (OutputTagKind.Plain, "输出", false);
     }
 
-    private void AppendOutputLine(DateTimeOffset at, OutputTagKind kind, string tag, string message, bool dim)
+    /// <summary>
+    /// 写入一行实时输出：始终进入全局缓冲 <see cref="OutputLines"/>（保留全部任务历史），
+    /// 并依据跟随模式追加到 <see cref="DisplayedOutputLines"/>（仅联动任务或全部）。
+    /// </summary>
+    private void AppendOutputLine(DateTimeOffset at, OutputTagKind kind, string tag, string message, bool dim, string? taskId = null)
     {
-        OutputLines.Add(new OutputLineItem(at, kind, tag, message, dim));
+        var item = new OutputLineItem(at, kind, tag, message, dim, taskId);
+        OutputLines.Add(item);
         if (OutputLines.Count > 500)
         {
             OutputLines.RemoveAt(0);
         }
+
+        if (ShouldDisplay(taskId))
+        {
+            _displayedOutput.Add(item);
+            if (_displayedOutput.Count > 500)
+            {
+                _displayedOutput.RemoveAt(0);
+            }
+
+            HasDisplayedOutput = true;
+        }
+    }
+
+    /// <summary>判断某行是否应出现在当前输出流视图中（随任务联动 → 仅联动任务；全部 → 任意）。</summary>
+    private bool ShouldDisplay(string? taskId) =>
+        _followMode == OutputFollowMode.All ||
+        (!string.IsNullOrEmpty(taskId) && taskId == _followTaskId);
+
+    /// <summary>按当前跟随规则重建输出流视图（切换选中任务 / 切换跟随模式 / 自动跟随变更时调用）。</summary>
+    private void RebuildDisplayedOutput()
+    {
+        _displayedOutput.Clear();
+        foreach (var item in OutputLines)
+        {
+            if (ShouldDisplay(item.TaskId))
+            {
+                _displayedOutput.Add(item);
+            }
+        }
+
+        HasDisplayedOutput = _displayedOutput.Count > 0;
+    }
+
+    /// <summary>刷新输出流标题与空状态提示（反映当前联动目标任务）。</summary>
+    private void UpdateOutputFollowTitle()
+    {
+        if (_followMode == OutputFollowMode.All)
+        {
+            OutputFollowTitle = "实时输出流 · 全部任务";
+            OutputEmptyHint = "（暂无输出）";
+            return;
+        }
+
+        if (_followTaskId is null)
+        {
+            OutputFollowTitle = "实时输出流 · 未选择任务";
+            OutputEmptyHint = "选择左侧任务可查看其输出；运行中将自动跟随当前执行任务";
+            return;
+        }
+
+        var target = Tasks.FirstOrDefault(t => t.Id == _followTaskId)?.Item;
+        if (target is null)
+        {
+            OutputFollowTitle = "实时输出流";
+            OutputEmptyHint = "（该任务暂无实时输出）";
+            return;
+        }
+
+        OutputFollowTitle = $"实时输出流 · {target.Id}";
+        OutputEmptyHint = $"任务 {target.Id} 暂无实时输出";
     }
 
     private void UpdateWaitingText()

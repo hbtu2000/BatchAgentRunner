@@ -9,7 +9,13 @@ namespace BatchAgentRunner.Core.Scheduling;
 /// </summary>
 public sealed class TemplateExpander
 {
-    public static List<TaskItem> Expand(TemplateSpec template, string? baseDir = null)
+    /// <summary>
+    /// 展开模板为任务清单。
+    /// </summary>
+    /// <param name="template">模板定义。</param>
+    /// <param name="baseDir">变量文件 glob / CSV 的相对路径解析根（目录路径）。</param>
+    /// <param name="workspace">写入每条生成任务的工作空间（命名空间名或目录路径）；为空则任务不携带、运行时由引擎套用默认工作空间。</param>
+    public static List<TaskItem> Expand(TemplateSpec template, string? baseDir = null, string? workspace = null)
     {
         var instances = BuildInstances(template, baseDir);
         var tasks = new List<TaskItem>();
@@ -34,6 +40,7 @@ public sealed class TemplateExpander
             {
                 Id = id,
                 Instruction = instruction,
+                Workspace = workspace,
                 TemplateVars = new TemplateVars
                 {
                     TemplateId = template.Id,
