@@ -4,7 +4,7 @@
 
 **文档负责人：** 工程
 **状态：** 🟢 已合并发布（由一期设计 v1.1、二期设计 v1.0、账号凭证切换 v1.1、额度耗尽暂停续跑 v1.0 合并而成）
-**最后更新：** 2026-10-17
+**最后更新：** 2026-10-19（§4.3 同步 P1-16 实例化修订；其余章节沿用 2026-10-17 合并版）
 **版本：** 2.0
 
 **上游需求文档：** [`docs/PRD-BatchAgentRunner-v2.0.md`](docs/PRD-BatchAgentRunner-v2.0.md)（原 PRD-AI批处理任务调度工具，内容版本 v1.12，已整理为需求总览 v2.0）
@@ -1426,6 +1426,8 @@ vault\<cli>\<account_id>\
 #### 4.3 Live 位置注册表（代码内 `CredentialLocationRegistry`）
 
 每个 CLI 注册：凭证文件路径列表（含相对路径映射）、进程名（用于互斥检测）、可选的「logout 清理动作」。**路径全部来自注册表，不散落硬编码**——M0 实测后只改注册表，不动流程代码。
+
+> **2026-10-19 修订（技术债务 P1-16 已清偿）**：注册表由 `public static class` + 静态 `Dictionary`（`SetLiveRootOverride` 全局覆写、非线程安全）改为 `sealed class : ICredentialLocationRegistry` **显式注入的实例服务**：规格表为不可变静态数据（全部实例共享），Live 根覆写为实例状态（`ConcurrentDictionary`，线程安全、无跨实例全局副作用）。组合根（`Desktop/Composition/EngineFactory`）持唯一实例并一次性覆写 Mock Live 根，Vault / 引导登录 / CLI 适配器 / 积分领取全链路显式注入同一实例——消费方不再经静态入口获取路径。背景与验证见 `docs/TECH-DEBT-技术债务治理方案-v2.0.md` §1.2 P1-16 / §5.5。
 
 ---
 
