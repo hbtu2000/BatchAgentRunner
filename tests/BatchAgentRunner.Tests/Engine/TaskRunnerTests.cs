@@ -40,7 +40,9 @@ public class TaskRunnerTests
         IAgentCliAdapter adapter,
         Func<RestoreCandidate, string?, CancellationToken, Task<bool>>? waitForRestore = null,
         FakeClock? clock = null,
-        QuotaCooldownRegistry? cooldowns = null)
+        QuotaCooldownRegistry? cooldowns = null,
+        bool deferredSwitch = false,
+        DispatchCoordinator? coordinator = null)
     {
         var events = new List<BatchEvent>();
         clock ??= new FakeClock(Noon);
@@ -86,7 +88,9 @@ public class TaskRunnerTests
             SetCurrentTaskId = _ => { },
             WaitForRestore = waitForRestore ?? ((_, _, _) => Task.FromResult(true)),
             ExecuteWorkflow = (_, _) => Task.FromResult(TaskOutcome.Finished),
-            GetPendingCount = () => 0
+            GetPendingCount = () => 0,
+            Coordinator = coordinator,
+            DeferredAccountSwitchEnabled = deferredSwitch
         };
 
         return (new TaskRunner(ctx), events);
@@ -274,6 +278,107 @@ public class TaskRunnerTests
         Assert.Equal(TaskOutcome.Finished, outcome);
         Assert.Equal(TaskStatus.Done, task.Status);
         Assert.Equal("m1", task.ModelUsed);
+    }
+
+    // P1-2 内拆后，单任务状态机各子步骤（CheckLimits / SelectCombo / HandleNoCombo / ApplyComboChange /
+    // RunAttempt / HandleFailure）的协作者契约白箱覆盖：锁死「外置 + 内拆」后新增/易回归的分支不变量。
+
+    [Fact]
+    public async Task 无可用组合_超出最长等待_返回Blocked且任务Interrupted()
+    {
+        // 关闭「额度耗尽无限等待」，使 canWait 仅受 MaxWait 约束；m1 额度耗尽重置远在 MaxWait 之外 → 直接 Blocked
+        var options = Options("m1");
+        options.MaxWaitMinutes = 1;
+        options.WaitForQuotaReset = false;
+        var adapter = new MockAdapter((_, _) => MockStep.Quota(resetIn: TimeSpan.FromMinutes(30)));
+        var (runner, _) = Build(options, adapter);
+        var task = NewTask("t-1");
+
+        var outcome = await runner.RunSafeAsync(task, CancellationToken.None);
+
+        Assert.Equal(TaskOutcome.Blocked, outcome);
+        Assert.Equal(TaskStatus.Interrupted, task.Status);
+    }
+
+    [Fact]
+    public async Task 失败即停_超限后返回StopBatch且任务Failed()
+    {
+        var options = Options("m1");
+        options.StopOnFailure = true;
+        var adapter = new MockAdapter((_, _) => MockStep.Error("任务执行失败"));
+        var (runner, _) = Build(options, adapter);
+        var task = NewTask("t-1");
+
+        var outcome = await runner.RunSafeAsync(task, CancellationToken.None);
+
+        Assert.Equal(TaskOutcome.StopBatch, outcome);
+        Assert.Equal(TaskStatus.Failed, task.Status);
+    }
+
+    [Fact]
+    public async Task 凭据失效_账号停用并切换下一账号完成()
+    {
+        var options = Options("m1");
+        options.Accounts = new List<AccountConfig>
+        {
+            new() { Id = "acc1", DisplayName = "账号1" },
+            new() { Id = "acc2", DisplayName = "账号2" }
+        };
+        // acc1 首跑凭据失效被停用，矩阵选下一可用账号 acc2 完成
+        var adapter = new MockAdapter((req, _) =>
+            req.Account.Id == "acc1" ? MockStep.Auth("token expired") : MockStep.Ok("ok"));
+        var (runner, events) = Build(options, adapter);
+        var task = NewTask("t-1");
+
+        var outcome = await runner.RunSafeAsync(task, CancellationToken.None);
+
+        Assert.Equal(TaskOutcome.Finished, outcome);
+        Assert.Equal(TaskStatus.Done, task.Status);
+        Assert.Contains(events, e => e.Kind == BatchEventKind.AccountSwitched);
+        Assert.Equal("账号2", task.AccountUsed);
+    }
+
+    [Fact]
+    public async Task 等待恢复后无进展_防御性判Blocked防空转()
+    {
+        // WaitForQuotaReset 放开等待上限 → 进入 WaitForRestore；默认假实现返回 true 但不推进时钟
+        // → 等待后时钟未前进且无可用组合 → 触发防御性 Blocked（呼应 B3/B4 防 CLR 空转崩溃）
+        var options = Options("m1");
+        options.WaitForQuotaReset = true;
+        var adapter = new MockAdapter((_, _) => MockStep.Quota(resetIn: TimeSpan.FromMinutes(30)));
+        var (runner, _) = Build(options, adapter);
+        var task = NewTask("t-1");
+
+        var outcome = await runner.RunSafeAsync(task, CancellationToken.None);
+
+        Assert.Equal(TaskOutcome.Blocked, outcome);
+        Assert.Equal(TaskStatus.Interrupted, task.Status);
+    }
+
+    [Fact]
+    public async Task 并发冻结_原账号兜底收尾返回Finished()
+    {
+        // REQ-021：切到不同账号时冻结在飞槽位 + 全局派发暂停，原启动账号走付费兜底完成本条任务（不跨账号）
+        var options = Options("m1");
+        options.Accounts = new List<AccountConfig>
+        {
+            new() { Id = "acc1", DisplayName = "账号1", FallbackModels = new List<FallbackModel> { new() { Name = "paid-x", EstimatedUnitPrice = 0.2m } } },
+            new() { Id = "acc2", DisplayName = "账号2", FallbackModels = new List<FallbackModel> { new() { Name = "paid-x", EstimatedUnitPrice = 0.2m } } }
+        };
+        options.Fallback = new FallbackConfig { Enabled = true, MaxCostPerTask = 1m, MaxCostPerBatch = 5m };
+        // 任一账号首次真实尝试均额度耗尽 → 切到另一账号时触发「并发冻结延后切换」→ 原账号兜底收尾
+        var adapter = new MockAdapter((req, _) =>
+            req.IsFallback ? MockStep.Ok("兜底完成") : MockStep.Quota(resetIn: TimeSpan.FromMinutes(30)));
+        var coordinator = new DispatchCoordinator();
+        var (runner, events) = Build(options, adapter, deferredSwitch: true, coordinator: coordinator);
+        var task = NewTask("t-1");
+
+        var outcome = await runner.RunSafeAsync(task, CancellationToken.None);
+
+        Assert.Equal(TaskOutcome.Finished, outcome);
+        Assert.True(task.FallbackUsed);
+        Assert.Equal("paid-x", task.ModelUsed);
+        Assert.True(coordinator.DispatchHalted); // 冻结在飞槽位 + 全局派发暂停已触发
     }
 
     // ---------------- 测试替身 ----------------

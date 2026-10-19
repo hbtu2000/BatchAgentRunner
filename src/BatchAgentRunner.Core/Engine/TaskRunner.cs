@@ -115,12 +115,108 @@ public sealed class TaskRunner : ITaskRunner
         return outcome;
     }
 
+    /// <summary>
+    /// 单任务执行的可变状态对象（P1-2 内拆）：原 <c>ExecuteTaskAsync</c> 的 <c>while(true)</c> 循环局部变量
+    /// 收敛到此处，使状态显式化、循环体退化为薄驱动，便于按子步骤拆分（§4.4 单方法 ≤60 行 / 圈复杂度 ≤15）。
+    /// </summary>
+    private sealed class TaskExecutionState
+    {
+        public AgentCombo? Combo;
+        public bool RetrySameCombo;
+        public int Attempts;
+        public int RateLimitStreak;
+        public int NormalRetries;
+        public string? OriginalAccountId;
+        public DateTimeOffset StartedAt;
+    }
+
+    /// <summary>单次尝试的结果载体：<see cref="Terminal"/> 非 null 表示直接以该结局返回；<see cref="Result"/> 非 null 表示需进入失败分发。</summary>
+    private readonly record struct AttemptResult(TaskOutcome? Terminal, AgentExecutionResult? Result);
+
+    /// <summary>
+    /// 单任务状态机驱动（P1-2 内拆后）：仅保留「薄循环 + 分步委派」，所有分支逻辑下沉到下方的子步骤方法。
+    /// 行为与原 <c>while(true)+switch+goto</c> 实现严格一致，仅结构重组。
+    /// </summary>
     private async Task<TaskOutcome> ExecuteTaskAsync(TaskItem task, CancellationToken ct)
     {
         using var taskCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
         var startedAt = _ctx.Clock.Now;
         _ctx.SetCurrentTaskId(task.Id);
 
+        await InitializeTaskAsync(task, startedAt).ConfigureAwait(false);
+
+        // 二期：工作流任务走 WorkflowExecutor（多阶段 + 门禁 + 修订循环），复用一期降级/额度/冷却内核
+        if (task.IsWorkflow)
+        {
+            return await _ctx.ExecuteWorkflow(task, taskCts.Token).ConfigureAwait(false);
+        }
+
+        var state = new TaskExecutionState { StartedAt = startedAt };
+
+        while (true)
+        {
+            var limit = await CheckLimitsAsync(task, state, taskCts).ConfigureAwait(false);
+            if (limit is not null)
+            {
+                return limit.Value;
+            }
+
+            var (terminal, next) = await SelectComboAsync(task, state, taskCts.Token).ConfigureAwait(false);
+            if (terminal is not null)
+            {
+                return terminal.Value;
+            }
+
+            // next 为 null 表示「等待后续跑」的 continue（已在 SelectComboAsync 内处理），直接续循环
+            if (next is null)
+            {
+                continue;
+            }
+
+            // 组合切换（含 REQ-021 并发冻结延后切换）：可能提前以 Finished 收尾
+            var comboOutcome = await ApplyComboChangeAsync(task, state.Combo, next, state, taskCts.Token).ConfigureAwait(false);
+            if (comboOutcome is not null)
+            {
+                return comboOutcome.Value;
+            }
+
+            state.Combo = next;
+            state.Attempts++;
+            if (state.OriginalAccountId is null)
+            {
+                state.OriginalAccountId = state.Combo.Account.Id;
+            }
+
+            var attempt = await RunAttemptAsync(task, state.Combo, taskCts.Token).ConfigureAwait(false);
+            if (attempt.Terminal is not null)
+            {
+                return attempt.Terminal.Value;
+            }
+
+            if (attempt.Result is null)
+            {
+                // 凭证未就绪（EnsureLiveCredential 失败）→ 续跑重试，不计入终态
+                continue;
+            }
+
+            if (attempt.Result.Succeeded)
+            {
+                await CompleteTask(task, attempt.Result).ConfigureAwait(false);
+                return TaskOutcome.Finished;
+            }
+
+            var failure = attempt.Result.Failure ?? new AgentFailure(AgentFailureKind.TaskError, "未知错误");
+            var failureOutcome = await HandleFailureAsync(task, failure, state, taskCts.Token).ConfigureAwait(false);
+            if (failureOutcome is not null)
+            {
+                return failureOutcome.Value;
+            }
+        }
+    }
+
+    /// <summary>任务启动初始化：置 Running / 清 partial / 广播 TaskStarted。</summary>
+    private async Task InitializeTaskAsync(TaskItem task, DateTimeOffset startedAt)
+    {
         task.Status = TaskStatus.Running;
         task.StartedAt = startedAt;
         task.Error = null;
@@ -137,287 +233,291 @@ public sealed class TaskRunner : ITaskRunner
         _ctx.RaiseTaskChanged(task);
         _ctx.Logger.WriteTaskStarted(task.Id, null, null, _ctx.Options.Expert.ToString(), task.Workspace);
         _ctx.Raise(new BatchEvent(BatchEventKind.TaskStarted, _ctx.Clock.Now, $"开始执行任务 {task.Id}", task.Id) { Task = task });
+    }
 
-        // 二期：工作流任务走 WorkflowExecutor（多阶段 + 门禁 + 修订循环），复用一期降级/额度/冷却内核
-        if (task.IsWorkflow)
+    /// <summary>循环顶部的取消 / 尝试上限 / 净时长上限检查；返回非 null 表示直接以该结局返回。</summary>
+    private async Task<TaskOutcome?> CheckLimitsAsync(TaskItem task, TaskExecutionState state, CancellationTokenSource taskCts)
+    {
+        if (taskCts.IsCancellationRequested)
         {
-            return await _ctx.ExecuteWorkflow(task, taskCts.Token).ConfigureAwait(false);
+            await MarkInterrupted(task, "用户终止，当前任务安全中断").ConfigureAwait(false);
+            return TaskOutcome.Terminated;
         }
 
-        AgentCombo? combo = null;
-        var retrySameCombo = false;
-        var attempts = 0;
-        var rateLimitStreak = 0;
-        var normalRetries = 0;
-        // REQ-021：本任务启动时所使用的「原账号」（首次选中的组合账号），冻结任务的兜底仅限于该账号自身池。
-        string? originalAccountId = null;
-
-        while (true)
+        if (state.Attempts >= _ctx.Options.MaxAttemptsPerTask)
         {
-            if (taskCts.IsCancellationRequested)
-            {
-                await MarkInterrupted(task, "用户终止，当前任务安全中断").ConfigureAwait(false);
-                return TaskOutcome.Terminated;
-            }
+            await FailTask(task, $"单任务总尝试次数达到上限（{_ctx.Options.MaxAttemptsPerTask} 次）").ConfigureAwait(false);
+            return TaskOutcome.Finished;
+        }
 
-            if (attempts >= _ctx.Options.MaxAttemptsPerTask)
+        if (_ctx.Clock.Now - state.StartedAt > _ctx.Options.MaxTaskDuration)
+        {
+            // 暂停等待时长不计入「单任务总时长」上限（DESIGN-额度耗尽暂停续跑：暂停不计入时长）
+            _ctx.TaskWaitSeconds.TryGetValue(task.Id, out var waitedSoFar);
+            if ((_ctx.Clock.Now - state.StartedAt).TotalSeconds - waitedSoFar > _ctx.Options.MaxTaskDuration.TotalSeconds)
             {
-                await FailTask(task, $"单任务总尝试次数达到上限（{_ctx.Options.MaxAttemptsPerTask} 次）").ConfigureAwait(false);
+                await FailTask(task,
+                    $"单任务净执行时长达到上限（{_ctx.Options.MaxTotalMinutesPerTask} 分钟，不含暂停等待）").ConfigureAwait(false);
                 return TaskOutcome.Finished;
             }
+        }
 
-            if (_ctx.Clock.Now - startedAt > _ctx.Options.MaxTaskDuration)
+        return null;
+    }
+
+    /// <summary>选下一组合：临时限流重试同一组合 / 矩阵选择 / 未命中走 <see cref="HandleNoComboAsync"/>。</summary>
+    private async Task<(TaskOutcome? Terminal, AgentCombo? Next)> SelectComboAsync(TaskItem task, TaskExecutionState state, CancellationToken ct)
+    {
+        var now = _ctx.Clock.Now;
+        AgentCombo? next;
+
+        if (state.RetrySameCombo && state.Combo is not null && _ctx.Evaluator.Evaluate(state.Combo, now).Available)
+        {
+            // 临时限流：退避后重试同一组合，不切换（REQ-005）
+            next = state.Combo;
+        }
+        else
+        {
+            var selection = _ctx.MatrixProvider().SelectNext(state.Combo, now, _ctx.Evaluator);
+
+            foreach (var skipped in selection.Skipped)
             {
-                // 暂停等待时长不计入「单任务总时长」上限（DESIGN-额度耗尽暂停续跑：暂停不计入时长）
-                _ctx.TaskWaitSeconds.TryGetValue(task.Id, out var waitedSoFar);
-                if ((_ctx.Clock.Now - startedAt).TotalSeconds - waitedSoFar > _ctx.Options.MaxTaskDuration.TotalSeconds)
-                {
-                    await FailTask(task,
-                        $"单任务净执行时长达到上限（{_ctx.Options.MaxTotalMinutesPerTask} 分钟，不含暂停等待）").ConfigureAwait(false);
-                    return TaskOutcome.Finished;
-                }
+                RaiseSkipEvent(skipped);
             }
 
-            var now = _ctx.Clock.Now;
-            AgentCombo? next;
-
-            if (retrySameCombo && combo is not null && _ctx.Evaluator.Evaluate(combo, now).Available)
+            if (selection.Found)
             {
-                // 临时限流：退避后重试同一组合，不切换（REQ-005）
-                next = combo;
+                next = selection.Combo!;
             }
             else
             {
-                var selection = _ctx.MatrixProvider().SelectNext(combo, now, _ctx.Evaluator);
-
-                foreach (var skipped in selection.Skipped)
-                {
-                    RaiseSkipEvent(skipped);
-                }
-
-                if (selection.Found)
-                {
-                    next = selection.Combo!;
-                }
-                else
-                {
-                    var invested = attempts > 0 || !string.IsNullOrEmpty(task.Result);
-
-                    // 兜底：仅对「已投入执行的当前任务」生效（REQ-004b）
-                    if (invested && _ctx.Options.Fallback.Enabled)
-                    {
-                        var fb = await TryFallbackAsync(task, taskCts.Token).ConfigureAwait(false);
-                        if (fb.Success)
-                        {
-                            return TaskOutcome.Finished;
-                        }
-                    }
-
-                    var earliest = _ctx.MatrixProvider().EarliestRestore(now, _ctx.Evaluator);
-                    // 额度耗尽（QuotaReset）放开等待上限：额度每日必然重置，确定可恢复 → 无限等待直到重置（DESIGN-额度耗尽暂停续跑）。
-                    // 纯免费时段外 / 时段+额度混合仍受 MaxWait 约束，避免跨天/跨周末无限挂起。
-                    var canWait = earliest is not null &&
-                                  (IsQuotaUnboundedWait(earliest, now) || earliest.RestoreAt <= now.Add(_ctx.Options.MaxWait));
-
-                    if (!canWait)
-                    {
-                        await MarkInterrupted(task, earliest is null
-                            ? "免费组合矩阵当前不可用（额度耗尽 / 时段外 / 冷却中）"
-                            : $"免费组合矩阵当前不可用，最早恢复时间 {earliest.RestoreAt:HH:mm} 超出最长可等待时长").ConfigureAwait(false);
-                        _ctx.SetStatus(BatchStatus.Blocked);
-                        _ctx.RaiseBlocked(
-                            earliest is null
-                                ? "所有候选组合额度均已用尽 / 均不在免费时段，批处理已暂停"
-                                : $"所有候选组合当前不可用，最早恢复时间 {earliest.RestoreAt:HH:mm}（超出最长可等待时长 {_ctx.Options.MaxWaitMinutes} 分钟）",
-                            task.Id);
-                        _ctx.Logger.WriteBatchBlocked("全部组合不可用", _ctx.GetPendingCount());
-                        return TaskOutcome.Blocked;
-                    }
-
-                    var waited = await _ctx.WaitForRestore(earliest!, task.Id, taskCts.Token).ConfigureAwait(false);
-                    if (!waited)
-                    {
-                        await MarkInterrupted(task, "用户取消等待，当前任务安全中断").ConfigureAwait(false);
-                        _ctx.SetStatus(BatchStatus.Blocked);
-                        _ctx.Raise(new BatchEvent(BatchEventKind.BatchWaitingCancelled, _ctx.Clock.Now,
-                            "已取消等待，批处理已暂停", task.Id)
-                        { BatchStatus = BatchStatus.Blocked });
-                        return TaskOutcome.Blocked;
-                    }
-
-                    // 防御性终止：若等待返回成功，但时钟并未推进到恢复点、且仍无任何可用组合，
-                    // 说明 WaitForRestore 未实际推进时间（测试假实现异常 / 时钟未前进 / 调度异常）。
-                    // 继续 continue 会无限自旋、持续累积「组合跳过」事件直至内存耗尽并触发 CLR 致命错（0x80131506）。
-                    // 生产环境的 WaitForRestoreAsync 总会推进时钟或提前发现可用组合，不会命中此分支；此处仅兜底，避免空转。
-                    var nowAfterWait = _ctx.Clock.Now;
-                    var anyAvailableAfterWait = _ctx.MatrixProvider().SelectFirst(nowAfterWait, _ctx.Evaluator).Found;
-                    if (!anyAvailableAfterWait && nowAfterWait < earliest!.RestoreAt)
-                    {
-                        await MarkInterrupted(task,
-                            $"等待恢复后无进展（时钟未推进至 {earliest.RestoreAt:HH:mm} 且无可用组合），判为阻塞以避免无限空转").ConfigureAwait(false);
-                        _ctx.SetStatus(BatchStatus.Blocked);
-                        _ctx.RaiseBlocked(
-                            $"等待恢复后无进展，批处理已暂停（疑似 WaitForRestore 未实际推进时间），最早恢复 {earliest.RestoreAt:HH:mm}",
-                            task.Id);
-                        return TaskOutcome.Blocked;
-                    }
-
-                    continue;
-                }
+                var terminal = await HandleNoComboAsync(task, state, now, ct).ConfigureAwait(false);
+                return (terminal, null);
             }
+        }
 
-            retrySameCombo = false;
+        state.RetrySameCombo = false;
+        return (null, next);
+    }
 
-            if (combo is not null && !ReferenceEquals(next, combo))
+    /// <summary>无可用组合时的处理：已投入则兜底、否则按等待窗口 Blocked / 等待后续跑 / 防御性无进展 Blocked。</summary>
+    private async Task<TaskOutcome?> HandleNoComboAsync(TaskItem task, TaskExecutionState state, DateTimeOffset now, CancellationToken ct)
+    {
+        var invested = state.Attempts > 0 || !string.IsNullOrEmpty(task.Result);
+
+        // 兜底：仅对「已投入执行的当前任务」生效（REQ-004b）
+        if (invested && _ctx.Options.Fallback.Enabled)
+        {
+            var fb = await TryFallbackAsync(task, ct).ConfigureAwait(false);
+            if (fb.Success)
             {
-                // REQ-021：并发下（DeferredAccountSwitchEnabled）遇到「需切换到不同账号」的需求，不即时切换 Live 凭证，
-                // 而是冻结在飞槽位 + 全局派发暂停 + 记录统一切换目标，并在原启动账号上走付费兜底完成本条任务
-                // （兜底仅限于原账号自身兜底池，不跨账号，否则违背「不切换 Live 凭证」约束，见变更单 F-2）。
-                if (_ctx.DeferredAccountSwitchEnabled &&
-                    _ctx.Coordinator is not null &&
-                    !string.Equals(next.Account.Id, originalAccountId, StringComparison.OrdinalIgnoreCase))
-                {
-                    _ctx.Coordinator.RequestDeferredSwitch(task.Id, next.Account.Id);
-                    _ctx.Raise(new BatchEvent(BatchEventKind.SlotFrozen, _ctx.Clock.Now,
-                        $"并行执行中，在飞槽位已冻结、进入全局派发暂停；当前在飞任务走付费兜底在原账号 {combo.Account.Label} 完成",
-                        task.Id, combo.Account.Label));
-                    _ctx.Raise(new BatchEvent(BatchEventKind.AccountSwitchDeferred, _ctx.Clock.Now,
-                        $"账号切换已延后至当前在飞任务全部结束后执行（目标：{next.Account.Label}）",
-                        task.Id, next.Account.Label));
-
-                    // 原账号兜底收尾：仅在 originalAccountId 自身兜底池选取（不跨账号）
-                    var fbDone = await TryFallbackOnAccountAsync(task, combo.Account.Id, taskCts.Token).ConfigureAwait(false);
-                    if (fbDone)
-                    {
-                        return TaskOutcome.Finished;
-                    }
-
-                    // 原账号兜底池无可用组合或已超成本上限（REQ-021 / F-2）：转入 waiting/blocked（不计入在飞），
-                    // 释放在飞槽位，待统一切换后由后续任务处理；不阻塞整批。
-                    await MarkInterrupted(task,
-                        $"并行冻结任务的原账号 {combo.Account.Label} 兜底不可用，已转入等待/阻塞，待统一切换后由后续任务处理")
-                        .ConfigureAwait(false);
-                    return TaskOutcome.Finished;
-                }
-
-                RaiseSwitchEvents(combo, next, task.Id);
+                return TaskOutcome.Finished;
             }
+        }
 
-            combo = next;
-            attempts++;
-            if (originalAccountId is null)
-            {
-                originalAccountId = combo.Account.Id;
-            }
+        var earliest = _ctx.MatrixProvider().EarliestRestore(now, _ctx.Evaluator);
+        // 额度耗尽（QuotaReset）放开等待上限：额度每日必然重置，确定可恢复 → 无限等待直到重置（DESIGN-额度耗尽暂停续跑）。
+        // 纯免费时段外 / 时段+额度混合仍受 MaxWait 约束，避免跨天/跨周末无限挂起。
+        var canWait = earliest is not null &&
+                      (IsQuotaUnboundedWait(earliest, now) || earliest.RestoreAt <= now.Add(_ctx.Options.MaxWait));
 
-            if (!await EnsureLiveCredentialAsync(task, combo, taskCts.Token).ConfigureAwait(false))
-            {
-                continue;
-            }
+        if (!canWait)
+        {
+            await MarkInterrupted(task, earliest is null
+                ? "免费组合矩阵当前不可用（额度耗尽 / 时段外 / 冷却中）"
+                : $"免费组合矩阵当前不可用，最早恢复时间 {earliest.RestoreAt:HH:mm} 超出最长可等待时长").ConfigureAwait(false);
+            _ctx.SetStatus(BatchStatus.Blocked);
+            _ctx.RaiseBlocked(
+                earliest is null
+                    ? "所有候选组合额度均已用尽 / 均不在免费时段，批处理已暂停"
+                    : $"所有候选组合当前不可用，最早恢复时间 {earliest.RestoreAt:HH:mm}（超出最长可等待时长 {_ctx.Options.MaxWaitMinutes} 分钟）",
+                task.Id);
+            _ctx.Logger.WriteBatchBlocked("全部组合不可用", _ctx.GetPendingCount());
+            return TaskOutcome.Blocked;
+        }
 
-            var request = BuildRequest(task, combo, isFallback: false);
-            _ctx.Raise(new BatchEvent(BatchEventKind.Info, _ctx.Clock.Now,
-                $"任务 {task.Id} 使用 {combo.Account.Label} + {combo.Model.Name} 执行",
-                task.Id, combo.Account.Label, combo.Model.Name));
+        var waited = await _ctx.WaitForRestore(earliest!, task.Id, ct).ConfigureAwait(false);
+        if (!waited)
+        {
+            await MarkInterrupted(task, "用户取消等待，当前任务安全中断").ConfigureAwait(false);
+            _ctx.SetStatus(BatchStatus.Blocked);
+            _ctx.Raise(new BatchEvent(BatchEventKind.BatchWaitingCancelled, _ctx.Clock.Now,
+                "已取消等待，批处理已暂停", task.Id)
+            { BatchStatus = BatchStatus.Blocked });
+            return TaskOutcome.Blocked;
+        }
 
-            AgentExecutionResult result;
-            try
-            {
-                result = await ExecuteWithTimeoutAsync(request, taskCts.Token).ConfigureAwait(false);
-            }
-            catch (OperationCanceledException)
-            {
-                await MarkInterrupted(task, "用户终止，当前任务安全中断").ConfigureAwait(false);
-                return TaskOutcome.Terminated;
-            }
+        // 防御性终止：若等待返回成功，但时钟并未推进到恢复点、且仍无任何可用组合，
+        // 说明 WaitForRestore 未实际推进时间（测试假实现异常 / 时钟未前进 / 调度异常）。
+        // 继续 continue 会无限自旋、持续累积「组合跳过」事件直至内存耗尽并触发 CLR 致命错（0x80131506）。
+        // 生产环境的 WaitForRestoreAsync 总会推进时钟或提前发现可用组合，不会命中此分支；此处仅兜底，避免空转。
+        var nowAfterWait = _ctx.Clock.Now;
+        var anyAvailableAfterWait = _ctx.MatrixProvider().SelectFirst(nowAfterWait, _ctx.Evaluator).Found;
+        if (!anyAvailableAfterWait && nowAfterWait < earliest!.RestoreAt)
+        {
+            await MarkInterrupted(task,
+                $"等待恢复后无进展（时钟未推进至 {earliest.RestoreAt:HH:mm} 且无可用组合），判为阻塞以避免无限空转").ConfigureAwait(false);
+            _ctx.SetStatus(BatchStatus.Blocked);
+            _ctx.RaiseBlocked(
+                $"等待恢复后无进展，批处理已暂停（疑似 WaitForRestore 未实际推进时间），最早恢复 {earliest.RestoreAt:HH:mm}",
+                task.Id);
+            return TaskOutcome.Blocked;
+        }
 
-            if (!string.IsNullOrWhiteSpace(result.Output))
-            {
-                AppendPartialOutput(task, result.Output!);
-            }
+        return null; // 等待后续跑
+    }
 
-            if (result.Succeeded)
+    /// <summary>组合切换处理：REQ-021 并发冻结延后切换（原账号兜底收尾，可能提前以 Finished 收尾）；否则仅广播切换事件。</summary>
+    private async Task<TaskOutcome?> ApplyComboChangeAsync(TaskItem task, AgentCombo? oldCombo, AgentCombo next, TaskExecutionState state, CancellationToken ct)
+    {
+        if (oldCombo is not null &&
+            _ctx.DeferredAccountSwitchEnabled &&
+            _ctx.Coordinator is not null &&
+            !string.Equals(next.Account.Id, state.OriginalAccountId, StringComparison.OrdinalIgnoreCase))
+        {
+            _ctx.Coordinator.RequestDeferredSwitch(task.Id, next.Account.Id);
+            _ctx.Raise(new BatchEvent(BatchEventKind.SlotFrozen, _ctx.Clock.Now,
+                $"并行执行中，在飞槽位已冻结、进入全局派发暂停；当前在飞任务走付费兜底在原账号 {oldCombo.Account.Label} 完成",
+                task.Id, oldCombo.Account.Label));
+            _ctx.Raise(new BatchEvent(BatchEventKind.AccountSwitchDeferred, _ctx.Clock.Now,
+                $"账号切换已延后至当前在飞任务全部结束后执行（目标：{next.Account.Label}）",
+                task.Id, next.Account.Label));
+
+            // 原账号兜底收尾：仅在 originalAccountId 自身兜底池选取（不跨账号）
+            var fbDone = await TryFallbackOnAccountAsync(task, oldCombo.Account.Id, ct).ConfigureAwait(false);
+            if (fbDone)
             {
-                await CompleteTask(task, result).ConfigureAwait(false);
                 return TaskOutcome.Finished;
             }
 
-            var failure = result.Failure ?? new AgentFailure(AgentFailureKind.TaskError, "未知错误");
-
-            switch (failure.Kind)
-            {
-                case AgentFailureKind.RateLimited:
-                    rateLimitStreak++;
-                    if (rateLimitStreak <= _ctx.Options.RateLimitBackoffRetries)
-                    {
-                        task.RetryCount++;
-                        var backoff = _ctx.RetryPolicy.BackoffFor(rateLimitStreak);
-                        _ctx.Raise(new BatchEvent(BatchEventKind.Warning, _ctx.Clock.Now,
-                            $"任务 {task.Id} 触发临时限流，{backoff.TotalSeconds:0} 秒后重试同一组合（第 {rateLimitStreak} 次）",
-                            task.Id, combo.Account.Label, combo.Model.Name));
-                        await _ctx.Clock.DelayAsync(backoff, taskCts.Token).ConfigureAwait(false);
-                        retrySameCombo = true;
-                        continue;
-                    }
-
-                    // 退避重试仍失败 → 升级为额度耗尽处理（REQ-005）
-                    goto case AgentFailureKind.QuotaExhausted;
-
-                case AgentFailureKind.QuotaExhausted:
-                    {
-                        var record = _ctx.Cooldowns.Record(combo.Account.Id, combo.Model.Name, failure.ResetAt, _ctx.Clock.Now,
-                            failure.Raw);
-                        _ctx.Raise(new BatchEvent(BatchEventKind.QuotaResetRecorded, _ctx.Clock.Now,
-                            $"组合 {combo} 额度已耗尽，记录重置时间 {record.ResetAt:yyyy-MM-dd HH:mm}（{record.DescribeSource()}）",
-                            task.Id, combo.Account.Label, combo.Model.Name)
-                        { Detail = record.RawValue });
-                        _ctx.Logger.WriteQuotaResetRecorded(combo.Account.Id, combo.Model.Name, record.ResetAt, record.Source);
-                        _ctx.Cooldowns.PurgeExpired(_ctx.Clock.Now);
-                        await _ctx.SaveCooldowns().ConfigureAwait(false);
-                        rateLimitStreak = 0;
-                        continue;
-                    }
-
-                case AgentFailureKind.AuthExpired:
-                    combo.Account.Enabled = false;
-                    _ctx.Raise(new BatchEvent(BatchEventKind.Warning, _ctx.Clock.Now,
-                        $"账号 {combo.Account.Label} 凭据失效，已停用并切换下一账号", task.Id, combo.Account.Label));
-                    continue;
-
-                case AgentFailureKind.DangerousOperation:
-                    _ctx.Raise(new BatchEvent(BatchEventKind.DangerousOperationBlocked, _ctx.Clock.Now,
-                        $"检测到危险操作确认，已拒绝自动批准并中断任务 {task.Id}：{failure.Message}",
-                        task.Id, combo.Account.Label, combo.Model.Name)
-                    { IsDangerous = true });
-                    _ctx.Logger.WriteDangerousOperation(task.Id, failure.Message);
-                    await FailTask(task, failure.Message).ConfigureAwait(false);
-                    return TaskOutcome.Finished;
-
-                case AgentFailureKind.Timeout:
-                    await FailTask(task, $"单任务执行超时（{_ctx.Options.TaskTimeoutMinutes} 分钟），已保留部分输出").ConfigureAwait(false);
-                    return TaskOutcome.Finished;
-
-                default:
-                    normalRetries++;
-                    if (normalRetries <= _ctx.Options.MaxRetriesPerTask)
-                    {
-                        task.RetryCount++;
-                        _ctx.Raise(new BatchEvent(BatchEventKind.Warning, _ctx.Clock.Now,
-                            $"任务 {task.Id} 执行失败，重试第 {normalRetries} 次：{failure.Message}", task.Id));
-                        continue;
-                    }
-
-                    await FailTask(task, failure.Message).ConfigureAwait(false);
-                    if (_ctx.Options.StopOnFailure)
-                    {
-                        _ctx.SetStatus(BatchStatus.Blocked);
-                        _ctx.RaiseBlocked($"任务 {task.Id} 失败，已按「失败即停」暂停批处理", task.Id);
-                        return TaskOutcome.StopBatch;
-                    }
-
-                    return TaskOutcome.Finished;
-            }
+            // 原账号兜底池无可用组合或已超成本上限（REQ-021 / F-2）：转入 waiting/blocked（不计入在飞），
+            // 释放在飞槽位，待统一切换后由后续任务处理；不阻塞整批。
+            await MarkInterrupted(task,
+                $"并行冻结任务的原账号 {oldCombo.Account.Label} 兜底不可用，已转入等待/阻塞，待统一切换后由后续任务处理")
+                .ConfigureAwait(false);
+            return TaskOutcome.Finished;
         }
+
+        if (oldCombo is not null)
+        {
+            RaiseSwitchEvents(oldCombo, next, task.Id);
+        }
+
+        return null;
+    }
+
+    /// <summary>单次尝试：确保 Live 凭证（失败返回空 Result 触发续跑）→ 建请求 → 带超时执行 → 追加部分输出。</summary>
+    private async Task<AttemptResult> RunAttemptAsync(TaskItem task, AgentCombo combo, CancellationToken ct)
+    {
+        if (!await EnsureLiveCredentialAsync(task, combo, ct).ConfigureAwait(false))
+        {
+            return new AttemptResult(null, null);
+        }
+
+        var request = BuildRequest(task, combo, isFallback: false);
+        _ctx.Raise(new BatchEvent(BatchEventKind.Info, _ctx.Clock.Now,
+            $"任务 {task.Id} 使用 {combo.Account.Label} + {combo.Model.Name} 执行",
+            task.Id, combo.Account.Label, combo.Model.Name));
+
+        AgentExecutionResult result;
+        try
+        {
+            result = await ExecuteWithTimeoutAsync(request, ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            await MarkInterrupted(task, "用户终止，当前任务安全中断").ConfigureAwait(false);
+            return new AttemptResult(TaskOutcome.Terminated, null);
+        }
+
+        if (!string.IsNullOrWhiteSpace(result.Output))
+        {
+            AppendPartialOutput(task, result.Output!);
+        }
+
+        return new AttemptResult(null, result);
+    }
+
+    /// <summary>失败分发：按 <see cref="AgentFailureKind"/> 路由到各分支；返回非 null 表示直接以该结局返回。</summary>
+    private async Task<TaskOutcome?> HandleFailureAsync(TaskItem task, AgentFailure failure, TaskExecutionState state, CancellationToken ct)
+    {
+        switch (failure.Kind)
+        {
+            case AgentFailureKind.RateLimited:
+                state.RateLimitStreak++;
+                if (state.RateLimitStreak <= _ctx.Options.RateLimitBackoffRetries)
+                {
+                    task.RetryCount++;
+                    var backoff = _ctx.RetryPolicy.BackoffFor(state.RateLimitStreak);
+                    _ctx.Raise(new BatchEvent(BatchEventKind.Warning, _ctx.Clock.Now,
+                        $"任务 {task.Id} 触发临时限流，{backoff.TotalSeconds:0} 秒后重试同一组合（第 {state.RateLimitStreak} 次）",
+                        task.Id, state.Combo!.Account.Label, state.Combo.Model.Name));
+                    await _ctx.Clock.DelayAsync(backoff, ct).ConfigureAwait(false);
+                    state.RetrySameCombo = true;
+                    return null;
+                }
+
+                // 退避重试仍失败 → 升级为额度耗尽处理（REQ-005）
+                return await HandleQuotaExhaustedAsync(task, failure, state, ct).ConfigureAwait(false);
+
+            case AgentFailureKind.QuotaExhausted:
+                return await HandleQuotaExhaustedAsync(task, failure, state, ct).ConfigureAwait(false);
+
+            case AgentFailureKind.AuthExpired:
+                state.Combo!.Account.Enabled = false;
+                _ctx.Raise(new BatchEvent(BatchEventKind.Warning, _ctx.Clock.Now,
+                    $"账号 {state.Combo.Account.Label} 凭据失效，已停用并切换下一账号", task.Id, state.Combo.Account.Label));
+                return null;
+
+            case AgentFailureKind.DangerousOperation:
+                _ctx.Raise(new BatchEvent(BatchEventKind.DangerousOperationBlocked, _ctx.Clock.Now,
+                    $"检测到危险操作确认，已拒绝自动批准并中断任务 {task.Id}：{failure.Message}",
+                    task.Id, state.Combo!.Account.Label, state.Combo.Model.Name)
+                { IsDangerous = true });
+                _ctx.Logger.WriteDangerousOperation(task.Id, failure.Message);
+                await FailTask(task, failure.Message).ConfigureAwait(false);
+                return TaskOutcome.Finished;
+
+            case AgentFailureKind.Timeout:
+                await FailTask(task, $"单任务执行超时（{_ctx.Options.TaskTimeoutMinutes} 分钟），已保留部分输出").ConfigureAwait(false);
+                return TaskOutcome.Finished;
+
+            default:
+                state.NormalRetries++;
+                if (state.NormalRetries <= _ctx.Options.MaxRetriesPerTask)
+                {
+                    task.RetryCount++;
+                    _ctx.Raise(new BatchEvent(BatchEventKind.Warning, _ctx.Clock.Now,
+                        $"任务 {task.Id} 执行失败，重试第 {state.NormalRetries} 次：{failure.Message}", task.Id));
+                    return null;
+                }
+
+                await FailTask(task, failure.Message).ConfigureAwait(false);
+                if (_ctx.Options.StopOnFailure)
+                {
+                    _ctx.SetStatus(BatchStatus.Blocked);
+                    _ctx.RaiseBlocked($"任务 {task.Id} 失败，已按「失败即停」暂停批处理", task.Id);
+                    return TaskOutcome.StopBatch;
+                }
+
+                return TaskOutcome.Finished;
+        }
+    }
+
+    /// <summary>额度耗尽处理：记录冷却重置、清过期、落盘、重置限流连击，续循环。</summary>
+    private async Task<TaskOutcome?> HandleQuotaExhaustedAsync(TaskItem task, AgentFailure failure, TaskExecutionState state, CancellationToken ct)
+    {
+        var combo = state.Combo!;
+        var record = _ctx.Cooldowns.Record(combo.Account.Id, combo.Model.Name, failure.ResetAt, _ctx.Clock.Now, failure.Raw);
+        _ctx.Raise(new BatchEvent(BatchEventKind.QuotaResetRecorded, _ctx.Clock.Now,
+            $"组合 {combo} 额度已耗尽，记录重置时间 {record.ResetAt:yyyy-MM-dd HH:mm}（{record.DescribeSource()}）",
+            task.Id, combo.Account.Label, combo.Model.Name)
+        { Detail = record.RawValue });
+        _ctx.Logger.WriteQuotaResetRecorded(combo.Account.Id, combo.Model.Name, record.ResetAt, record.Source);
+        _ctx.Cooldowns.PurgeExpired(_ctx.Clock.Now);
+        await _ctx.SaveCooldowns().ConfigureAwait(false);
+        state.RateLimitStreak = 0;
+        return null;
     }
 
     private async Task<AgentExecutionResult> ExecuteWithTimeoutAsync(AgentRequest request, CancellationToken ct)
