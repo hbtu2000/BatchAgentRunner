@@ -7,7 +7,7 @@
 
 > **修复跟踪（2026-10-19 更新）**：本文档记录的缺陷已按 `docs/TECH-DEBT-技术债务治理方案-v2.0.md`
 > 「阶段 0（止血）」**全部处理完毕**（阶段 1 建网后口径：`dotnet build` 0 警告 / 0 错误且 `TreatWarningsAsErrors=true`、345/345 测试通过，治理前基线 270；其中 13 项为 `tests/BatchAgentRunner.Desktop.Tests`）。
-> 最新基线（2026-10-19，阶段 2 动骨后）：全量构建仍 0 警告 / 0 错误；测试 **441 通过 / 0 失败**（主测试项目 402 = 快 375 + 慢 27，Desktop.Tests 39）。
+> 最新基线（2026-10-19 晚，阶段 2 动骨后 + P1-1 收口）：全量构建仍 0 警告 / 0 错误；测试 **467 通过 / 0 失败**（主测试项目 428 = 快 401 / 慢 27，Desktop.Tests 39；较前次 441 增加的 26 例来自并发工作方 TaskRunner 防御性终止测试调整与 P1-1 收口的 `TaskDispatcherTests` 19 项白箱单测）；P1-1 收口白箱测试期间新发现 B3/B4 两类 `0x80131506` CLR 致命崩溃（TaskRunner 无限空转、PromptClassifier 编译正则动态程序集累积），已随 `2299f22` 兜底）。
 > 由于行号会随修复继续漂移，**后续追踪一律以该方案的阶段落地表（不变量断言）为准**，本文档保留为原始审查记录。
 
 ---
@@ -85,6 +85,51 @@ await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
 更稳妥的做法是在 `OutputDataReceived`/`ErrorDataReceived` 回调末行用 `TaskCompletionSource`/计数信号确认“已读到 EOF 行”后再 `WaitForExitAsync`。
 
 **严重程度**：🔴 Blocker（结果/配额判定正确性）
+
+---
+
+### B3. TaskRunner 等待恢复无进展仍 continue → 无限空转 → 内存耗尽 → `0x80131506`（可靠性）
+
+**位置**：`src/BatchAgentRunner.Core/Engine/TaskRunner.cs`（等待恢复分支）
+
+**现状代码**：
+```csharp
+// WaitForRestoreAsync 返回成功后直接 continue 进入下一轮选择
+continue;
+```
+
+**问题**：`WaitForRestoreAsync` 返回成功但时钟未实际推进到恢复点、且仍无可用组合时，`continue` 会无限自旋——每轮重新评估并累积「组合跳过」事件，长时间运行下内存持续膨胀，直至进程退出时触发 Internal CLR error（`0x80131506`）一类致命崩溃。生产环境的 `WaitForRestoreAsync` 总会推进时钟或提前发现可用组合，不会命中此分支；但作为协作者白箱测试的可靠性边界必须有兜底，否则测试假实现异常即会复现崩溃。
+
+**修复**：等待返回成功后二次校验——若时钟未推进至恢复点且仍无可用组合，则判 `Blocked` 并标记批处理暂停，避免空转：
+```csharp
+var nowAfterWait = _ctx.Clock.Now;
+var anyAvailableAfterWait = _ctx.MatrixProvider().SelectFirst(nowAfterWait, _ctx.Evaluator).Found;
+if (!anyAvailableAfterWait && nowAfterWait < earliest!.RestoreAt)
+{
+    await MarkInterrupted(task, "等待恢复后无进展...判为阻塞以避免无限空转");
+    _ctx.SetStatus(BatchStatus.Blocked);
+    return TaskOutcome.Blocked;
+}
+continue;
+```
+
+**严重程度**：🔴 Blocker（长会话/测试假实现下进程退出即崩）
+
+---
+
+### B4. PromptClassifier 每次调用编译正则 → 动态程序集永不回收 → 加载器堆撑爆 → `0x80131506`（可靠性）
+
+**位置**：`src/BatchAgentRunner.Agents/Internal/PromptClassifier.cs`（`TryExtractChoices` 内 `new Regex(pattern, RegexOptions.Multiline | RegexOptions.Compiled)`）
+
+**问题**：`RegexOptions.Compiled` 会把正则编译进一个动态程序集，且该程集在进程/AppDomain 卸载前永不回收。若每次调用都 `new`，无人值守长会话里 `Classify` 被反复调用会累积成百上千个动态程序集，撑爆加载器堆，最终在程序集卸载/进程退出时触发 Internal CLR error（`0x80131506`）。
+
+**修复**：按 pattern 缓存编译后的 `Regex` 实例，复用同一动态程序集：
+```csharp
+private static readonly ConcurrentDictionary<string, Regex> ChoiceRegexCache = new();
+var regex = ChoiceRegexCache.GetOrAdd(pattern, p => new Regex(p, RegexOptions.Multiline | RegexOptions.Compiled));
+```
+
+**严重程度**：🔴 Blocker（长会话累积性崩溃）
 
 ---
 
@@ -206,6 +251,8 @@ await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
 |--------|------|----|--------|-------------------|
 | P0 | B1 | 兜底成本上限失效 | 极小（1 行 + 单测） | ✅ 已修（不变量：`BatchEngineTests.兜底实测成本超出单任务上限时按上限截断`） |
 | P0 | B2 | 进程退出输出竞态 | 中（回调排空机制） | ✅ 已修（EOF 信号 + TCS 门；`CliProcessRunnerTests...输出尾部不丢失`） |
+| P0 | B3 | TaskRunner 等待恢复无进展无限空转 → 内存耗尽 → `0x80131506` | 小（防御性终止） | ✅ 已修（P1-1 收口 `2299f22`：时钟未推进且无可用组合时判 `Blocked` 防空转） |
+| P0 | B4 | PromptClassifier 编译正则动态程序集累积 → 加载器堆撑爆 → `0x80131506` | 小（按 pattern 缓存） | ✅ 已修（P1-1 收口 `2299f22`：`ConcurrentDictionary` 缓存 `RegexOptions.Compiled` 实例） |
 | P1 | P3 / P4 | 并发保存 / Fallback 字段加锁 | 小–中 | ✅ 已修（单写者门 + `_writeGate` 互斥 + `_fallbackLock`） |
 | P1 | P7 | 降级矩阵不可变快照 | 中 | ⏳ 待处理（阶段 2） |
 | P2 | P1 / P2 | 环形缓冲 / 批量落盘 | 中 | ⏳ 待处理 |
@@ -222,6 +269,8 @@ await process.WaitForExitAsync(cancellationToken).ConfigureAwait(false);
 ## 附录：核查索引（按文件）
 
 - `BatchEngine.cs`：B1(1011)、P3(1337)、P4、P7
+- `TaskRunner.cs`：B3（等待恢复分支防御性终止）
+- `PromptClassifier.cs`：B4（`RegexOptions.Compiled` 动态程序集累积）
 - `CliProcessRunner.cs`：B2(213/293)、P1(92/153)
 - `CliAdapterBase.cs`：P5(112)、N5(319)、OnOutputChunk→日志(129)
 - `QuotaErrorClassifier.cs`：P6(52/54/60/66)
