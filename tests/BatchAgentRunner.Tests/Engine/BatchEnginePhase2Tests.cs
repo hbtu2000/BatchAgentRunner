@@ -48,8 +48,8 @@ public class BatchEnginePhase2Tests
     {
         var clock = new FakeClock(Noon);
         var store = new InMemoryTaskFileStore { Tasks = tasks };
-        var engine = new BatchEngine(options, adapter, store, new InMemoryCooldownStore(), new NullRunLogger(), clock,
-            notificationDispatcher: dispatcher);
+        var engine = new BatchEngine(options, adapter, store, new InMemoryCooldownStore(), new NullRunLogger(),
+            new BatchEngineDependencies { Clock = clock, NotificationDispatcher = dispatcher });
         if (adapter is MockAdapter mock)
         {
             mock.Clock = clock;

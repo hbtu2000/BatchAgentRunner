@@ -174,7 +174,11 @@ public sealed class TaskFileStore : ITaskFileStore
 
             if (!seen.Add(task.Id))
             {
-                throw new TaskFileFormatException($"任务 ID 重复：{task.Id}", taskId: task.Id);
+                // 提示要可操作：id 列留空的行会被自动生成 id，因此重复既有可能是手填两行同 id，
+                // 也可能是自动生成与手填撞车（2026-10-18 现场），两种都指向「请检查 id 列」。
+                throw new TaskFileFormatException(
+                    $"任务 ID 重复（同一 id 出现在多行，或与留空行自动生成的 id 冲突），请检查 id 列：{task.Id}",
+                    taskId: task.Id);
             }
         }
     }

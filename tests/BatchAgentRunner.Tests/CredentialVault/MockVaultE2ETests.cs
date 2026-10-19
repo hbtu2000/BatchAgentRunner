@@ -69,8 +69,8 @@ public class MockVaultE2ETests
         adapter.Clock = env.Clock;
         var logger = new FileRunLogger(options.TaskFilePath);
         var engine = new BatchEngine(options, adapter, new TaskFileStore(),
-            new JsonCooldownStore(Path.Combine(env.Dir, "state")), logger, env.Clock,
-            credentialVault: env.Vault);
+            new JsonCooldownStore(Path.Combine(env.Dir, "state")), logger,
+            new BatchEngineDependencies { Clock = env.Clock, CredentialVault = env.Vault });
         var events = new List<BatchEvent>();
         engine.EventRaised += (_, e) => events.Add(e);
         engine.InitializeAsync().Wait();

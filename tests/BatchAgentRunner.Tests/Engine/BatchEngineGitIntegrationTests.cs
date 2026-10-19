@@ -52,7 +52,8 @@ public class BatchEngineGitIntegrationTests
         var clock = new FakeClock(Noon);
         var git = new RecordingGit();
         var engine = new BatchEngine(options, new MockAdapter(stepDuration: TimeSpan.Zero, clock: clock),
-            new InMemoryTaskFileStore { Tasks = tasks }, new InMemoryCooldownStore(), new NullRunLogger(), clock, git: git);
+            new InMemoryTaskFileStore { Tasks = tasks }, new InMemoryCooldownStore(), new NullRunLogger(),
+            new BatchEngineDependencies { Clock = clock, Git = git });
         engine.InitializeAsync().Wait();
         return (engine, git);
     }

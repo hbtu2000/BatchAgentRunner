@@ -676,7 +676,7 @@ public sealed class MonitorViewModel : ViewModelBase
     {
         if (string.IsNullOrWhiteSpace(_host.Options.TaskFilePath))
         {
-            StatusMessage = "请先在配置页选择任务文件";
+            NotifyIssue("请先在配置页选择任务文件", level: "warning");
             return;
         }
 
@@ -687,7 +687,7 @@ public sealed class MonitorViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            SetStatusMessage($"加载失败：{ex.Message}");
+            NotifyIssue($"加载失败：{ex.Message}");
         }
     }
 
@@ -696,13 +696,18 @@ public sealed class MonitorViewModel : ViewModelBase
         try
         {
             var report = await _host.PreflightAsync().ConfigureAwait(false);
-            SetStatusMessage(report.CanStart
-                ? $"预检通过：{report.LoadedTaskCount} 条任务，待处理 {report.PendingTaskCount} 条"
-                : "预检未通过：" + string.Join("；", report.Errors));
+            if (report.CanStart)
+            {
+                SetStatusMessage($"预检通过：{report.LoadedTaskCount} 条任务，待处理 {report.PendingTaskCount} 条");
+            }
+            else
+            {
+                NotifyIssue("预检未通过：" + string.Join("；", report.Errors), level: "warning");
+            }
         }
         catch (Exception ex)
         {
-            SetStatusMessage($"预检异常：{ex.Message}");
+            NotifyIssue($"预检异常：{ex.Message}", level: "warning");
         }
     }
 
@@ -751,6 +756,23 @@ public sealed class MonitorViewModel : ViewModelBase
 
     /// <summary>状态栏文案写入：调用方可能来自后台线程，统一marshal到 UI 线程。</summary>
     private void SetStatusMessage(string text) => UiThread.Post(() => StatusMessage = text);
+
+    /// <summary>
+    /// 需要用户注意的失败提示：同时写状态栏与「事件提示」页签。
+    /// 只写状态栏的代价是「点了按钮似乎没反应」——状态栏在窗口最底部、字号 12，极易被忽略（2026-10-18 现场）。
+    /// </summary>
+    private void NotifyIssue(string message, string level = "danger")
+    {
+        SetStatusMessage(message);
+        UiThread.Post(() =>
+        {
+            Toasts.Insert(0, new ToastItem(level, message, DateTimeOffset.Now));
+            while (Toasts.Count > 100)
+            {
+                Toasts.RemoveAt(Toasts.Count - 1);
+            }
+        });
+    }
 
     /// <summary>
     /// 启动前预检闸门（REQ-010）：CLI 缺失 / 任务文件与工作空间问题 / 账号池为空等

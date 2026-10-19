@@ -69,7 +69,7 @@ public class EndToEndPipelineTests
         adapter.Clock = clock;
         var logger = new FileRunLogger(options.TaskFilePath);
         var engine = new BatchEngine(options, adapter, new TaskFileStore(), new JsonCooldownStore(cooldownDir),
-            logger, clock);
+            logger, new BatchEngineDependencies { Clock = clock });
 
         var events = new List<BatchEvent>();
         engine.EventRaised += (_, e) => events.Add(e);

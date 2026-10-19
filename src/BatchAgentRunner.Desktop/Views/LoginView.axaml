@@ -149,7 +149,10 @@
                 <StackPanel Spacing="8">
                     <TextBlock Text="③ 领取每日积分" FontSize="16" FontWeight="Bold" />
                     <TextBlock FontSize="12" Opacity="0.75" TextWrapping="Wrap"
-                               Text="点一下按钮，自动为所有启用的账号逐个领取今日积分：每个账号都会记录「领取前的积分」和「领取后的积分」，结果表和报告文件里都能看到变化量。同一账号每天只领一次（重复点按钮会自动跳过已领过的账号）。" />
+                               Text="点一下按钮，自动为所有启用的账号逐个领取今日积分：每个账号都会记录「领取前的积分」和「领取后的积分」，结果表和报告文件里都能看到变化量。默认强制领取（允许重复领取）：本地不再因「今日已领取」而跳过，每次都会去调领取接口；若服务端判定今日已领过，会回「今日已领取过」而非重复发放。" />
+                    <CheckBox Content="强制领取（允许重复领取，忽略去重）"
+                              IsChecked="{Binding ForceClaim}" VerticalAlignment="Center"
+                              ToolTip.Tip="勾选（默认）= 忽略台账去重，每次都去调领取接口，允许重复领取尝试。取消勾选 = 恢复「同账号每日一次」去重，今日已领过的账号自动跳过。" />
                     <Button Content="一键领取所有账号的今日积分"
                             Height="42" FontSize="15" FontWeight="Bold"
                             Background="#1E8E3E" Foreground="White" CornerRadius="6"

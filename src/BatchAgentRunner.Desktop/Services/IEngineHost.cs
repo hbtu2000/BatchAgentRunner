@@ -65,7 +65,7 @@ public interface IEngineHost : IDisposable
     Task SaveConfigAsync();
     Task<IReadOnlyList<ModelCatalogEntry>> FetchModelsAsync(AccountConfig? account = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<TaskItem>> LoadTasksAsync();
-    Task<CreditsClaimSummary> ClaimDailyCreditsAsync(bool force = false, CancellationToken cancellationToken = default);
+    Task<CreditsClaimSummary> ClaimDailyCreditsAsync(bool force = true, CancellationToken cancellationToken = default);
     Task<PreflightReport> PreflightAsync();
     Task<BatchReport> StartAsync(bool waitIfUnavailable, CancellationToken cancellationToken = default);
     Task TerminateAsync(bool waitCurrentTask = false);

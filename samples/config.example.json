@@ -323,6 +323,10 @@
     // true = 每次批量任务开始前自动为所有启用账号领取（失败不阻断批处理）
     "auto_before_batch": false,
 
+    // 强制领取（默认 true）：忽略台账去重，每次都去调领取接口（允许重复领取）；
+    // 服务端若判定今日已领过会回「今日已领取过」，但不会在本地跳过。false = 恢复「每日一次」去重
+    "force": true,
+
     "api_base": "https://www.codebuddy.cn",
     "balance_path": "/billing/meter/get-user-resource-summary",
     "claim_path": "/billing/meter/daily-checkin",

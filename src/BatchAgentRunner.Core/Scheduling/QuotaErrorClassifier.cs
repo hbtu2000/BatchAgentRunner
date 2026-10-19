@@ -57,7 +57,7 @@ public sealed class QuotaErrorClassifier
         if (QuotaPatterns.Any(p => text.Contains(p, StringComparison.OrdinalIgnoreCase)))
         {
             var resetAt = ResetTimeParser.Parse(text, reference);
-            return new AgentFailure(AgentFailureKind.QuotaExhausted, ExtractMessage(text, "额度已耗尽"), resetAt, text);
+            return new AgentFailure(AgentFailureKind.QuotaExhausted, ExtractMessage(text, "额度已耗尽"), resetAt, CapRaw(text));
         }
 
         if (RateLimitPatterns.Any(p => text.Contains(p, StringComparison.OrdinalIgnoreCase)))
@@ -65,20 +65,36 @@ public sealed class QuotaErrorClassifier
             var resetAt = ResetTimeParser.Parse(text, reference);
             // 2026-10-16：带上传解析的重置时间——退避重试升级为冷却时（BatchEngine goto QuotaExhausted），
             // 可直接采用服务端给的恢复时间（如「将在 2026-10-16 20:17:12 恢复」），而非默认冷却时长。
-            return new AgentFailure(AgentFailureKind.RateLimited, ExtractMessage(text, "触发临时限流"), resetAt, text);
+            return new AgentFailure(AgentFailureKind.RateLimited, ExtractMessage(text, "触发临时限流"), resetAt, CapRaw(text));
         }
 
         if (AuthPatterns.Any(p => text.Contains(p, StringComparison.OrdinalIgnoreCase)))
         {
-            return new AgentFailure(AgentFailureKind.AuthExpired, ExtractMessage(text, "账号凭据失效或未登录"), null, text);
+            return new AgentFailure(AgentFailureKind.AuthExpired, ExtractMessage(text, "账号凭据失效或未登录"), null, CapRaw(text));
         }
 
         if (exitCode != 0)
         {
-            return new AgentFailure(AgentFailureKind.TaskError, ExtractMessage(text, $"Agent 退出码 {exitCode}"), null, text);
+            return new AgentFailure(AgentFailureKind.TaskError, ExtractMessage(text, $"Agent 退出码 {exitCode}"), null, CapRaw(text));
         }
 
-        return new AgentFailure(AgentFailureKind.TaskError, ExtractMessage(text, "Agent 执行未返回有效结果"), null, text);
+        return new AgentFailure(AgentFailureKind.TaskError, ExtractMessage(text, "Agent 执行未返回有效结果"), null, CapRaw(text));
+    }
+
+    /// <summary>
+    /// 截断用于持久化的原始输出：仅保留尾部 <see cref="QuotaCooldownRecord.MaxRawChars"/> 字符。
+    /// 原始 CLI 输出可能长达数十 MB（整段 JSONL 对话轨迹），全量落盘会让 cooldowns.json 膨胀
+    /// 并拖慢引擎初始化；错误文案通常靠近输出末尾，保留尾部已足够排障（2026-10-18 现场 19MB 膨胀根因）。
+    /// 重置时间解析仍使用完整 <paramref name="text"/>，不受此处截断影响。
+    /// </summary>
+    private static string? CapRaw(string? text)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= QuotaCooldownRecord.MaxRawChars)
+        {
+            return text;
+        }
+
+        return "…(已截断，原文 " + text.Length + " 字符)…\n" + text[^QuotaCooldownRecord.MaxRawChars..];
     }
 
     private static string ExtractMessage(string output, string fallback)

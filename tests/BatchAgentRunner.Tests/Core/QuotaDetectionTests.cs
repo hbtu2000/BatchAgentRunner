@@ -114,4 +114,34 @@ public class QuotaDetectionTests
         Assert.NotNull(failure.ResetAt);
         Assert.Equal(Now.AddHours(2), failure.ResetAt!.Value);
     }
+
+    [Fact]
+    public void 分类_原始输出超长时_Raw被截断到尾部()
+    {
+        // 2026-10-18 现场：整段 CLI 输出（数十 MB JSONL）被原样塞进 Raw，
+        // 导致 cooldowns.json 膨胀、初始化变慢。这里用 10 万字符模拟。
+        var c = new QuotaErrorClassifier();
+        var hugeTail = "这里才是真正的报错：quota exceeded，请在 2026-10-15 12:00:00 后重试";
+        var huge = new string('x', 100_000) + hugeTail;
+
+        var failure = c.Classify(huge, 1, Now);
+
+        Assert.Equal(AgentFailureKind.QuotaExhausted, failure.Kind);
+        Assert.NotNull(failure.ResetAt);
+        Assert.Equal(Now.AddHours(2), failure.ResetAt!.Value);
+        // Raw 被截断到尾部（含截断标记），不再携带整段长文本
+        Assert.NotNull(failure.Raw);
+        Assert.True(failure.Raw!.Length <= QuotaCooldownRecord.MaxRawChars + 64,
+            $"Raw 未被截断：{failure.Raw.Length}");
+        Assert.Contains("这里才是真正的报错", failure.Raw);
+    }
+
+    [Fact]
+    public void 分类_短输出_Raw保持原样()
+    {
+        var c = new QuotaErrorClassifier();
+        var failure = c.Classify("余额不足", 1, Now);
+
+        Assert.Equal("余额不足", failure.Raw);
+    }
 }

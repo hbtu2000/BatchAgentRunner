@@ -39,7 +39,8 @@ public class UsabilityTests
         adapter.Clock = clock;
         var logger = new FileRunLogger(options.TaskFilePath);
         var engine = new BatchEngine(options, adapter, new TaskFileStore(),
-            new JsonCooldownStore(Path.Combine(dir, "state")), logger, clock);
+            new JsonCooldownStore(Path.Combine(dir, "state")), logger,
+            new BatchEngineDependencies { Clock = clock });
 
         var events = new List<BatchEvent>();
         engine.EventRaised += (_, e) => events.Add(e);

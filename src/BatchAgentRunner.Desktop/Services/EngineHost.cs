@@ -150,9 +150,19 @@ public sealed class EngineHost : ObservableObject, IEngineHost
     public async Task<IReadOnlyList<TaskItem>> LoadTasksAsync()
     {
         var engine = _engine ??= CreateEngine();
-        var tasks = await engine.LoadTasksAsync().ConfigureAwait(false);
-        TasksChanged?.Invoke(this, EventArgs.Empty);
-        return tasks;
+        try
+        {
+            var tasks = await engine.LoadTasksAsync().ConfigureAwait(false);
+            TasksChanged?.Invoke(this, EventArgs.Empty);
+            return tasks;
+        }
+        catch (Exception ex)
+        {
+            // 加载失败必须落运行日志（2026-10-18 教训：任务文件格式错误只体现在界面一行状态文本里，
+            // 日志无记录 → 用户看到的就是「点了没反应」）
+            _logger?.Write("ERROR", $"任务文件加载失败：{ex.GetType().Name}：{ex.Message}");
+            throw;
+        }
     }
 
     /// <summary>
@@ -160,7 +170,7 @@ public sealed class EngineHost : ObservableObject, IEngineHost
     /// 结果写入台账（配置目录 credits-claims.json，跨日去重）与报告文件（credits-claim-*.md/.json）。
     /// Mock 执行工具使用仿真积分客户端，供无服务端环境演练完整流程。
     /// </summary>
-    public async Task<CreditsClaimSummary> ClaimDailyCreditsAsync(bool force = false,
+    public async Task<CreditsClaimSummary> ClaimDailyCreditsAsync(bool force = true,
         CancellationToken cancellationToken = default)
     {
         if (!Options.CreditsClaim.Enabled)
@@ -212,7 +222,7 @@ public sealed class EngineHost : ObservableObject, IEngineHost
             {
                 try
                 {
-                    await ClaimDailyCreditsAsync(force: false, cancellationToken).ConfigureAwait(false);
+                    await ClaimDailyCreditsAsync(force: Options.CreditsClaim.Force, cancellationToken).ConfigureAwait(false);
                 }
                 catch (Exception ex)
                 {

@@ -86,6 +86,11 @@ public static class XlsxTaskParser
         var firstDataRow = headerRow.RowNumber() + 1;
         var lastRow = worksheet.LastRowUsed()?.RowNumber() ?? firstDataRow - 1;
 
+        // 先扫描全表已填写的 id：自动生成的 id 必须避开它们，否则会与后续行的显式 id 撞车，
+        // 进而在 NormalizeAndValidateIds 抛「任务 ID 重复」导致整批加载失败（2026-10-18 现场）。
+        var usedIds = CollectExplicitIds(worksheet, columnMap, firstDataRow, lastRow);
+        var nextGeneratedIndex = 1;
+
         for (var r = firstDataRow; r <= lastRow; r++)
         {
             var row = worksheet.Row(r);
@@ -107,7 +112,7 @@ public static class XlsxTaskParser
 
             if (!hasId)
             {
-                id = MarkdownTaskParser.GenerateId(tasks.Count + 1);
+                id = NextFreeId(usedIds, ref nextGeneratedIndex);
                 issues.Add(new TaskFileIssue("info", id,
                     $"第 {r} 行缺少 id，已自动生成 {id}"));
             }
@@ -164,6 +169,41 @@ public static class XlsxTaskParser
         }
 
         return map;
+    }
+
+    /// <summary>收集表中所有显式填写（非空）的 id，供自动生成时避让。</summary>
+    private static HashSet<string> CollectExplicitIds(IXLWorksheet worksheet, Dictionary<string, int> map,
+        int firstDataRow, int lastRow)
+    {
+        var used = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!map.TryGetValue("id", out var idColumn))
+        {
+            return used;
+        }
+
+        for (var r = firstDataRow; r <= lastRow; r++)
+        {
+            var text = GetCellText(worksheet.Row(r).Cell(idColumn))?.Trim();
+            if (!string.IsNullOrEmpty(text))
+            {
+                used.Add(text);
+            }
+        }
+
+        return used;
+    }
+
+    /// <summary>取下一个未被占用的自动生成 id（task-00N），并立即登记为已占用。</summary>
+    private static string NextFreeId(HashSet<string> used, ref int nextIndex)
+    {
+        string id;
+        do
+        {
+            id = MarkdownTaskParser.GenerateId(nextIndex++);
+        }
+        while (!used.Add(id));
+
+        return id;
     }
 
     private static string? GetCell(IXLRow row, Dictionary<string, int> map, string canonical) =>

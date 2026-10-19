@@ -193,6 +193,7 @@ public sealed class LoginViewModel : ViewModelBase, IDisposable
     public void Refresh()
     {
         AgentKind = _host.Options.AgentKind;
+        OnPropertyChanged(nameof(ForceClaim));
         RebuildRows();
     }
 
@@ -213,6 +214,23 @@ public sealed class LoginViewModel : ViewModelBase, IDisposable
     {
         get => _newAccountDisplayName;
         set => SetProperty(ref _newAccountDisplayName, value);
+    }
+
+    /// <summary>
+    /// 强制领取（允许重复领取）：绑定到配置 <c>credits_claim.force</c>。
+    /// 勾选 = 默认行为，忽略台账去重、每次都去调领取接口；取消勾选恢复「同账号每日一次」去重跳过。
+    /// 变更即时写入配置。
+    /// </summary>
+    public bool ForceClaim
+    {
+        get => _host.Options.CreditsClaim.Force;
+        set
+        {
+            if (_host.Options.CreditsClaim.Force == value) return;
+            _host.Options.CreditsClaim.Force = value;
+            OnPropertyChanged(nameof(ForceClaim));
+            _ = _host.SaveConfigAsync();
+        }
     }
 
     public bool IsBusy
@@ -546,7 +564,7 @@ public sealed class LoginViewModel : ViewModelBase, IDisposable
 
         try
         {
-            var summary = await _host.ClaimDailyCreditsAsync(force: false, _cts.Token).ConfigureAwait(true);
+            var summary = await _host.ClaimDailyCreditsAsync(force: _host.Options.CreditsClaim.Force, _cts.Token).ConfigureAwait(true);
 
             foreach (var record in summary.Records)
             {

@@ -159,29 +159,21 @@ public sealed class BatchEngine : IBatchEngine
         ITaskFileStore taskStore,
         ICooldownStore cooldownStore,
         IRunLogger logger,
-        IClock? clock = null,
-        QuotaErrorClassifier? classifier = null,
-        ICredentialVault? credentialVault = null,
-        IEnumerable<NotificationRule>? notifications = null,
-        IDiffCollector? diffCollector = null,
-        IGitIntegration? git = null,
-        INotificationDispatcher? notificationDispatcher = null,
-        IMarkdownInPlaceWriter? markdownWriter = null,
-        GateEvaluator? gateEvaluator = null,
-        IProcessRunner? processRunner = null,
-        IFileSystem? fileSystem = null)
+        BatchEngineDependencies? dependencies = null)
     {
+        var deps = dependencies ?? new BatchEngineDependencies();
+
         _options = options;
         _adapter = adapter;
         _taskStore = taskStore;
         _cooldownStore = cooldownStore;
         _logger = logger;
-        _vault = credentialVault;
-        _notifications = notifications?.ToList() ?? options.Notifications?.ToList() ?? new List<NotificationRule>();
-        _notificationDispatcher = notificationDispatcher;
-        _gateEvaluator = gateEvaluator ?? new GateEvaluator(processRunner ?? new NullProcessRunner());
-        _clock = clock ?? new SystemClock();
-        _classifier = classifier ?? new QuotaErrorClassifier();
+        _vault = deps.CredentialVault;
+        _notifications = deps.Notifications?.ToList() ?? options.Notifications?.ToList() ?? new List<NotificationRule>();
+        _notificationDispatcher = deps.NotificationDispatcher;
+        _gateEvaluator = deps.GateEvaluator ?? new GateEvaluator(deps.ProcessRunner ?? new NullProcessRunner());
+        _clock = deps.Clock ?? new SystemClock();
+        _classifier = deps.Classifier ?? new QuotaErrorClassifier();
         _cooldowns = new QuotaCooldownRegistry(_clock, options.DefaultCooldown);
         _evaluator = new AvailabilityEvaluator(_cooldowns);
         _retryPolicy = new RetryPolicy
@@ -192,9 +184,9 @@ public sealed class BatchEngine : IBatchEngine
         };
         _matrix = new DegradationMatrix(options.Accounts, options.ModelCandidates, options.DegradationStrategy);
         _sessionPolicy = new SessionResumePolicy(options.EnableSessionResume);
-        _fileSystem = fileSystem ?? new SystemFileSystem();
+        _fileSystem = deps.FileSystem ?? new SystemFileSystem();
         _fallback = new FallbackBilling(_options, () => _matrix, _clock, Raise);
-        _gitWorkflow = new GitWorkflow(_options, diffCollector, git, markdownWriter, _logger);
+        _gitWorkflow = new GitWorkflow(_options, deps.DiffCollector, deps.Git, deps.MarkdownWriter, _logger);
         _report = new BatchReportBuilder(_clock, () => _options, () => _tasks, () => Status,
             () => _gitWorkflow.Diffs, BuildFallbackSummary);
         _notifier = new BatchNotifier(_options, _notifications, _notificationDispatcher, () => Status,

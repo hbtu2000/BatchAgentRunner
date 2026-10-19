@@ -33,8 +33,27 @@ public sealed class JsonCooldownStore : ICooldownStore
         try
         {
             var json = await File.ReadAllTextAsync(_filePath, cancellationToken).ConfigureAwait(false);
-            return JsonSerializer.Deserialize<List<QuotaCooldownRecord>>(json, JsonDefaults.Options)
+            var records = JsonSerializer.Deserialize<List<QuotaCooldownRecord>>(json, JsonDefaults.Options)
                    ?? new List<QuotaCooldownRecord>();
+
+            // 自愈：早期版本把整段 CLI 输出（可达数十 MB）塞进了 raw 字段，导致 cooldowns.json 膨胀、
+            // 引擎初始化变慢。读取时若发现超长 raw 就截断，并在确有变化时原子重写，使已膨胀的文件
+            // 在下次启动时自动瘦身（2026-10-18 现场：1 条记录 raw 19MB）。
+            if (records.Any(r => r.RawValue is { Length: > QuotaCooldownRecord.MaxRawChars }))
+            {
+                foreach (var r in records)
+                {
+                    if (r.RawValue is { Length: > QuotaCooldownRecord.MaxRawChars })
+                    {
+                        r.RawValue = "…(已截断，原文 " + r.RawValue.Length + " 字符)…\n"
+                                     + r.RawValue[^QuotaCooldownRecord.MaxRawChars..];
+                    }
+                }
+
+                await SaveAsync(records, cancellationToken).ConfigureAwait(false);
+            }
+
+            return records;
         }
         catch (JsonException)
         {

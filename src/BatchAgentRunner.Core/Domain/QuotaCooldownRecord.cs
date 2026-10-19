@@ -7,6 +7,12 @@ namespace BatchAgentRunner.Core.Domain;
 /// </summary>
 public sealed class QuotaCooldownRecord
 {
+    /// <summary>
+    /// <see cref="RawValue"/> 的持久化上限（字符数）。原始 CLI 输出可能达数十 MB（整段 JSONL 对话轨迹），
+    /// 全量落盘会让 cooldowns.json 膨胀、拖慢引擎初始化；仅保留尾部用于排障即可（错误通常靠近输出末尾）。
+    /// </summary>
+    public const int MaxRawChars = 4096;
+
     [JsonPropertyName("account_id")]
     public string AccountId { get; set; } = string.Empty;
 

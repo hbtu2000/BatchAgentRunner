@@ -94,13 +94,16 @@ public sealed class EngineFactory : IEngineFactory
             TaskFileStore,
             CooldownStore,
             logger,
-            credentialVault: credentialVault,
-            notifications: options.Notifications,
-            notificationDispatcher: dispatcher,
-            diffCollector: diffCollector,
-            git: new LocalGitIntegration(),
-            markdownWriter: new MarkdownInPlaceWriter(),
-            processRunner: new RealProcessRunner());
+            new BatchEngineDependencies
+            {
+                CredentialVault = credentialVault,
+                Notifications = options.Notifications,
+                NotificationDispatcher = dispatcher,
+                DiffCollector = diffCollector,
+                Git = new LocalGitIntegration(),
+                MarkdownWriter = new MarkdownInPlaceWriter(),
+                ProcessRunner = new RealProcessRunner()
+            });
     }
 
     /// <summary>构造 CLI 适配器（按当前执行工具）。</summary>

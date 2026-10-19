@@ -267,6 +267,14 @@ public sealed class CreditsClaimConfig
     [JsonPropertyName("auto_before_batch")]
     public bool AutoBeforeBatch { get; set; }
 
+    /// <summary>
+    /// 强制领取（默认 <c>true</c>）：true 时忽略台账去重，每次都去调领取接口（即「允许重复领取」；
+    /// 服务端若判定今日已领过会回「今日已领取过」，但不会在本地因去重而跳过）。
+    /// false 时恢复「同账号每日一次」去重语义：今日已领过的账号会被跳过。
+    /// </summary>
+    [JsonPropertyName("force")]
+    public bool Force { get; set; } = true;
+
     /// <summary>积分服务端 API 基址（实测值）。</summary>
     [JsonPropertyName("api_base")]
     public string ApiBase { get; set; } = "https://www.codebuddy.cn";

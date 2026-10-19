@@ -86,7 +86,7 @@ public sealed class FakeEngineHost : IEngineHost
     public Task<IReadOnlyList<TaskItem>> LoadTasksAsync() =>
         Task.FromResult<IReadOnlyList<TaskItem>>(Array.Empty<TaskItem>());
 
-    public Task<CreditsClaimSummary> ClaimDailyCreditsAsync(bool force = false,
+    public Task<CreditsClaimSummary> ClaimDailyCreditsAsync(bool force = true,
         CancellationToken cancellationToken = default) => Task.FromResult(new CreditsClaimSummary());
 
     public Task<PreflightReport> PreflightAsync() => Task.FromResult(new PreflightReport());

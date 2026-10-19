@@ -38,8 +38,8 @@ public class BatchEngineTests
         {
             Tasks = taskIds.Select(id => new TaskItem { Id = id, Instruction = "指令 " + id }).ToList()
         };
-        var engine = new BatchEngine(options, adapter, store, new InMemoryCooldownStore(), new NullRunLogger(), clock,
-            fileSystem: fileSystem);
+        var engine = new BatchEngine(options, adapter, store, new InMemoryCooldownStore(), new NullRunLogger(),
+            new BatchEngineDependencies { Clock = clock, FileSystem = fileSystem });
         if (adapter is MockAdapter mock)
         {
             mock.Clock = clock;
@@ -582,7 +582,7 @@ public class BatchEngineTests
             .ToList();
         var store = new ConcurrencyDetectingTaskFileStore(tasks);
         var engine = new BatchEngine(options, adapter, store, new InMemoryCooldownStore(), new NullRunLogger(),
-            new FakeClock(Noon));
+            new BatchEngineDependencies { Clock = new FakeClock(Noon) });
         await engine.InitializeAsync();
 
         var report = await engine.StartAsync();
