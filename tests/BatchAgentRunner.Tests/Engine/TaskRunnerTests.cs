@@ -38,11 +38,13 @@ public class TaskRunnerTests
     private static (TaskRunner Runner, List<BatchEvent> Events) Build(
         RunOptions options,
         IAgentCliAdapter adapter,
-        Func<RestoreCandidate, string?, CancellationToken, Task<bool>>? waitForRestore = null)
+        Func<RestoreCandidate, string?, CancellationToken, Task<bool>>? waitForRestore = null,
+        FakeClock? clock = null,
+        QuotaCooldownRegistry? cooldowns = null)
     {
         var events = new List<BatchEvent>();
-        var clock = new FakeClock(Noon);
-        var cooldowns = new QuotaCooldownRegistry(clock, options.DefaultCooldown);
+        clock ??= new FakeClock(Noon);
+        cooldowns ??= new QuotaCooldownRegistry(clock, options.DefaultCooldown);
         var matrix = new DegradationMatrix(options.Accounts, options.ModelCandidates, options.DegradationStrategy);
         var evaluator = new AvailabilityEvaluator(cooldowns);
         var retry = new RetryPolicy
@@ -248,19 +250,23 @@ public class TaskRunnerTests
         var clock = new FakeClock(Noon);
         var cooldowns = new QuotaCooldownRegistry(clock, TimeSpan.FromMinutes(60));
         var options = Options("m1");
+        // MockAdapter 必须复用同一 FakeClock：否则 Quota 的 ResetAt 会用真实时钟，
+        // 恢复点远在未来，引擎判定为「超出最长可等待」而直接阻塞，无法验证等待后继续。
         var adapter = new MockAdapter((req, attempt) =>
             req.Model.Name == "m1" && attempt == 1
                 ? MockStep.Quota(resetIn: TimeSpan.FromMinutes(30))
-                : MockStep.Ok("ok"));
+                : MockStep.Ok("ok"), clock: clock);
 
-        // WaitForRestore：推进时钟越过重置点并清除过期冷却，使下一轮可重新选中 m1
+        // WaitForRestore：推进【引擎所用】时钟越过重置点并清除过期冷却，使下一轮可重新选中 m1
         var (runner, _) = Build(options, adapter,
             waitForRestore: (_, _, _) =>
             {
                 clock.Advance(TimeSpan.FromMinutes(31));
                 cooldowns.PurgeExpired(clock.Now);
                 return Task.FromResult(true);
-            });
+            },
+            clock: clock,
+            cooldowns: cooldowns);
         var task = NewTask("t-1");
 
         var outcome = await runner.RunSafeAsync(task, CancellationToken.None);

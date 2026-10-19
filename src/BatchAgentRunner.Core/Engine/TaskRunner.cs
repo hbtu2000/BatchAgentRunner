@@ -245,6 +245,23 @@ public sealed class TaskRunner : ITaskRunner
                         return TaskOutcome.Blocked;
                     }
 
+                    // 防御性终止：若等待返回成功，但时钟并未推进到恢复点、且仍无任何可用组合，
+                    // 说明 WaitForRestore 未实际推进时间（测试假实现异常 / 时钟未前进 / 调度异常）。
+                    // 继续 continue 会无限自旋、持续累积「组合跳过」事件直至内存耗尽并触发 CLR 致命错（0x80131506）。
+                    // 生产环境的 WaitForRestoreAsync 总会推进时钟或提前发现可用组合，不会命中此分支；此处仅兜底，避免空转。
+                    var nowAfterWait = _ctx.Clock.Now;
+                    var anyAvailableAfterWait = _ctx.MatrixProvider().SelectFirst(nowAfterWait, _ctx.Evaluator).Found;
+                    if (!anyAvailableAfterWait && nowAfterWait < earliest!.RestoreAt)
+                    {
+                        await MarkInterrupted(task,
+                            $"等待恢复后无进展（时钟未推进至 {earliest.RestoreAt:HH:mm} 且无可用组合），判为阻塞以避免无限空转").ConfigureAwait(false);
+                        _ctx.SetStatus(BatchStatus.Blocked);
+                        _ctx.RaiseBlocked(
+                            $"等待恢复后无进展，批处理已暂停（疑似 WaitForRestore 未实际推进时间），最早恢复 {earliest.RestoreAt:HH:mm}",
+                            task.Id);
+                        return TaskOutcome.Blocked;
+                    }
+
                     continue;
                 }
             }

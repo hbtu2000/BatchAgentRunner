@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 using BatchAgentRunner.Core.Options;
 
@@ -67,6 +68,12 @@ public static class PromptClassifier
 
     private sealed record ChoiceOption(string Key, string Label);
 
+    // RegexOptions.Compiled 会把正则编译进一个「动态程序集」，且该程序集在进程/AppDomain 卸载前永不回收。
+    // 若每次调用都 new，长时间 CLI 会话里 Classify 被反复调用会累积成百上千个动态程序集，撑爆加载器堆，
+    // 最终在程序集卸载/进程退出时触发 Internal CLR error（0x80131506）一类致命崩溃。
+    // 因此按 pattern 缓存编译后的 Regex 实例，复用同一动态程序集。
+    private static readonly ConcurrentDictionary<string, Regex> ChoiceRegexCache = new();
+
     private static bool TryExtractChoices(string text, string pattern, out IReadOnlyList<ChoiceOption> choices)
     {
         choices = Array.Empty<ChoiceOption>();
@@ -77,7 +84,8 @@ public static class PromptClassifier
 
         try
         {
-            var regex = new Regex(pattern, RegexOptions.Multiline | RegexOptions.Compiled);
+            var regex = ChoiceRegexCache
+                .GetOrAdd(pattern, p => new Regex(p, RegexOptions.Multiline | RegexOptions.Compiled));
             var list = new List<ChoiceOption>();
             foreach (Match m in regex.Matches(text))
             {
