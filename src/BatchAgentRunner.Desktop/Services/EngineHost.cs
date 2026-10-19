@@ -10,7 +10,6 @@ using BatchAgentRunner.Core.Options;
 using BatchAgentRunner.Desktop.Composition;
 using BatchAgentRunner.Desktop.Views;
 using BatchAgentRunner.Infrastructure.CredentialVault;
-using BatchAgentRunner.Infrastructure.Platform;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace BatchAgentRunner.Desktop.Services;
@@ -29,8 +28,11 @@ public sealed class EngineHost : ObservableObject, IEngineHost
     /// <summary>组合根：集中 new 全部 Infrastructure/Agents 具体类型（§4.3 唯一豁免位置）。</summary>
     private readonly EngineFactory _factory = new();
 
-    /// <summary>自动关机协调器（REQ-015 / P0-10）：负责触发条件判定与可撤销倒计时策略，Desktop 只提供倒计时窗口。</summary>
-    private readonly AutoShutdownCoordinator _shutdownCoordinator = new(new ShutdownService());
+    /// <summary>
+    /// 自动关机协调器（REQ-015 / P0-10）：负责触发条件判定与可撤销倒计时策略，Desktop 只提供倒计时窗口。
+    /// <see cref="IShutdownService"/> 实现由组合根装配（P1-4/P1-5 收口：宿主不再自行 new Infrastructure 具体类型）。
+    /// </summary>
+    private readonly AutoShutdownCoordinator _shutdownCoordinator;
 
     private IBatchEngine? _engine;
     private IRunLogger? _logger;
@@ -39,6 +41,7 @@ public sealed class EngineHost : ObservableObject, IEngineHost
 
     public EngineHost()
     {
+        _shutdownCoordinator = EngineFactory.CreateShutdownCoordinator();
         Options = EngineFactory.CreateSampleRunOptions();
     }
 
@@ -48,6 +51,9 @@ public sealed class EngineHost : ObservableObject, IEngineHost
 
     /// <summary>凭证 Vault 宿主（DESIGN-账号凭证切换-v1.0）。Vault 本体随引擎生命周期复用。</summary>
     public CredentialVaultHost VaultHost => _factory.VaultHost;
+
+    /// <summary>工作流模板库（P1-4/P1-5 收口：UI 只经接口访问，实现由组合根装配）。</summary>
+    public IWorkflowTemplateStore TemplateStore => _factory.TemplateStore;
 
     public BatchStatus Status
     {

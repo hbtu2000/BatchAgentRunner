@@ -4,7 +4,7 @@
 > 盘点范围：`src/**`（117 文件 / 18,119 行）、`tests/**`（32 文件 / 5,845 行）、全部工程配置、git 历史（12 提交）  
 > 事实基线：net10.0 / Avalonia 12.1.4 / CommunityToolkit.Mvvm 8.4.2，**无 CI、无门禁、无 CPM**
 >
-> **当前进度（2026-10-19）**：阶段 −1（B 组 5 项）、阶段 0（A 组 10 项 + P0-17）、阶段 1（建网 6 项）**均已完成**；P0 清单 17 项全部清偿，全量构建 0 警告 / 0 错误（`TreatWarningsAsErrors=true`），全量测试 345 通过 / 0 失败。**阶段 2 动骨已大部分完成（2026-10-18 ~ 2026-10-19）**：P1-3（提 `IBatchEngine` + 窄化构造）、P1-4/P1-5（DI + `IEngineFactory`/`IEngineHost`）、P1-9（`IProcessRunner`）、P1-10（`IFileSystem`）、P1-16（取消静态注册表）、P1-1（拆 6 协作者）、P1-2（状态机外置）均已提交；仅 P1-19（Desktop 补测试）待做。P1-3 为本轮重点，配套 §4.3 断言与 `BatchEnginePhase2Tests` 契约测试已落地，详见 §5.5。
+> **当前进度（2026-10-19）**：阶段 −1（B 组 5 项）、阶段 0（A 组 10 项 + P0-17）、阶段 1（建网 6 项）**均已完成**；P0 清单 17 项全部清偿，全量构建 0 警告 / 0 错误（`TreatWarningsAsErrors=true`）。**阶段 2 动骨已大部分完成（2026-10-18 ~ 2026-10-19）**：P1-3（提 `IBatchEngine` + 窄化构造）、P1-9（`IProcessRunner`）、P1-10（`IFileSystem`）、P1-16（取消静态注册表）、P1-1（拆 6 协作者）、P1-2（状态机外置）均已提交；**P1-4/P1-5 已收口（2026-10-19）**——`Desktop/Composition/EngineFactory` 成为 Desktop 中唯一 `new` Infrastructure/Agents 具体类型的位置（原 `CredentialVaultHost.CreateDefault`、`EngineHost` 的 `ShutdownService`、`TemplateEditorViewModel` 的 `FileWorkflowTemplateStore` 三处残留装配全部收回组合根），§4.3「Desktop 不得直接 `new` Infrastructure 具体类型」IL 扫描断言落地（Desktop.Tests 3/3 通过）。仅 P1-19（Desktop 补测试）待做。P1-3 为本轮重点，配套 §4.3 断言与 `BatchEnginePhase2Tests` 契约测试已落地，详见 §5.5。测试基线（2026-10-19 实跑）：主测试项目 **402 用例**（快 375 / 慢 27）+ Desktop.Tests **39 用例** = **441 通过 / 0 失败**；快速 bucket 跑完后测试宿主进程退出时崩溃的老问题仍在（见 §5.5 边界）。
 
 ---
 
@@ -17,7 +17,7 @@
 | **批准日期**   | 2026-10-18                                                                           |
 | **批准范围**   | 全文：阶段 −1 / 0 / 1 执行记录、阶段 2 / 3 路线图、§3 偿还策略、§4 防新增六道墙与逃逸阀台账、附录 A/B                    |
 | **效力说明**   | 自批准日起，本方案为 BatchAgentRunner 技术债务治理的**权威基线**；任何后续变更须按 §4.6 债务预算与 §4.7 逃逸阀规则登记，不得口头覆盖。 |
-| **当前进度基线** | 阶段 −1 / 0 / 1 已完成，P0 清单 17 项全部清偿；阶段 2 动骨大部分完成（P1-3/4/5/9/10/16、P1-1 拆 6 协作者、P1-2 已提交），仅 P1-19 待做（详见 §2 / §5.5）。 |
+| **当前进度基线** | 阶段 −1 / 0 / 1 已完成，P0 清单 17 项全部清偿；阶段 2 动骨大部分完成（P1-3/4/5/9/10/16、P1-1 拆 6 协作者、P1-2 已提交），仅 P1-19 待做（详见 §2 / §5.5）。P1-4/P1-5 于 2026-10-19 收口：组合根 `EngineFactory` 为 Desktop 唯一 `new` 点，§4.3 对应 IL 断言落地。 |
 
 ---
 
@@ -99,8 +99,8 @@ v1.0 的 P0 缺陷清单经本版实测复核**全部仍然成立**（重点复�
 | P1-1  | `BatchEngine.cs` 1960 行 God Object，16 类职责（变更放大器）                                                                                                                  | 重构（拆 6 协作者，见 §3.4）✅ 阶段 2 已完成（2026-10-19：ITaskDispatcher / ITaskRunner / IFallbackBilling / IGitWorkflow / IBatchReportBuilder+IBatchNotifier / IPreflight，见 §5.5） |
 | P1-2  | `ExecuteTaskAsync` 249 行 / `PreflightAsync` 196 行，`while(true)+switch+goto case`                                                                                  | 重构（状态机外置）✅ 阶段 2 已完成（2026-10-19：单任务状态机抽至 ITaskRunner/TaskRunner，见 §5.5）                                                                                                                                        |
 | P1-3  | `BatchEngine` 为 `sealed` 且无 `IBatchEngine` 接口，14 参数构造                                                                                                             | 重构（提接口，P1-1 的前置）✅ 阶段 2 已完成（2026-10-19：提 `IBatchEngine` + 构造由 14 参数窄化为「5 必需 + 1 可选 `BatchEngineDependencies` 聚合」，配套 §4.3 断言与 `BatchEnginePhase2Tests` 契约测试，见 §5.5） |
-| P1-4  | UI 层直引 Infrastructure/Agents 并 `new` 全部实现类 → **UI 成为组合根**（架构倒置）                                                                                                   | 重构（Core 暴露 `IEngineFactory` + DI）✅ 阶段 2 已完成（2026-10-19：引入 `IEngineFactory`/`IEngineHost`，组合根下沉 EngineFactory，见 §5.5）                                                                              |
-| P1-5  | 无 DI 容器，手工 `new` 7 个 VM + `EngineHost`（sealed 无接口）                                                                                                                | 重构（与 P1-4 合并）✅ 阶段 2 已完成（2026-10-19，随 P1-4，见 §5.5）                                                                                                                                                |
+| P1-4  | UI 层直引 Infrastructure/Agents 并 `new` 全部实现类 → **UI 成为组合根**（架构倒置）                                                                                                   | 重构（Core 暴露 `IEngineFactory` + DI）✅ 阶段 2 已完成并收口（2026-10-19：引入 `IEngineFactory`/`IEngineHost`，组合根下沉 EngineFactory；收口将三处残留装配——`CredentialVaultHost.CreateDefault`、`EngineHost` 的 `ShutdownService`、`TemplateEditorViewModel` 的 `FileWorkflowTemplateStore`——全部收回组合根，§4.3「Desktop 不得直接 new Infrastructure 具体类型」IL 扫描断言落地，见 §5.5）                                                                              |
+| P1-5  | 无 DI 容器，手工 `new` 7 个 VM + `EngineHost`（sealed 无接口）                                                                                                                | 重构（与 P1-4 合并）✅ 阶段 2 已完成并收口（2026-10-19，随 P1-4：`EngineHost` 实现 `IEngineHost` 契约，页面 VM 只依赖接口；模板库等端口经宿主暴露（`IWorkflowTemplateStore`），`FakeEngineHost` 测试替身同步扩容，见 §5.5）                                                                                                                                                |
 | P1-6  | `MainViewModel.cs:20`、`EngineHost.cs:136` `GetAwaiter().GetResult()` 同步阻塞                                                                                         | 重构（异步初始化门）                                                                                                                                                                                                                                      |
 | P1-7  | 事件 lambda 订阅**全程无 `-=`**，行 VM 被长生命周期 `TaskItem` 永久持有                                                                                                              | 重构（弱事件 / Dispose）                                                                                                                                                                                                                               |
 | P1-9  | `Core/Scheduling/GateEvaluator.cs:114-170` 在 Core 层直接 `new Process()` + `cmd.exe /c "{cmd}"`                                                                      | 隔离（抽 `IProcessRunner` 至 Infrastructure）✅ 阶段 2 已完成（2026-10-19，见 §5.5）                                                                                                                                                  |
@@ -206,7 +206,7 @@ P0-17 Desktop 补测试引用 + 首批冒烟（与上面并行，为阶段 2 铺
 ```
 P1-3 提 IBatchEngine 接口 + 窄化构造      ← 必须先做，否则无法增量验证      ✅ 已完成（2026-10-19）
    ↓
-P1-4/P1-5 引入 DI + IEngineFactory（解除 UI→Infrastructure 倒置）        ✅ 已完成（2026-10-19）
+P1-4/P1-5 引入 DI + IEngineFactory（解除 UI→Infrastructure 倒置）        ✅ 已完成（2026-10-19 提交 `5d0fb14`/`192eec6`；同日收口：三处残留装配收回组合根 + §4.3 IL 扫描断言落地，见 §5.5）
    ↓
 P1-9  IProcessRunner 抽离（把进程 IO 赶出 Core）                          ✅ 已完成（2026-10-19）
 P1-10 引擎内 IO 全部走 ITaskFileStore                                      ✅ 已完成（2026-10-19）
@@ -358,16 +358,18 @@ P1-19 Desktop 补测试 + 契约收敛                                          
 
 用 ArchUnitNET 把分层规则固化为**测试**，而不是文档约定：
 
-| 断言                                                                       | 防什么                |
-| ------------------------------------------------------------------------ | ------------------ |
-| `Core` 不得引用 `Infrastructure`/`Agents`/`Desktop`                          | 防 P1-4/P1-9 类倒置复发  |
-| `Core` 命名空间下不得出现 `System.Diagnostics.Process`                            | 防 Core 再起进程        |
-| `Core`/`Infrastructure` 不得出现 `Avalonia.*`                                | 防 P2-7 类 UI 契约反向侵入 |
-| `Desktop` 不得直接 `new` Infrastructure 具体类型（须经接口）                           | 防 P1-4 复发          |
-| `Desktop` 除组合根 `EngineFactory` 外不得直接引用 `BatchEngine` 具体类型（须走 `IBatchEngine`） | 防 P1-3 过渡期「新代码直引 BatchEngine 内部」复发 |
-| `Domain` 下不得出现 `INotifyPropertyChanged`                                  | 防 P2-7 扩散          |
-| 生产程序集不得出现 `FakeClock`/`Mock*` 类型                                         | 防 P2-8 测试替身进生产     |
-| `Catch (Exception)` 占比不得上升（基线 42/79 = 53%，2026-10-18 复测；盘点时 37/69 = 54%） | 防吞异常继续扩散           |
+| 断言                                                                       | 防什么                | 落地状态（2026-10-19）                                                                               |
+| ------------------------------------------------------------------------ | ------------------ | ---------------------------------------------------------------------------------------------- |
+| `Core` 不得引用 `Infrastructure`/`Agents`/`Desktop`                          | 防 P1-4/P1-9 类倒置复发  | ✅ `LayeringRulesTests`（Core.Tests，程序集引用反射）                                                          |
+| `Core` 命名空间下不得出现 `System.Diagnostics.Process`                            | 防 Core 再起进程        | ✅ `LayeringRulesTests`（Core.Tests，成员 + IL 局部变量反射；P1-9 落地）                                                  |
+| `Core`/`Infrastructure` 不得出现 `Avalonia.*`                                | 防 P2-7 类 UI 契约反向侵入 | ⏳ 可按程序集引用低成本实现，留待 ArchUnitNET 批次（§4.9 迭代 2/3）                                                        |
+| `Desktop` 不得直接 `new` Infrastructure 具体类型（须经接口）                           | 防 P1-4 复发          | ✅ `LayeringRulesTests`（Desktop.Tests，IL 扫描 `newobj`/`newarr` 并解析 token；2026-10-19 P1-4/P1-5 收口时落地）                  |
+| `Desktop` 除组合根 `EngineFactory` 外不得直接引用 `BatchEngine` 具体类型（须走 `IBatchEngine`） | 防 P1-3 过渡期「新代码直引 BatchEngine 内部」复发 | ✅ `LayeringRulesTests`（Desktop.Tests，成员 + IL 局部变量反射；P1-3 收口）                                          |
+| `Domain` 下不得出现 `INotifyPropertyChanged`                                  | 防 P2-7 扩散          | ⏳ 留待 ArchUnitNET 批次（§4.9 迭代 2/3）                                                                    |
+| 生产程序集不得出现 `FakeClock`/`Mock*` 类型                                         | 防 P2-8 测试替身进生产     | ⏳ 留待 ArchUnitNET 批次（§4.9 迭代 2/3）                                                                    |
+| `Catch (Exception)` 占比不得上升（基线 42/79 = 53%，2026-10-18 复测；盘点时 37/69 = 54%） | 防吞异常继续扩散           | ⏳ 需计数基建；当前靠 PR 评审清单人工兜底（§4.5）                                                                          |
+
+> 「Desktop 不得直接 new」断言的实现口径（2026-10-19）：用反射自建最小 IL walker（`OpCodes` 反射建查表，逐指令步进），扫描 Desktop 程序集全部方法体（含构造器 / 属性访问器 / 编译器生成的闭包与异步状态机）中的 `newobj` / `newarr`，解析元数据 token 得目标类型；`Desktop.Composition` 命名空间（组合根）为唯一豁免。**按规则本意排除委托实例化**：捕获型 lambda 会被编译器转换为 `newobj`（如 `CredentialVaultHost.GuidedLoginAsync` 把校验回调传给 `RunAsync`），源码并无 `new`，且回调委托类型是协作者签名强制的契约、无法按「须经接口」替换——规则目标是「UI 不得实例化 Infrastructure/Agents 实现类」，不覆盖编译器产物。
 
 ### 4.4 第四道墙：复杂度门禁（CI 不过）
 
@@ -424,7 +426,7 @@ P1-19 Desktop 补测试 + 契约收敛                                          
 | 5 | `NoWarn CA2007`（await 须 ConfigureAwait）               | 两个测试 csproj                                              | 测试项目专用：与 xUnit 自家 `xUnit1030` 直接冲突——xUnit 明确建议测试方法**省略** `ConfigureAwait`（可 bypass 并行化限制）；故阶段 1 同步删除了测试中全部 `ConfigureAwait(false)`                                        | 长期有效 / 工程            |
 | 6 | `NoWarn CA1861`（常量数组提 static readonly）                | 两个测试 csproj                                              | 测试项目专用：该规则针对生产热路径的重复分配；测试期望值数组一次性使用且内容各异，提字段损害可读性且无性能收益                                                                                                                   | 长期有效 / 工程            |
 | 7 | `[SuppressMessage] CA1720`（`ExpertKind.Single` 含类型名）  | `Core/Domain/ExpertRef.cs`                               | 持久化兼容：`ExpertKind` 经 `JsonStringEnumConverter` 以字符串形式随用户模板落盘，重命名破坏既有模板（同 `RunOptions` 契约保护原则）                                                                             | 长期有效 / 工程            |
-| 8 | `[SuppressMessage] CA1859`（接口字段/返回改具体类型）              | `Desktop/Services/EngineHost.cs`（3 处）                    | 架构方向：接口类型是 P1-4/P1-5「UI 只依赖 Core 抽象 + DI 化」的目标形态，拒绝为微性能向具体类型回退                                                                                                            | P1-4/P1-5 完成后复核 / 工程 |
+| 8 | `[SuppressMessage] CA1859`（接口字段/返回改具体类型）              | `Desktop/Composition/EngineFactory.cs`（1 处）+ `Core/Engine/BatchEngine.cs`（6 处，P1-1 协作者测试缝） | 架构方向：接口类型是 P1-4/P1-5「UI 只依赖 Core 抽象 + DI 化」的目标形态，拒绝为微性能向具体类型回退（P1-4/P1-5 收口后 EngineHost 已无此类豁免，余下两处为组合根返回类型与协作者测试缝） | **2026-10-19 收口时已复核：保留（长期有效）/ 工程** |
 | 9 | `dotnet format` CHARSET 类诊断过滤（pre-commit 钩）           | `.githooks/pre-commit`（`grep -v 'error CHARSET'`）        | SDK 10.0.401 回归：`Directory.Build.props` 的 `CodePage=65001`（中文源码跨代码页编译所需，保留）触发 CharsetFixer 对全部 .cs 文件误报，且修复器为空操作（最小复现：同内容去掉 CodePage 即 0 误报）。钩子改用显式 `iconv` UTF-8 有效性校验补偿 | SDK 修复该回归后移除过滤 / 工程  |
 
 > 说明：P2-30 登记的 `.editorconfig` CA1002 与 `#pragma` SYSLIB0014 在阶段 1 的警告清零中**保留原样**（不属 CA 警告类），正式登记为本表 #1/#2。
@@ -435,18 +437,18 @@ P1-19 Desktop 补测试 + 契约收敛                                          
 
 | 指标                     | 当前基线（实测）                                                                                                                                                                   | 目标方向     |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| 最大文件行数                 | **1036**（`BatchEngine.cs` 经 P1-1 拆分由 1960 降至 1036，仍为最大文件）                                                                                                                            | ↓        |
-| 最大方法行数                 | 249（P1-1/P1-2 拆分后预期下降，待精确复测）                                                                                                                                                 | ↓        |
-| 全量构建警告数                | **0**（2026-10-18 阶段 1 清零：P0-12 完成，`TreatWarningsAsErrors=true` 生效，任何新增警告即构建失败）                                                                                             | → 0 并保持  |
+| 最大文件行数                 | **1065**（`ConfigViewModel.cs`，Desktop；2026-10-19 复测——`BatchEngine.cs` 经 P1-1 拆分降至 1036 后不再是最大文件， Desktop 长文件成为新头部）                                                                                          | ↓        |
+| 最大方法行数                 | **287**（`TaskRunner.ExecuteTaskAsync`，2026-10-19 复测；P1-2 将状态机从 BatchEngine 外置但未再做方法内拆分，仍超 §4.4 阈值 60——登记为阶段 3 / 机会主义偿还候选）                                                                                                | ↓        |
+| 全量构建警告数                | **0**（2026-10-18 阶段 1 清零：P0-12 完成，`TreatWarningsAsErrors=true` 生效，任何新增警告即构建失败；2026-10-19 P1-4/P1-5 收口后复测仍 0）                                                                             | → 0 并保持  |
 | `catch (Exception)` 占比 | **src 44 处**（2026-10-19 复测，较阶段 1 的 42 略升；占比分母随 P1-1 拆分变化，待精确复算）                                                                                  | ↓        |
 | 高危模块零覆盖数               | 7 → **4**（阶段 1 补齐 XlsxTaskParser/Writer、CliCommandBuilder、DangerousOperationGuard；余 CodeBuddyCreditsApiClient / BackupManager / LocalGitIntegration / ShutdownService 4 项） | ↓ 至 0    |
-| Desktop 测试数            | **13**（阶段 0 首批冒烟 12 项 + 阶段 1 增 P1-20 ConvertBack 不变量 1 项，见 P0-17）                                                                                                          | ↑        |
+| Desktop 测试数            | **39 用例**（2026-10-19 实跑 Desktop.Tests 全绿：架构断言 3 + VM 白箱（Config/ConfigHub/Report/TemplateEditor）+ 转换器 / 多值文本；阶段 2 随 P1-19 铺路从 13 增长）                                                              | ↑        |
 | 空提交信息数 / 迭代            | 10/12 历史；阶段 −1 起由 commit-msg 钩强制「非空 + 含改了什么/为什么」                                                                                                                           | → 0 并保持  |
 | 误提交产物数                 | 10；阶段 −1 已 `git rm --cached` 并 ignore，当前 0                                                                                                                                 | → 0 并保持  |
 | P0 未偿数                 | 17 → 阶段 −1 完成 5 项、阶段 0 完成 11 项、阶段 1 完成最后 1 项（P0-12），当前 **0**                                                                                                               | → 0 并保持  |
 | 每迭代**新增**债务数           | 未采集（阶段 −1 起采集）                                                                                                                                                             | → 趋 0    |
 | churn 热点 Top3          | `BatchEngine.cs`(4)、`RunOptions.cs`(4)、`ConfigView.axaml`(4)                                                                                                               | 热点应随拆分下降 |
-| 测试总数                   | **403 个测试方法**（阶段 2 新增约 58：BatchEnginePhase2Tests 14 + BatchCollaboratorTests 12 + BatchEngineGitIntegrationTests 5 + 架构断言 2 + 协作者白箱等；实际用例数待 CI 复跑——本环境 `dotnet test` 测试宿主崩溃，见 §5.5） | ↑        |
+| 测试总数                   | **441 用例通过 / 0 失败**（2026-10-19 实跑：主测试项目 402 = 快 375 + 慢 27，Desktop.Tests 39；取代原 403 估算——原估算口径为测试方法数且未含 Desktop 增长，实跑以 CI 复跑为准）                                                       | ↑        |
 
 > **台账登记改用不变量描述，不用行号**。例：P0-1 登记为「`TryFallbackAsync` 中 `cost` 必须被 `MaxCostPerTask` 截断」并配断言测试。理由：既有审查报告记录 `:1011`，实测已漂移到 `:1406`，行号型台账必然失效。
 
@@ -526,22 +528,23 @@ A 组 10 项互不耦合，与 P0-17 并行完成。代码改动均随既有工�
 
 ### 5.5 阶段 2（2026-10-18 ~ 2026-10-19，动骨）
 
-> **本轮重点：P1-3（提 `IBatchEngine` 接口 + 窄化构造）**。P1-3 是 strangler fig 的前置：先有稳定接口面，后续每个拆分步骤才能以「接口契约不变」增量验证。P1-3 的改造（接口提取 + 构造窄化 + 契约测试）已在 prior session 提交（`1ff7c4e`），本轮（2026-10-19）补齐其配套 **§4.3 架构断言**并使文档与代码一致。
+> **本轮重点：P1-3（提 `IBatchEngine` 接口 + 窄化构造）**。P1-3 是 strangler fig 的前置：先有稳定接口面，后续每个拆分步骤才能以「接口契约不变」增量验证。P1-3 的改造（接口提取 + 构造窄化 + 契约测试）已在 prior session 提交（`1ff7c4e`），本轮（2026-10-19）补齐其配套 **§4.3 架构断言**并使文档与代码一致。**同轮次完成 P1-4/P1-5 收口**（见下表「P1-4/P1-5 收口」行）：`5d0fb14` 引入 `IEngineFactory`/`IEngineHost` 时组合根并未真正唯一——`CredentialVaultHost.CreateDefault` 等三处仍在 Desktop 层自行 `new` Infrastructure 具体类型，且 §4.3 表格中「Desktop 不得直接 new」断言一直未落地；本轮将装配全部收回组合根并补上该断言，P1-4/P1-5 才真正完成。
 
-**验证统一口径**：`dotnet build --no-incremental` = **0 警告 / 0 错误**（全仓，含新增断言）；`dotnet test …LayeringRulesTests` 通过（2026-10-19 实跑：Desktop.Tests 架构断言 2/2 通过）。**完整测试套件在本环境无法复跑**——`dotnet test` 测试宿主进程崩溃（疑似 E2E 启动进程所致）；现按 **403 个测试方法**登记，实际用例数待 CI 复跑（见 §4.8「测试总数」）。
+**验证统一口径（2026-10-19 收口轮实跑）**：`dotnet build --no-incremental` = **0 警告 / 0 错误**（全仓，含新增断言）；`dotnet test tests/BatchAgentRunner.Desktop.Tests` = **39 通过 / 0 失败**（含架构断言 3/3）；主测试项目分层实跑 = **402 通过 / 0 失败**（快 375 + 慢 27）。**已知环境问题**：主测试项目快速 bucket 跑完（375 全过）后测试宿主进程在退出时崩溃（与全量跑同源，疑似进程类测试残留），结论以「已执行用例全绿」为准；慢速 bucket 可完整跑完。
 
 | ID        | 落地内容                                                                                                                                                                                                                                                                                                    | 验证 / 提交                                                                                                                                                    |
 | --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | P1-3      | 提 `IBatchEngine` 目标接口（`Core/Abstractions/IBatchEngine.cs`，接口面与 `BatchEngine` 公共面严格一致，`IDisposable`）；`BatchEngine` 改为 `sealed class BatchEngine : IBatchEngine`；构造由 14 参数窄化为「5 必需（`RunOptions`/`IAgentCliAdapter`/`ITaskFileStore`/`ICooldownStore`/`IRunLogger`）+ 1 可选 `BatchEngineDependencies` 聚合」，聚合成员 `null` = 用默认实现，纯签名重构、行为不变 | 提交 `1ff7c4e`；`BatchEnginePhase2Tests`（14 方法）锁定公开行为；本轮新增 §4.3 断言（`Desktop` 除组合根 `EngineFactory` 外不得直引 `BatchEngine` 具体类型）通过 |
 | P1-4/P1-5 | 引入 `IEngineFactory`/`IEngineHost`，组合根下沉到 `Desktop/Composition/EngineFactory`（唯一允许 `new` Infrastructure/Agents 具体类型与 `new BatchEngine` 的位置）；`EngineHost` 只持 `IBatchEngine`                                                                                                                                        | 提交 `5d0fb14`（`192eec6` 配套 §4.3 断言：`EngineHost` 不得持 Infrastructure/Agents 具体类型）                                                               |
+| P1-4/P1-5 收口 | **组合根唯一化**：`5d0fb14` 后仍有三处「第二组合根」残留——① `CredentialVaultHost.CreateDefault`（5 个 Infrastructure/Agents `new`）→ 装配上移 `EngineFactory.CreateVaultHost`，宿主改纯构造注入，`Orchestrator` 收敛为 private（不再经 `IEngineHost` 泄漏 Infrastructure 具体类型）；② `EngineHost` 的 `new(new ShutdownService())` → 改 `EngineFactory.CreateShutdownCoordinator()`；③ `TemplateEditorViewModel` 的 `new FileWorkflowTemplateStore()` → 改经 `IEngineHost.TemplateStore`（`IWorkflowTemplateStore` 端口，`FakeEngineHost` 补零 IO 桩）。**§4.3 断言落地**：新增「Desktop 除组合根外不得直接 new Infrastructure/Agents 具体类型」IL 扫描断言（反射 `OpCodes` 自建 walker，覆盖构造器/访问器/闭包/异步状态机；捕获型 lambda 的委托实例化按规则本意排除） | 2026-10-19；Desktop.Tests 39/39（新断言 3/3）、主测试 402/402、全量构建 0 警告 / 0 错误；`dotnet format` 本轮文件 0 问题 |
 | P1-9      | 抽 `IProcessRunner` 至 Infrastructure，把进程 IO 赶出 Core（GateEvaluator 不再直拉 `cmd.exe`）                                                                                                                                                                                                                    | 提交 `e1d82c8`                                                                                                                                                |
 | P1-10     | 引擎内 IO 全走抽象：引 `IFileSystem` 端口（`BatchEngineDependencies.FileSystem`），`BatchEngine` 零直接 IO                                                                                                                                                                                            | 提交 `13aed90`                                                                                                                                                |
 | P1-16     | 取消 `CredentialLocationRegistry` 静态覆写：改为显式注入实例服务，`CredentialLocationRegistry` 仅保留一次性实例                                                                                                                                                                                          | 提交 `6ca29c0`                                                                                                                                                |
 | P1-1      | 按 **6** 协作者拆分（原路线图记 5，实际多抽出一个 `IPreflight`）：`ITaskDispatcher`（派发主循环/受控并发/DAG）、`ITaskRunner`（单任务状态机+终态写入+兜底计费+凭证/组合切换）、`IFallbackBilling`（兜底成本/用量）、`IGitWorkflow`（建分支/开 PR/Diff/Markdown 回写）、`IBatchReportBuilder`+`IBatchNotifier`（报告/通知）、`IPreflight`（启动前预检） | 提交 `0e5aba5`/`b43a65a`/`afc6943`/`1f0caa6`/`3d76083`（协作者白箱测试 `b372d60`/`0b7c194`）；`BatchEngine` 由 1960 行降至 1036 行                             |
 | P1-2      | 状态机外置：单任务状态机（重试/退避/降级/超时+终态写入）抽至 `ITaskRunner`/`TaskRunner`，`BatchEngine` 仅保留批处理级协调（落盘单写者、waiting 门、状态广播）                                                                                                                                                          | 提交 `e7c9eb9`                                                                                                                                                |
-| P1-19     | ⏳ **未做**（阶段 2 唯一剩余项）：Desktop 补测试 + 契约收敛（原 churn 热点，零测试）                                                                                                                                                                                                                | 留作下一轮；路线图见 §2                                                                                                                                              |
+| P1-19     | ⏳ **未做**（阶段 2 唯一剩余项）：Desktop 补测试 + 契约收敛（原 churn 热点，零测试）；阶段 2 已铺路：`IEngineHost` 替身（`FakeEngineHost`）+ VM 白箱 + 架构断言共 39 用例，Avalonia headless 基座与线程收敛契约仍未补                                                                                                                        | 留作下一轮；路线图见 §2                                                                                                                                              |
 
-> 阶段 2 边界（交接必读）：① 路线图原计划 P1-1「拆 5 协作者」，实际抽了 **6** 个（多一个 `IPreflight`），`BatchEngine` 外壳仍保留为 `IBatchEngine` 门面，对外契约不变，可整体回退。② 构造窄化是纯签名重构：可选依赖聚合 `null` 语义与原逐个 `?? new …` 回退严格一致，行为零变化。③ 全量测试在本环境无法复跑（测试宿主崩溃），CI 复跑后 §4.8「测试总数」实际用例数以 CI 为准（现按 403 个测试方法登记）。④ P1-19 待做不影响已提交项的正确性，但 Desktop 仍是回归面最大、零覆盖的层。
+> 阶段 2 边界（交接必读）：① 路线图原计划 P1-1「拆 5 协作者」，实际抽了 **6** 个（多一个 `IPreflight`），`BatchEngine` 外壳仍保留为 `IBatchEngine` 门面，对外契约不变，可整体回退。② 构造窄化是纯签名重构：可选依赖聚合 `null` 语义与原逐个 `?? new …` 回退严格一致，行为零变化。③ 全量测试的快速 bucket 可跑完且全绿（375/375），但宿主进程在退出时崩溃（老问题，与是否包含本轮改动无关——改动前同样崩溃）；慢速 bucket 完整通过（27/27）；实际用例数以 CI 复跑为准（§4.8 现按 441 实跑登记）。④ P1-19 待做不影响已提交项的正确性；Desktop 已有 39 用例但线程收敛等运行时契约仍无 headless 断言。⑤ P1-4/P1-5 收口新增发现（2026-10-19 复测）：`TaskRunner.ExecuteTaskAsync` 287 行，超 §4.4 单方法阈值——P1-2 只做了「外置」未做「内拆」，登记为阶段 3 / 机会主义偿还候选（§4.8「最大方法行数」）。
 
 ---
 

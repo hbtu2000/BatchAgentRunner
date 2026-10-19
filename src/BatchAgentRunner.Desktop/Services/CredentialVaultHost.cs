@@ -13,12 +13,18 @@ namespace BatchAgentRunner.Desktop.Services;
 /// <remarks>
 /// CA1001（P0-12）：Vault 实现现为 <see cref="IDisposable"/>（SemaphoreSlim 门），
 /// 宿主负责在用毕时级联释放；EngineHost 再级联释放本宿主。
+/// <para>
+/// P1-4/P1-5 收口：装配（DPAPI Vault + 进程守卫 + CLI 登录启动器 + 引导登录编排器）
+/// 已上移至组合根 <c>Desktop/Composition/EngineFactory.CreateVaultHost</c>，
+/// 本类只经构造注入持依赖，不再自行 <c>new</c> Infrastructure 具体类型（§4.3）。
+/// </para>
 /// </remarks>
 public sealed class CredentialVaultHost : IDisposable
 {
     public ICredentialVault Vault { get; }
 
-    public GuidedLoginOrchestrator Orchestrator { get; }
+    /// <summary>引导登录编排器（Infrastructure 具体类型，仅内部使用；P1-4 收敛可见性避免经宿主泄漏到 UI 层）。</summary>
+    private GuidedLoginOrchestrator Orchestrator { get; }
 
     /// <summary>凭证位置注册表（P1-16：宿主持有唯一实例，引导登录链路显式共用同一份覆盖状态）。</summary>
     public ICredentialLocationRegistry Locations { get; }
@@ -29,17 +35,6 @@ public sealed class CredentialVaultHost : IDisposable
         Vault = vault;
         Orchestrator = orchestrator;
         Locations = locations ?? throw new ArgumentNullException(nameof(locations));
-    }
-
-    /// <summary>桌面端默认装配：DPAPI 静态加密 + 真实进程守卫 + CLI 登录启动器。</summary>
-    public static CredentialVaultHost CreateDefault(ICredentialLocationRegistry? locations = null)
-    {
-        var registry = locations ?? new CredentialLocationRegistry();
-        var guard = new CliProcessGuard(registry);
-        var vault = new FileCredentialVault(processGuard: guard, registry: registry);
-        var orchestrator = new GuidedLoginOrchestrator(vault, guard, new CliLoginLauncher(registry),
-            registry: registry);
-        return new CredentialVaultHost(vault, orchestrator, registry);
     }
 
     /// <summary>快照状态的人话描述（配置页账号卡展示，DESIGN §7「快照状态」）。</summary>

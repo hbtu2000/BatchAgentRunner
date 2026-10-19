@@ -18,8 +18,10 @@ using BatchAgentRunner.Infrastructure.Http;
 using BatchAgentRunner.Infrastructure.Logging;
 using BatchAgentRunner.Infrastructure.Notification;
 using BatchAgentRunner.Infrastructure.Persistence;
+using BatchAgentRunner.Infrastructure.Platform;
 using BatchAgentRunner.Infrastructure.Reporting;
 using BatchAgentRunner.Infrastructure.TaskFiles;
+using BatchAgentRunner.Infrastructure.Workflow;
 
 namespace BatchAgentRunner.Desktop.Composition;
 
@@ -51,12 +53,15 @@ public sealed class EngineFactory : IEngineFactory
     /// <summary>凭证 Vault 宿主（DPAPI 加密 + 真实进程守卫；Mock 工具指向工具私有目录）。</summary>
     public CredentialVaultHost VaultHost { get; }
 
+    /// <summary>工作流模板库（内置 S1–S16 播种 + 用户自定义目录；UI 只经此接口访问）。</summary>
+    public IWorkflowTemplateStore TemplateStore { get; } = new FileWorkflowTemplateStore();
+
     /// <summary>出厂示例配置（与 <c>JsonConfigStore.CreateSample()</c> 等价，经工厂暴露以避免 UI 层直引 Infrastructure）。</summary>
     public static RunOptions CreateSampleRunOptions() => JsonConfigStore.CreateSample();
 
     public EngineFactory()
     {
-        VaultHost = CredentialVaultHost.CreateDefault(CredentialLocations);
+        VaultHost = CreateVaultHost(CredentialLocations);
     }
 
     private static CredentialLocationRegistry CreateCredentialLocations()
@@ -68,6 +73,26 @@ public sealed class EngineFactory : IEngineFactory
         registry.SetLiveRootOverride(AgentKind.Mock, mockLiveRoot);
         return registry;
     }
+
+    /// <summary>
+    /// 装配凭证 Vault 宿主（P1-4/P1-5 收口）：DPAPI 静态加密 + 真实进程守卫 + CLI 登录启动器。
+    /// 原 <c>CredentialVaultHost.CreateDefault</c> 是 Desktop/Services 里的第二处组合根，
+    /// 与「组合根唯一」原则冲突，装配逻辑收回本工厂（§4.3 断言唯一豁免位置）。
+    /// </summary>
+    private static CredentialVaultHost CreateVaultHost(ICredentialLocationRegistry registry)
+    {
+        var guard = new CliProcessGuard(registry);
+        var vault = new FileCredentialVault(processGuard: guard, registry: registry);
+        var orchestrator = new GuidedLoginOrchestrator(vault, guard, new CliLoginLauncher(registry),
+            registry: registry);
+        return new CredentialVaultHost(vault, orchestrator, registry);
+    }
+
+    /// <summary>
+    /// 构造自动关机协调器（REQ-015 / P0-10）：<see cref="IShutdownService"/> 实现由组合根装配，
+    /// Desktop 宿主不再自行 <c>new</c> Infrastructure 具体类型（P1-4/P1-5 收口）。
+    /// </summary>
+    public static AutoShutdownCoordinator CreateShutdownCoordinator() => new(new ShutdownService());
 
     /// <inheritdoc />
     public IBatchEngine CreateEngine(

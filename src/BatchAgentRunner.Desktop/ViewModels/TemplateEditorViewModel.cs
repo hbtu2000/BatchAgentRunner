@@ -1,10 +1,10 @@
 using System.Collections.ObjectModel;
 using System.IO;
+using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Scheduling;
 using BatchAgentRunner.Core.Serialization;
 using BatchAgentRunner.Desktop.Services;
-using BatchAgentRunner.Infrastructure.Workflow;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 
@@ -20,7 +20,7 @@ public sealed class TemplateEditorViewModel : ViewModelBase
     private static readonly char[] VarValueSeparators = { ',', '\n', ';' };
 
     private readonly IEngineHost _host;
-    private readonly FileWorkflowTemplateStore _store;
+    private readonly IWorkflowTemplateStore _store;
 
     private ObservableCollection<TemplateRowViewModel> _templates = new();
     private TemplateRowViewModel? _selectedTemplate;
@@ -33,7 +33,8 @@ public sealed class TemplateEditorViewModel : ViewModelBase
     public TemplateEditorViewModel(IEngineHost host)
     {
         _host = host;
-        _store = new FileWorkflowTemplateStore();
+        // P1-4/P1-5：模板库实现由组合根装配，UI 只持接口（不再自行 new Infrastructure 具体类型）
+        _store = host.TemplateStore;
         _workspace = host.Options.DefaultWorkspace ?? Directory.GetCurrentDirectory();
         var generatedDir = Path.Combine(host.ConfigDirectory, "generated");
         _outputPath = Path.Combine(generatedDir, "template-output.tasks.json");

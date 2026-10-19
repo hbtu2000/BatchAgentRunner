@@ -48,6 +48,9 @@ public interface IEngineHost : IDisposable
     /// <summary>凭证 Vault 宿主。</summary>
     CredentialVaultHost VaultHost { get; }
 
+    /// <summary>工作流模板库（P1-4/P1-5：模板库页只经此接口访问，实现由组合根装配）。</summary>
+    IWorkflowTemplateStore TemplateStore { get; }
+
     /// <summary>引擎事件（已在 UI 线程广播）。</summary>
     event EventHandler<BatchEvent>? EventRaised;
 

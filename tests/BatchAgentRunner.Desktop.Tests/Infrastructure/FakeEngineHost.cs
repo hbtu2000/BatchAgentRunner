@@ -48,6 +48,9 @@ public sealed class FakeEngineHost : IEngineHost
     public string ConfigDirectory => Path.GetTempPath();
     public CredentialVaultHost VaultHost => _vaultHost;
 
+    /// <summary>模板库零 IO 桩（P1-4/P1-5 收口：VM 不再自行 new FileWorkflowTemplateStore，替身经接口注入）。</summary>
+    public IWorkflowTemplateStore TemplateStore { get; } = new FakeTemplateStore();
+
     public event EventHandler<BatchEvent>? EventRaised
     {
         add { }
@@ -101,6 +104,19 @@ public sealed class FakeEngineHost : IEngineHost
     public void Dispose() { }
 
     // ---------------- 微型桩（仅满足 CredentialVaultHost 构造，无副作用） ----------------
+
+    /// <summary>模板库桩：空清单 / 空保存，保证 VM 测试全程零文件 IO。</summary>
+    private sealed class FakeTemplateStore : IWorkflowTemplateStore
+    {
+        public Task<IReadOnlyList<TemplateSpec>> ListAsync(CancellationToken cancellationToken = default) =>
+            Task.FromResult<IReadOnlyList<TemplateSpec>>(Array.Empty<TemplateSpec>());
+
+        public Task<TemplateSpec?> GetAsync(string id, CancellationToken cancellationToken = default) =>
+            Task.FromResult<TemplateSpec?>(null);
+
+        public Task SaveUserTemplateAsync(TemplateSpec spec, CancellationToken cancellationToken = default) =>
+            Task.CompletedTask;
+    }
 
     private sealed class FakeCredentialVault : ICredentialVault
     {
