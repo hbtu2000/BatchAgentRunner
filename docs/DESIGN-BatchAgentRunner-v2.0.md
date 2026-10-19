@@ -1556,13 +1556,13 @@ wait_for_quota_reset  : bool  (默认 true)   // 额度耗尽时无限等待重�
 #### 2.2 引擎判定（BatchEngine）
 - 新增私有判定 `IsQuotaUnboundedWait(RestoreCandidate? c)`：
   `_options.WaitForQuotaReset && c is { WaitKind: WaitKind.QuotaReset }`。
-- **单任务重试循环**（`ExecuteTaskAsync`）：原 `canWait = earliest is not null && earliest.RestoreAt <= now + MaxWait`
+- **单任务重试循环**（`ExecuteTaskAsync` → P1-2 内拆 1790708 后由 `HandleNoComboAsync` 子方法承载）：原 `canWait = earliest is not null && earliest.RestoreAt <= now + MaxWait`
   改为 `canWait = earliest is not null && (IsQuotaUnboundedWait(earliest) || earliest.RestoreAt <= now + MaxWait)`。
 - **启动前预派发**（`StartAsync`）：原 `if (waitIfUnavailable && earliest is not null)`
   改为 `if (earliest is not null && (waitIfUnavailable || IsQuotaUnboundedWait(earliest)))`（额度耗尽即便未勾选「等待自动启动」也自动挂起等待，因其必定恢复）。
 - `WaitForRestoreAsync` 增加 `string? taskId` 参数：累计等待时长除计入 `_windowWaitSeconds` / `_cooldownWaitSeconds`（批级）外，若 `taskId` 非空，额外累加进 `_taskWaitSeconds[taskId]`（单任务级）。
 - 调用点：
-  - `ExecuteTaskAsync` 内 `WaitForRestoreAsync(earliest!, ...)` → 传入 `task.Id`。
+  - `ExecuteTaskAsync` 内 `WaitForRestoreAsync(earliest!, ...)`（P1-2 内拆后实际由 `HandleNoComboAsync` 委派）→ 传入 `task.Id`。
   - `StartAsync` 内调用 → 传 `null`（不归属任何任务）。
 
 #### 2.3 暂停时长剔除

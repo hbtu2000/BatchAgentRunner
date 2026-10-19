@@ -89,7 +89,7 @@
 ### 3.5 可维护性与架构
 - 🟡 **分层职责**：`Core` 不依赖 `Desktop`/`Infrastructure` 具体实现（只依赖 `Abstractions` 接口）；CLI 适配只在 `Agents`；文件/系统操作只在 `Infrastructure`。跨层 new 具体类要警惕。
 - 🟡 **命名与注释**：公共类型/方法有 XML 注释且标注关键决策出处（PRD/DESIGN 条款）；命名表达意图，避免 `tmp`、`data2`、`flag` 之类。
-- 🟡 **方法/类复杂度**：单方法超过 ~80 行或嵌套超过 4 层，建议拆分子方法（如 `ExecuteTaskAsync` 的循环体已较大，新增分支优先抽方法而非继续膨胀）。
+- 🟡 **方法/类复杂度**：单方法超过 ~80 行或嵌套超过 4 层，建议拆分子方法（`ExecuteTaskAsync` 已按 P1-2 内拆 1790708 显式状态机化，全部子方法 ≤60 行 / 圈复杂度 ≤15；新增分支优先抽子方法而非继续膨胀）。
 - 💭 **`record` vs `class`**：值语义（组合键、结果）用 `record`；有可变状态/身份的对象用 `class`；当前 `AgentCombo`/`RestoreCandidate` 用 `record` 合理，新增时遵循此区分。
 
 ### 3.6 性能
