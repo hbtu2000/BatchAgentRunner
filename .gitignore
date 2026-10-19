@@ -368,3 +368,4 @@ FodyWeavers.xsd
 *.backup-*
 /models.yaml
 /.tmp_reflect.ps1
+/.tmp_testout
