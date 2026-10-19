@@ -369,3 +369,4 @@ FodyWeavers.xsd
 /models.yaml
 /.tmp_reflect.ps1
 /.tmp_testout
+/generated
