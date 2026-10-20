@@ -89,6 +89,7 @@
 ### 3.5 可维护性与架构
 - 🟡 **分层职责**：`Core` 不依赖 `Desktop`/`Infrastructure` 具体实现（只依赖 `Abstractions` 接口）；CLI 适配只在 `Agents`；文件/系统操作只在 `Infrastructure`。跨层 new 具体类要警惕。
 - 🟡 **命名与注释**：公共类型/方法有 XML 注释且标注关键决策出处（PRD/DESIGN 条款）；命名表达意图，避免 `tmp`、`data2`、`flag` 之类。
+- 🟡 **注释只描述当前实现（P2-26）**：禁止以注释自述计划性延期或能力未实现（"二期扩展""暂不支持""待实现"等）——真实延期登记 `TECH-DEBT-技术债务治理方案-v2.0.md` §4.7.1 计划性延期台账后在注释引用台账 ID；已由 `CommentHygieneTests` 源码扫描自动把关，新增即测试失败。
 - 🟡 **方法/类复杂度**：单方法超过 ~80 行或嵌套超过 4 层，建议拆分子方法（`ExecuteTaskAsync` 已按 P1-2 内拆 1790708 显式状态机化，全部子方法 ≤60 行 / 圈复杂度 ≤15；新增分支优先抽子方法而非继续膨胀）。
 - 💭 **`record` vs `class`**：值语义（组合键、结果）用 `record`；有可变状态/身份的对象用 `class`；当前 `AgentCombo`/`RestoreCandidate` 用 `record` 合理，新增时遵循此区分。
 
@@ -273,6 +274,7 @@ dotnet format BatchAgentRunner.slnx --verify-no-changes   # pre-commit 钩已强
 | 危险操作白名单误含危险词 | 白名单严格、优先级高于黑名单 | `DangerousOperationGuard` |
 | csproj 内联包版本 | 只写 `Directory.Packages.props`（NU1008） | P1-17 |
 | 测试依赖磁盘 samples / 仓库根路径 | 读嵌入式资源副本 `TestSampleResources` | P2-21/P2-28 |
+| publish/bin/obj 产物堆遗留在仓库根（ignore 了之、无人清理） | `.gitignore` 显式目录级规则 + 及时整堆清理 | P2-29 / `_harness/`（214 文件 / 1.2G 已清） |
 | 测试里起真实进程 | 注入 `IProcessLauncher` 假启动器 | P2-21 |
 | 持有 `SemaphoreSlim`/`CTS` 却不实现 `IDisposable` | 补 `IDisposable` 链并级联释放 | P0-12 / CA1001 |
 | 源码存成 GBK / 带 BOM / 行尾 CRLF 混用 | UTF-8 无 BOM + LF（`pre-commit` 钩强制，`iconv` + `end_of_line=lf`） | P0-12 格式门禁 / SDK 10.0.401 CHARSET 回归（治理方案 §4.7 #9） |

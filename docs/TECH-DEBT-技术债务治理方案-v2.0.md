@@ -120,7 +120,7 @@ v1.0 的 P0 缺陷清单经本版实测复核**全部仍然成立**（重点复�
 | **P1-18** | `Infrastructure/Persistence/JsonCreditsClaimStore.cs:21`                | 第 18 行 `directory ?? ...` 建目录，第 21 行却 `Path.Combine(directory!, ...)` → 默认构造**必抛 `ArgumentNullException`**；生产唯一调用点 `EngineHost.cs:202` 恰好总传参，故未暴露        | 定时炸弹：任何走默认构造的新调用点立刻崩                                                        | 极小 | 重构（1 行）✅ 阶段 1 已完成（2026-10-18，修复 + 不变量测试 2 项）                                                                                                          |
 | **P1-19** | Desktop 层（churn 实测）                                                     | `ConfigView.axaml`、`TemplateEditorViewModel.cs`、`ReportViewModel.cs`、`ConfigViewModel.cs` 等 4 次提交被改（全仓仅 12 提交，即 1/3 提交都动过），且**零测试**                      | 界面契约未稳定却已铺开 5,411 行 → 重构 Desktop 时回归面最大                                     | 大  | 重构（补测试 + 收敛契约）✅ **阶段 2 已完成（2026-10-19）**：Avalonia headless 测试基座 + `UiThread` 线程收敛契约 2 项 + churn 热点 `ConfigView`/`Login`/`Monitor`/`SetupWizard` VM 契约测试 13 项；Desktop 测试 39→54；VM 仅依赖 `IEngineHost` 端口，界面契约收敛，见 §5.5                                                                                    |
 | **P1-20** | `Desktop/Converters/ConfigHubConverters.cs:18,31`                       | 两处 `ConvertBack => throw new NotImplementedException()`                                                                                                  | 双向绑定一旦触发即崩溃                                                                 | 极小 | 重构 ✅ 阶段 1 已完成（2026-10-18：返回 `BindingOperations.DoNothing` + 不变量测试）                                                                                    |
-| **P1-21** | `Core/Options/RunOptions.cs:264,268,271`                                | 生产 API 地址 `https://www.codebuddy.cn` 及 `/billing/meter/*` 路径写进默认值                                                                                        | 环境切换只能靠覆盖，测试易打到生产                                                           | 小  | 重构（抽配置/常量）                                                                                                                                            |
+| **P1-21** | `Core/Options/RunOptions.cs:280,284,288`                              | 生产 API 地址 `https://www.codebuddy.cn` 及 `/billing/meter/*` 路径写进默认值                                                                                        | 环境切换只能靠覆盖，测试易打到生产                                                           | 小  | 重构（抽配置/常量）✅ **阶段 3 已完成（2026-10-20）**：新建 `CodeBuddyApiConstants`（`ProductionApiBase`/`BalancePath`/`ClaimPath` 单一事实来源），`CreditsClaimConfig` 默认值与 `CreditsClaimMigrator` 迁移目标均改引用该常量，消除多处硬编码魔法串；`CreditsClaimConfigTests` 4 项锁死「默认值==规范生产端点 + 常量形态合规 + 显式覆盖不回退」，见 §5.6 |
 
 ---
 
@@ -134,10 +134,10 @@ v1.0 的 P0 缺陷清单经本版实测复核**全部仍然成立**（重点复�
 
 | ID        | 位置                                                                                                                                                                                           | 债务                                                                                                                                                                                                                                                     |
 | --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **P2-26** | 全仓 147 处中文注释（`二期` / `暂不支持` / `遗留` / `尚未`）                                                                                                                                                    | **计划性延期未进台账**，且已与实现脱节：`Core/Domain/TaskItem.cs:10` 仍写"一期**不实现** workflow/depends_on/max_loops"，但 `Domain/WorkflowTypes.cs`(512 行)、`Scheduling/DagScheduler.cs`、`BatchEngine.cs` 的 DAG 派发**已全部实现**；`BatchEngine.cs` 中 20+ 处注释仍自称"二期扩展"。**误导性注释比无注释更危险** |
-| **P2-27** | `tests/**` 252/252 个测试方法为中文名                                                                                                                                                                 | `dotnet test --filter` / CI 报表 / 日志 diff 在非 UTF-8 环境下易碎                                                                                                                                                                                                |
-| **P2-28** | `samples/`（13 文件）                                                                                                                                                                            | 双重角色：既是用户示例，又被测试当契约（`RunOptionsSerializationTests.cs:95` 断言 `samples/config.example.json` 与代码同步）→ 改示例会断测试，改代码要同步示例                                                                                                                                     |
-| **P2-29** | `_harness/`（214 文件）                                                                                                                                                                          | 已 ignore 的 publish 产物堆（Avalonia DLL + exe），与 `samples/` 职责重叠，无人清理                                                                                                                                                                                      |
+| **P2-26** | 全仓 147 处中文注释（`二期` / `暂不支持` / `遗留` / `尚未`）                                                                                                                                                    | **计划性延期未进台账**，且已与实现脱节：`Core/Domain/TaskItem.cs:10` 仍写"一期**不实现** workflow/depends_on/max_loops"，但 `Domain/WorkflowTypes.cs`(512 行)、`Scheduling/DagScheduler.cs`、`BatchEngine.cs` 的 DAG 派发**已全部实现**；`BatchEngine.cs` 中 20+ 处注释仍自称"二期扩展"。**误导性注释比无注释更危险** ✅ **已完成（2026-10-20，见 §5.7）**：逐条盘点后分三类处置——① 台账点名的两处脱节注释（`TaskItem` 扩展字段声明、`BatchEngine` 20+ 处"二期扩展"）在前序轮次（P1-1 收口 `596c165` 等）已清，本轮核实确认；② 真正仍脱节的 1 处（`SmtpNotifier.RetrieveSecret` 自称"返回占位并提示"实况已实现环境变量解析）本轮修正；③ ~100 处"二期"标签经逐条核对均为**已交付二期功能的历史标签**（与 REQ 编号并存，非延期声明），如实登记保留、不做无收益 churn；真实计划性延期 4 项全部进 §4.7 计划性延期台账（#D1~#D4），并新增 `CommentHygieneTests` 源码守卫锁死"延期不得以注释自述" |
+| **P2-27** | `tests/**` 测试方法名为中文（v2.0 盘点 252/252；2026-10-20 复测 **285/494**，仍占多数）                                                                                                                      | `dotnet test --filter` / CI 报表 / 日志 diff 在非 UTF-8 环境下易碎 → **2026-10-20 评估维持「主动不偿还」（见 §5.8）**：CI 实际按 `Category`(Trait) 过滤、不按方法名；`windows-latest` + .NET 10 默认 UTF-8，三处易碎向量均无实锤，触发条件（CI 编码问题）未达成 |
+| **P2-28** | `samples/`（13 文件）                                                                                                                                                                            | 双重角色：既是用户示例，又被测试当契约（`RunOptionsSerializationTests.cs:95` 断言 `samples/config.example.json` 与代码同步）→ 改示例会断测试，改代码要同步示例 **✅ 已完成（2026-10-18，见 §5.4 与阶段 1 小结）**：samples 降级为只读用户示例；测试契约（config.example.json / tasks.json / tasks.md）全部改读 csproj `Link` 指向真实 samples 的**嵌入式资源副本**（内容随 samples 同步、不依赖运行时/克隆路径），`TestSampleResources` 统一读取入口；原 `RunOptionsSerializationTests.cs:95` 不再断言磁盘 samples 与代码同步，仅断言嵌入式模板非空可解析；全部 `RepoRoot()` 磁盘路径探测已清除（顺带随 P2-21 解决） |
+| **P2-29** | `_harness/`（214 文件 / 1.2G，2026-10-20 已删除）                                                                                                                                                                                                                   | 已 ignore 的 publish 产物堆（Avalonia DLL + exe），与 `samples/` 职责重叠，无人清理 ✅ **已完成（2026-10-20，见 §5.9）**：整堆清理（214 文件 / 1.2G 全部为可再生产物——`dotnet publish` 自包含输出 + MSBuild obj 中间产物，`Harness.csproj` 源文件早已不存在仅剩 obj 残骸；git 历史从未跟踪、仓内零引用）；`.gitignore` 补 `/_harness/` 显式目录级规则（此前仅靠通用 `publish/`/`bin/`/`obj/` 规则命中——「ignore 生效却无人清理」正是该债务根因），换机后也无法静默重生 |
 | **P2-30** | `.editorconfig:24` 将 `CA1002` 设为 `none`；`NotificationDispatchers.cs:101` `#pragma warning disable SYSLIB0014`（过时 `SmtpClient`，注释自认"二期换 MailKit"）                                             | 规则豁免无登记、无到期日                                                                                                                                                                                                                                           |
 | **P2-31** | `JsonCooldownStore` / `JsonCreditsClaimStore` / `JsonConfigStore` 三份逐行同构（构造 + 默认目录 + `LoadAsync` catch(JsonException) + `AtomicFileWriter.SaveAsync`）；`"BatchAgentRunner"` 路径魔法串在 **9 处**硬编码 | 改一处必漏改两处                                                                                                                                                                                                                                               |
 
@@ -145,6 +145,10 @@ v1.0 的 P0 缺陷清单经本版实测复核**全部仍然成立**（重点复�
 P2-20（测试分层：E2E/Usability/Process 打 `Trait`，CI 快跑单元 / 慢跑集成）、  
 P2-21（去 Flaky：真实进程 → `IProcessLauncher` 注入缝；samples → 嵌入式资源副本）、  
 P2-28（samples 降级为只读示例，测试契约改读嵌入式副本，内容经 csproj `Link` 随 samples 同步）。
+
+**P2-26 随阶段 4「持续化」开轮偿还（2026-10-20，见 §5.7）**：误导注释清算 + 计划性延期台账（§4.7 #D1~#D4）+ `CommentHygieneTests` 守卫。
+
+**P2-29 随阶段 4「持续化」顺手清理（2026-10-20，见 §5.9）**：`_harness/` publish 产物堆整堆删除（214 文件 / 1.2G）+ `.gitignore` 显式目录级规则防复发。
 
 ---
 
@@ -316,7 +320,7 @@ P1-19 Desktop 补测试 + 契约收敛                                          
 | `QuotaErrorClassifier` 大小写优化（P2-24 部分） | 性能充足，改动收益低于回归风险；出现实测证据才动  |
 | 响应式布局（P2-14）                           | 桌面工具固定窗口，当前无多形态需求         |
 | `SessionPolicy` 等疑似预留扩展点的死代码（P2-25 部分） | 需先确认是预留还是废弃               |
-| 中文测试方法名（P2-27）                         | 现状一致且可读；仅在 CI 出现编码问题时批量处理 |
+| 中文测试方法名（P2-27）                         | 现状一致且可读；仅在 CI 出现编码问题时批量处理 → **2026-10-20 评估维持不偿还**：CI 按 `Category`(Trait) 过滤、不按方法名；`windows-latest` + .NET 10 默认 UTF-8，`--filter`/报表/日志 diff 三处易碎向量均无实锤，触发条件未达成（见 §5.8） |
 
 ---
 
@@ -368,6 +372,7 @@ P1-19 Desktop 补测试 + 契约收敛                                          
 | `Domain` 下不得出现 `INotifyPropertyChanged`                                  | 防 P2-7 扩散          | ⏳ 留待 ArchUnitNET 批次（§4.9 迭代 2/3）                                                                    |
 | 生产程序集不得出现 `FakeClock`/`Mock*` 类型                                         | 防 P2-8 测试替身进生产     | ⏳ 留待 ArchUnitNET 批次（§4.9 迭代 2/3）                                                                    |
 | `Catch (Exception)` 占比不得上升（基线 42/79 = 53%，2026-10-18 复测；盘点时 37/69 = 54%） | 防吞异常继续扩散           | ⏳ 需计数基建；当前靠 PR 评审清单人工兜底（§4.5）                                                                          |
+| `src` 注释不得自述计划性延期 / 能力未实现（"不实现 / 未实现 / 暂不支持 / 待实现"；"占位并/值/实现"等桩声明；"二期 + 扩展/后续/再换/换成"） | 防 P2-26 误导注释复发：延期只进 §4.7.1 台账，注释只描述当前实现 | ✅ `CommentHygieneTests`（Core.Tests，源码词法扫描注释、跳过字符串字面量；2026-10-20 P2-26 收口时落地；负测试实测可捕获原始误导注释） |
 
 > 「Desktop 不得直接 new」断言的实现口径（2026-10-19）：用反射自建最小 IL walker（`OpCodes` 反射建查表，逐指令步进），扫描 Desktop 程序集全部方法体（含构造器 / 属性访问器 / 编译器生成的闭包与异步状态机）中的 `newobj` / `newarr`，解析元数据 token 得目标类型；`Desktop.Composition` 命名空间（组合根）为唯一豁免。**按规则本意排除委托实例化**：捕获型 lambda 会被编译器转换为 `newobj`（如 `CredentialVaultHost.GuidedLoginAsync` 把校验回调传给 `RunAsync`），源码并无 `new`，且回调委托类型是协作者签名强制的契约、无法按「须经接口」替换——规则目标是「UI 不得实例化 Infrastructure/Agents 实现类」，不覆盖编译器产物。
 
@@ -395,6 +400,7 @@ P1-19 Desktop 补测试 + 契约收敛                                          
 - [ ] 是否新增文件读写而未走 `AtomicFileWriter`？（P0-8 类）
 - [ ] 是否拼接命令行字符串而非 `ArgumentList`？（P0-3 类）
 - [ ] 是否新增硬编码色值/魔法数字/绝对路径，而非引用 token/常量？
+- [ ] 是否以注释自述计划性延期 / 能力未实现（"二期扩展""暂不支持"等）？延期一律登记 §4.7 台账后在注释引用台账 ID（P2-26 类）— 2026-10-20 起已由 `CommentHygieneTests` 自动把关，新增即测试失败
 - [ ] 新增的高危路径（凭证/进程/Git/安全拦截）是否带测试？
 - [ ] 提交信息是否说明「改了什么 / 为什么」？（P0-11 类，钩子已强制）
 
@@ -431,6 +437,19 @@ P1-19 Desktop 补测试 + 契约收敛                                          
 
 > 说明：P2-30 登记的 `.editorconfig` CA1002 与 `#pragma` SYSLIB0014 在阶段 1 的警告清零中**保留原样**（不属 CA 警告类），正式登记为本表 #1/#2。
 
+#### 4.7.1 计划性延期台账（P2-26，2026-10-20 建立，共 4 项）
+
+P2-26 清算结论：**计划性延期一律进本台账，代码注释只描述当前实现**（自述延期即被 `CommentHygieneTests` 拦截）。字段遵循 §4.6 强制四项（发现日 / 责任人 / 到期日 / 不变量断言）。与上表逃逸阀的分界：逃逸阀是「门禁例外」（pragma/NoWarn），本表是「功能延期」（未做的能力）。
+
+| ID | 延期内容                                                                   | 代码锚点（不变量描述，不用行号）                                                     | 理由 / 前置条件                                                | 发现日 / 责任人 / 到期日          | 不变量断言（验收）                                        |
+| -- | ---------------------------------------------------------------------- | -------------------------------------------------------------------- | --------------------------------------------------------- | ------------------------- | ------------------------------------------------- |
+| D1 | SMTP 通知凭据引用接入 `ICredentialVault`（现仅环境变量解析）；顺带 `SmtpClient` → MailKit 换库 | `SmtpNotifier.RetrieveSecret` 只经环境变量取值；`#pragma SYSLIB0014`（= 逃逸阀 #1） | 换库属功能迁移非缺陷修复；Vault 集成需凭证域稳定 API               | 2026-10-20 / 工程 / MailKit 迁移迭代或 Vault API 稳定后 | `凭据引用_按环境变量名解析取值` / `凭据引用_环境变量未设置_返回空串`（NotificationDispatcherTests） |
+| D2 | 真实 CLI 适配器声明支持会话恢复（方案 b 启用）                                        | `IAgentCliAdapter.CanResume` 默认 `false`；`SessionResumePolicy` 默认关、全条件回退方案 a   | 前置验证 M0 V-8（CLI 是否支持 resume）未实测；不阻塞主线（DESIGN §13 E4 / §14 开放问题 1） | 2026-10-20 / 工程 / M0 实测轮            | `SessionResumePolicyTests` 5 项（默认关 / 无句柄 / CLI 不支持 / 跨 adapter 均回退；仅全条件满足才 Resume） |
+| D3 | WorkBuddy CLI 登录态存储位置与形态确认（V-4b/V-4e）                                 | `CredentialLocationRegistry` 中 WorkBuddy 无文件型位置登记；一键登录/积分领取对 WorkBuddy 拒绝执行 | 桌面主登录态存储方式未知，需实机确认；确认前拒绝执行好过盲猜路径           | 2026-10-20 / 工程 / M0 实测轮            | `GuidedLoginFlowTests` / `VaultSwitchTests` 既有「未登记 CLIId 拒绝并提示」用例保持绿 |
+| D4 | 专家参数降级：CLI 不支持专家参数时以 `ExpertRef.RolePrompt` 注入角色描述         | `RolePrompt` 字段存在但引擎未消费（预留位）                                   | 前置验证 M0 V-5（CLI 专家参数支持面）未实测；DESIGN §13.3 V-5 在册   | 2026-10-20 / 工程 / M0 实测轮            | 字段序列化契约由既有模板兼容测试锁死；启用时补「不支持 → prompt 注入」用例 |
+
+> 到期未推进的延期，按 §4.7 规则自动升级为该迭代 P1。D2/D3/D4 共享同一前置（M0 实测轮），建议同轮清零。
+
 ### 4.8 度量与趋势看板
 
 每迭代采集，**看趋势而非绝对值**：
@@ -445,11 +464,13 @@ P1-19 Desktop 补测试 + 契约收敛                                          
 | Desktop 测试数            | **55 用例**（2026-10-20 实跑 Desktop.Tests 全绿：架构断言 4（含 P1-6 新增「不得存在同步阻塞异步结果调用」IL 扫描）+ VM 白箱（Config/ConfigHub/Report/TemplateEditor/Login/Monitor/SetupWizard）+ ConfigView 视图契约 + `UiThread` 线程收敛契约 2 + 转换器 / 多值文本；P1-19 补 headless 基座与契约测试从 39 增长至 54，P1-6 再 +1）                                                              | ↑        |
 | 空提交信息数 / 迭代            | 10/12 历史；阶段 −1 起由 commit-msg 钩强制「非空 + 含改了什么/为什么」                                                                                                                           | → 0 并保持  |
 | 误提交产物数                 | 10；阶段 −1 已 `git rm --cached` 并 ignore，当前 0                                                                                                                                 | → 0 并保持  |
+| 已 ignore 产物堆（P2-29）    | 曾 `_harness/` 1.2G / 214 文件（publish+bin+obj，从未跟踪、无人清理）；2026-10-20 整堆清理 + `/_harness/` 显式 ignore 规则                                                                    | → 0 并保持  |
 | P0 未偿数                 | 17 → 阶段 −1 完成 5 项、阶段 0 完成 11 项、阶段 1 完成最后 1 项（P0-12），当前 **0**                                                                                                               | → 0 并保持  |
 | 每迭代**新增**债务数           | 未采集（阶段 −1 起采集）                                                                                                                                                             | → 趋 0    |
 | churn 热点 Top3          | `BatchEngine.cs`(4)、`RunOptions.cs`(4)、`ConfigView.axaml`(4)                                                                                                               | 热点应随拆分下降 |
 | 同步阻塞调用数（P1-6 类）      | **0**（2026-10-20 归零：原 2 处 `GetAwaiter().GetResult()`——`MainViewModel.cs:20`、`EngineHost.cs:136`——经异步初始化门消除；新增 IL 架构断言 `Desktop程序集_不得存在同步阻塞异步结果的调用` 持续锁住，任何新增 `.GetAwaiter().GetResult()` / `Task.Result` / `Task.Wait()` 即构建/测试失败） | → 0 并保持  |
-| 测试总数                   | **508 用例通过 / 0 失败**（2026-10-20 P1-14 收口轮实跑：主测试项目 450 + Desktop.Tests 58；较 P1-13 收口轮 498 +10，其中 P1-14 新增 `LocalGitIntegrationTests` 10 项，全绿）                                                                     | ↑        |
+| 测试总数                   | **545 用例通过 / 0 失败**（2026-10-20 P2-26 收口轮实跑：主测试项目 487 + Desktop.Tests 58；较 P1-21 收口轮 537 +8：新增 `SessionResumePolicyTests` 5 项 + `SmtpNotifierCredentialResolutionTests` 2 项 + `CommentHygieneTests` 1 项，全绿）                                                                     | ↑        |
+| 误导性自述注释数（P2-26）      | **0**（2026-10-20 收口：v2.0 盘点 147 处「二期/暂不支持/遗留/尚未」逐条核对——台账点名的脱节注释前序轮次已清、`RetrieveSecret` 一处本轮修正、~100 处「二期」为已交付功能历史标签如实保留；真实延期 4 项进 §4.7.1 台账。`CommentHygieneTests` 源码扫描锁死，新增即失败）                                                                     | → 0 并保持  |
 
 > **台账登记改用不变量描述，不用行号**。例：P0-1 登记为「`TryFallbackAsync` 中 `cost` 必须被 `MaxCostPerTask` 截断」并配断言测试。理由：既有审查报告记录 `:1011`，实测已漂移到 `:1406`，行号型台账必然失效。
 
@@ -559,15 +580,70 @@ A 组 10 项互不耦合，与 P0-17 并行完成。代码改动均随既有工�
 
 阶段 3 为长期机会主义偿还（§3 阶段 3 路线图）。P1-13 是「重写」准入四项（P0-2 局部、P1-13、P2-6、P2-15）中**最后一件未偿**的：它不阻塞线上正确性（原 `taskkill` 方案在 Windows 上本就能整树回收），但属跨平台不可移植 + 调用线程同步阻塞类债务，按 §3.2「重写准入」③（存在平台原生替代、代码净减少）收口。
 
-**验证统一口径（2026-10-20 P1-14 收口轮实跑）**：`dotnet build --no-incremental` = **0 警告 / 0 错误**；`dotnet test BatchAgentRunner.slnx` = **508 通过 / 0 失败**（主测试 450 + Desktop.Tests 58，主测试较 P1-13 收口轮 440 +10：新增 `LocalGitIntegrationTests` 10 项）；`dotnet format`（CHARSET 假阳性按 §4.7 #9 过滤）0 问题；仓内既有 `SetupWizardViewModel.cs:245` 同款原生 `Kill(entireProcessTree:true)`，P1-13 已统一收敛 `CliProcessRunner`。
+**验证统一口径（2026-10-20 P1-21 收口轮实跑）**：`dotnet build --no-incremental` = **0 警告 / 0 错误**；`dotnet test BatchAgentRunner.slnx` = **537 通过 / 0 失败**（主测试 479 + Desktop.Tests 58，主测试较 P1-15 收口轮 533 +4：新增 `CreditsClaimConfigTests` 4 项）；`dotnet format`（CHARSET 假阳性按 §4.7 #9 过滤）0 问题；仓内既有 `SetupWizardViewModel.cs:245` 同款原生 `Kill(entireProcessTree:true)`，P1-13 已统一收敛 `CliProcessRunner`。
 
 | ID     | 落地内容                                                                                                                                                                                                                                                                     | 验证 / 提交                                                                                                                                                      |
 | ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | P1-13  | **进程树回收重写（2026-10-20）**：`CliProcessRunner.KillTree` 由「外部 `taskkill /T /F` 进程 + 同步 `WaitForExit(3000)` 阻塞」重写为 .NET 原生 `Process.Kill(entireProcessTree: true)` 整树回收（保留 `HasExited` 判空 + try/catch 兜底，行为零变化）。消除：① 对外部 `taskkill` 的跨平台不可移植依赖（原方案仅 Windows 生效，非 Windows 平台退化为 `Kill` 单进程、不再整树）；② 最长 3 秒的调用线程同步阻塞（`Kill` 仅发送终止信号、不等待退出）；③ 无领域知识的中间进程。`KillTree` 保持 `public static void`，9 处调用点（取消 / 超时 / 危险拦截 / 异常分支）均无需改动 | 全量 `dotnet build --no-incremental` = **0 警告 / 0 错误**；`dotnet test BatchAgentRunner.slnx` = **498 通过 / 0 失败**（主 440 + Desktop 58，主测试较 P1-12 +3：新增 `CliProcessRunnerTests` 3 项锁死整树回收等价——beacon 子进程在 KillTree 后停摆 / 已退出进程调用不抛 / 单进程被立即终止）；`dotnet format`（CHARSET 假阳性按 §4.7 #9 过滤）0 问题 |
 | P1-14  | **子进程执行加固（2026-10-20）**：`LocalGitIntegration` 原 `WaitForExitAsync(ct)` 只响应取消令牌、无 stdin 重定向——挂死的 git/gh（网络卡死、等待终端凭证输入）会无限期挂起任务线程，且 gh CLI 缺失时 `Start()` 抛 `Win32Exception` 直接击穿「尽力而为」契约。三项加固：① **超时回收**——新增构造超时参数（`DefaultTimeoutSeconds=120`，非正回落默认），`WaitForExitAsync` 经 linked CTS 叠加 `CancelAfter(timeout)` 上限，超时（非调用方取消）即 `Kill(entireProcessTree: true)` 整树回收并按失败返回（`<fileName> 执行超时（>Ns），已整树回收`），不无限期挂起；调用方取消仍向上传播 `OperationCanceledException`。② **stdin 重定向**——`RedirectStandardInput=true` 并在 `Start()` 后立刻 `StandardInput.Close()`，等待终端输入的子进程（git 凭证提示 / gh 交互）直接拿到 EOF 继续执行、不挂起。③ **启动失败收敛**——`Start()` 抛 `Win32Exception`/`InvalidOperationException`（可执行文件不在 PATH）按「失败返回 null，不阻断任务」契约收敛为 `(-1, …, "无法启动 …")` 失败码，异常不再抛给调用方。行为零变化（happy path 退出码 / 真实 git 建分支 / 推送失败返回 null / gh 缺失退化为「已推送」提示均不变） | 全量 `dotnet build --no-incremental` = **0 警告 / 0 错误**；`dotnet test BatchAgentRunner.slnx` = **508 通过 / 0 失败**（主 450 + Desktop 58，主测试较 P1-13 收口轮 440 +10：新增 `LocalGitIntegrationTests` 10 项锁死——挂死进程超时整树回收 / stdin EOF 不挂起 / 正常退出不误报超时 / 调用方取消传播 / 缺失二进制收敛失败码 / IL 锁死 `RedirectStandardInput=true`+`CancelAfter` / 真实 git 建分支成功 / 无效仓库与非法分支名返回 null / 推送失败返回 null / gh 缺失退化为已推送提示）；`dotnet format`（CHARSET 假阳性按 §4.7 #9 过滤）0 问题 |
 | P1-15  | **高危盲区清零（2026-10-20）**：`CodeBuddyCreditsApiClient` / `BackupManager` / `ShutdownService` 三项阶段 1 顺延的高危零覆盖盲区补齐白箱测试（阶段 1 已补 `XlsxTaskWriter`+`CliCommandBuilder`+`DangerousOperationGuard` 16 项；`LocalGitIntegration` 已由 P1-14 补齐子进程执行契约测试）。`CodeBuddyCreditsApiClientTests` 经 `HttpClient` 桩注入响应，覆盖余额 JSON 解析求和（数字/字符串容量/`Packages` 缺失/非 JSON 返回 null）、「今日已签到」判定（code=10001 / 消息关键词 / 其它码）、`GetBalanceAsync` 成功解析、`ClaimDailyAsync` 首次成功 / 已签到返回 `AlreadyClaimed` / 服务端错误抛 `HttpRequestException`，并锁死 Bearer 鉴权头 + 浏览器 UA；`BackupManagerTests` 覆盖源缺失短路返回 null / 生成带时间戳副本且原文件保留 / `Prune` 保留最近 N 份删更早 / `retention≤0` 与目录缺失安全退避；`ShutdownServiceTests` 锁死平台判定（`IsSupported` 与 `OperatingSystem.IsWindows()||IsMacOS()` 一致），受支持平台不构造可触发关机的用例、非支持平台 `TryShutdownAsync` 返回 false 且不触达关机命令 | 全量 `dotnet build --no-incremental` = **0 警告 / 0 错误**；`dotnet test BatchAgentRunner.slnx` = **533 通过 / 0 失败**（主 475 + Desktop 58，较 P1-14 收口轮 508 +25：新增 `CodeBuddyCreditsApiClientTests` 11 项 + `BackupManagerTests` 6 项 + `ShutdownServiceTests` 2 项）；**高危模块零覆盖数 4 → 0**（原余 `CodeBuddyCreditsApiClient`/`BackupManager`/`LocalGitIntegration`/`ShutdownService`，`LocalGitIntegration` 已由 P1-14 收口）；`dotnet format`（CHARSET 假阳性按 §4.7 #9 过滤）0 问题 |
+| P1-21  | **生产端点去魔法串（2026-10-20）**：新建 `Core/Options/CodeBuddyApiConstants`（`ProductionApiBase` = `https://www.codebuddy.cn`、`BalancePath` = `/billing/meter/get-user-resource-summary`、`ClaimPath` = `/billing/meter/daily-checkin`），作为生产端点的**单一事实来源**；`CreditsClaimConfig` 的 `ApiBase`/`BalancePath`/`ClaimPath` 默认值改引用该常量（不再内联魔法串），`CreditsClaimMigrator` 的「迁移目标」常量同步去重引用——消除同一组 URL 散落三处（RunOptions 默认值 + 迁移器 + 客户端注释）的漂移风险。环境切换仍靠显式覆盖 `ApiBase` 等字段，但默认值的「生产」属性已被命名常量显式标注、可审计，且任何重新内联魔法串的回退会被测试捕获。行为零变化（JSON 序列化输出值不变：仍 `https://www.codebuddy.cn` + 两条 `/billing/meter/*` 路径），故用户 config.json 与 samples 无需改动 | 全量 `dotnet build --no-incremental` = **0 警告 / 0 错误**；`dotnet test BatchAgentRunner.slnx` = **537 通过 / 0 失败**（主 479 + Desktop 58，主测试较 P1-15 收口轮 533 +4：新增 `CreditsClaimConfigTests` 4 项——`默认配置_端点默认值等于规范生产常量` / `默认配置序列化后_api_base仍为生产基址` / `规范常量_形态合规` / `显式覆盖_不回退到生产默认值`）；`dotnet format`（CHARSET 假阳性按 §4.7 #9 过滤）0 问题 |
 
 > 阶段 3 边界（交接必读）：① P1-13 重写严格等价——`Kill(entireProcessTree: true)` 与原 `taskkill /T /F` 在 Windows 上均整树回收，行为由 `KillTree_父进程拉起常驻子进程_整树回收后子进程不再存活` 锁死；若被回退为「仅杀父进程」，beacon 子进程继续存活、该用例失败。② 非 Windows 平台：`Kill(entireProcessTree: true)` 要求目标进程为进程组首（本仓调用点均由 `IProcessLauncher` 启动、满足前提），与原方案非 Windows 退化路径语义一致，不扩范围。③ 重写后 `CliProcessRunner` 不再 `Process.Start("taskkill")`，仓内进程树回收统一为原生 `Kill(entireProcessTree: true)`（`CliProcessRunner.KillTree` + `SetupWizardViewModel.cs:245` 两处）。④ 余「重写」项（P2-6 六个手写 `Clone` → `record with`、P2-15 五个编辑器 → 泛型 `FieldEditor<T>`）仍属阶段 3 持续化范围（P1-15 高危盲区清零已完成，见上表）。
+
+---
+
+### 5.7 阶段 4：持续化开轮（2026-10-20，P2 机会主义偿还第一批）
+
+> **本轮重点：P2-26（误导性注释清算）**。这是 P2 批次中第一项「治理元债务」——不清它，后续每轮偿还都会在注释里留下新的失真。清算后确立规则：**计划性延期只进 §4.7.1 台账，注释只描述当前实现**，并由测试守卫强制执行。
+
+**验证统一口径（2026-10-20 P2-26 收口轮实跑）**：`dotnet build --no-incremental` = **0 警告 / 0 错误**；`dotnet test BatchAgentRunner.slnx` = **545 通过 / 0 失败**（主测试项目 487 + Desktop.Tests 58；较 P1-21 收口轮 537 +8：`SessionResumePolicyTests` 5 + `SmtpNotifierCredentialResolutionTests` 2 + `CommentHygieneTests` 1）；`dotnet format`（CHARSET 假阳性按 §4.7 #9 过滤）**0 问题**。
+
+| ID        | 落地内容                                                                                                                                                                                                                                                                                                                                                                  | 验证 / 提交                                                                                                                                                                     |
+| --------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P2-26     | **误导性注释清算（2026-10-20）**：全仓盘点「二期 / 暂不支持 / 遗留 / 尚未 / 不实现 / 未实现 / 待实现」后分三类处置——① **台账点名的两处脱节注释前序轮次已清**（`TaskItem.cs` 文档注释改述「扩展字段由工作流执行与 DAG 派发使用」；`BatchEngine.cs` 20+ 处「二期扩展」随 P1-1 拆分收口轮 `596c165` 清理），本轮逐条核实确认；② **真正仍脱节的 1 处本轮修正**——`SmtpNotifier.RetrieveSecret` 注释自称「当前返回占位并提示」，实况已实现环境变量解析（`Environment.GetEnvironmentVariable(ref) ?? ""`），改述为如实描述 + 指向台账，方法可见性 `private` → `internal`（既有 `InternalsVisibleTo`）以便行为测试直接锁死；③ **~100 处「二期」标签逐条核对均为已交付二期功能的历史标签**（与 REQ-016/017/018、DESIGN E0–E5 编号并存，描述的是交付波次而非延期声明），如实登记保留、不做无收益 churn。**计划性延期 4 项全部进台账**（§4.7.1 #D1~#D4：SMTP Vault 集成/MailKit、会话恢复 M0 V-8、WorkBuddy 登录态 V-4b/V-4e、专家参数降级 V-5），代码侧 `IAgentCliAdapter.CanResume` / `SessionResumePolicy` / SYSLIB0014 pragma 的自述延期统一改为引用台账 ID | 全量 `dotnet build --no-incremental` = **0 警告 / 0 错误**；`dotnet test BatchAgentRunner.slnx` = **545 通过 / 0 失败**（主 487 + Desktop 58）；`dotnet format`（CHARSET 按 §4.7 #9 过滤）0 问题 |
+| P2-26 守卫 | **`CommentHygieneTests`（新增，Architecture）**：源码词法扫描 `src/**/*.cs` 全部注释（行注释 / 块注释；跳过常规 + 逐字 + 插值字符串字面量），命中四类模式即失败——①「不实现 / 未实现 / 暂不支持 / 尚未实现 / 待实现」；② 桩声明（「占位并 / 占位值 / 占位实现 / 占位逻辑 / 占位状态」「返回 / 仅是 / 纯为 / 纯属 + 占位」；「占位符」模板变量与「防环：先占位」算法用语不命中）；③「二期 + 扩展 / 后续 / 再换 / 换成」；失败信息指向 §4.7.1 台账处置路径。把 P2-26 从一次性清算变成**结构性防复发**（§4.3 第三道墙新增一行、§4.5 PR 清单新增一项）。**负测试已验证**：临时还原 `RetrieveSecret` 原始误导注释（「当前返回占位并提示」）实测被捕获并报出文件:行 | 收口轮实跑 1/1 通过；对修正前的 `RetrieveSecret` 注释（「占位并提示」自述）实测可捕获                                                                                                     |
+| P2-26 测试 | **行为守卫 7 项（新增）**：`SessionResumePolicyTests` 5 项锁死方案 b「默认关 + 全条件回退方案 a」语义（默认关 / 无句柄 / CLI 不支持 / 跨 adapter → `NoSession`；仅配置开 + 句柄在 + 同 adapter + CLI 声明支持 → `Resume`）；`SmtpNotifierCredentialResolutionTests` 2 项锁死凭据引用「环境变量名 → 取值 / 未设置 → 空串」（GUID 唯一变量名避免并行污染、用后即还）——实现若退化为「占位并提示」即失败，与台账 #D1/#D2 的验收列一一对应                                        | 均为主测试项目快车道 `Invariant`；收口轮 7/7 通过                                                                                                                                       |
+
+> 阶段 4 边界（交接必读）：① 「二期」标签本身不是债务——已交付功能的历史标签与 REQ 编号并存、信息不失真，批量重写属 churn；债务只针对「声称未做但已做」与「声称已做但未做」两类失真，本轮已清零。② `CommentHygieneTests` 的词法扫描覆盖本仓全部源码形态（无 raw string / 无插值孔内注释），若未来引入 C# 11 raw string 需同步扩展扫描器。③ 守卫的失败词表是下限不是上限：真正想自述延期时，正确动作是登记 §4.7.1 台账后在注释引用台账 ID（如 `RetrieveSecret` 现行写法），而非绕过词表。④ D2/D3/D4 三项延期共享 M0 实测轮前置，建议同轮清零；到期未推进按 §4.7 规则升级为该迭代 P1。
+
+### 5.8 阶段 4：P2-27 评估（2026-10-20，维持「主动不偿还」）
+
+> **结论：P2-27 维持 §3.7 / 附录 A 的「主动不偿还」判定，不批量重命名中文测试方法名。** 本轮按方案约定的触发条件（「仅在 CI 出现编码问题时批量处理」）逐项核验，确认触发条件**未达成**。
+
+**核验过程与证据**：
+
+1. **`dotnet test --filter` 易碎**：实测 CI 工作流（`.github/workflows/ci.yml`）的过滤串为 `Category!=E2E&Category!=Usability&Category!=Process` 与 `Category=E2E|Category=Usability|Category=Process`——**全部按 `Category`(Trait) 过滤，从不按测试方法名**。中文方法名不进入 `--filter` 字符串，该向量在 CI 中不可达；开发者本地亦以 `Category` 过滤为主，按中文方法名过滤属极低频手操作。
+2. **CI 报表易碎**：CI 运行器为 `windows-latest` + .NET 10（`dotnet-version: '10.0.x'`），进程与控制台默认代码页 UTF-8（CodePage 65001），`--logger "console;verbosity=normal"` 输出中文方法名无乱码——该向量无实锤。
+3. **日志 diff 易碎**：测试日志中的中文同样落在 UTF-8 默认运行环境，与本地/CI 同态，无跨编码 diff 失真——该向量无实锤。
+
+**现状度量（v2.0 盘点值已过时，本轮刷新）**：`tests/**` 下 `[Fact]`/`[Theory]` 方法共 **494** 个，其中中文命名 **285** 个（约 58%，仍占多数），v2.0 盘点记录的「252/252」已不准确（期间 P1-13~P1-21、P2-26 等轮次新增/补测使总量与中文占比均变化）。
+
+**处置**：不引入任何代码或测试改动；维持「主动不偿还」。**升级触发器**（写入本方案即生效，无需再评审）：任一下列情形出现即触发 P2-27 批量重命名（ASCII 化 / 罗马音 / 英文摘要，单独 `chore(debt):` 提交，受 §3.6 单行提交纪律约束）——
+
+- CI 运行器改为非 UTF-8 默认环境且报表出现中文乱码；
+- `dotnet test --filter` 被迫按方法名过滤且本地非 UTF-8 控制台产生编码失败；
+- 日志 diff 工具因编码不一致导致中文测试方法名比对失真、影响回归定位。
+
+**验证口径（2026-10-20 P2-27 评估轮，纯文档变更）**：无代码/测试改动，`dotnet build --no-incremental` 与 `dotnet test` 基线维持 P2-26 收口轮的 **545 通过 / 0 失败**；`dotnet format` 维持 **0 问题**。
+
+### 5.9 阶段 4：P2-29 清理（2026-10-20，顺手清理）
+
+> **本轮重点：P2-29（`_harness/` publish 产物堆）**。附录 A「顺手清理」组的一项——不在关键路径、不影响正确性，但 1.2G / 214 文件的已 ignore 产物堆与 `samples/` 职责重叠且无人清理，属持续抬高单位改动成本的仓库卫生债务。清理前完成三项核实（全过才动手）：
+
+1. **全部可再生产物**：214 文件 = `publish/`（`dotnet publish` 自包含输出：Avalonia/SkiaSharp/ClosedXML 等 110 dll + 48 so + 6 dylib + 4 exe + 22 pdb + `runtimes/`）+ `bin/Debug/net10.0` + `obj/`（MSBuild 中间产物；3 个 .cs 均为生成文件——`AssemblyAttributes.cs` / `Harness.AssemblyInfo.cs` / `Harness.GlobalUsings.g.cs`）。连 `Harness.csproj` 源文件本身都已不存在，仅剩 obj 残骸。
+2. **无引用**：`git log --all -- _harness` 为空（从未跟踪）；slnx / csproj / CI / 脚本 / 文档对该路径零引用（唯一提及处为本台账自身）。
+3. **可完整复现**：任何时候 `dotnet publish src/BatchAgentRunner.Desktop -o _harness/publish` 可重新生成全部内容。
+
+| ID        | 落地内容                                                                                                                                                                                                                                                                                                                                                          | 验证 / 提交                                                                                                                                                                     |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| P2-29 清理 | **整堆删除 `_harness/`**（214 文件 / 1.2G）：publish + bin + obj 全清 | `ls _harness` 不存在；`git status --ignored` 无 harness 条目 |
+| P2-29 防复发 | **`.gitignore` 末尾补 `/_harness/` 显式目录级规则**（附 P2-29 注释）：此前仅靠通用 `publish/`（`.gitignore:180`）与 `[Bb]in/` / `[Oo]bj/` 规则命中——「ignore 生效但无人清理」正是该债务的根因；显式规则把意图写进版本库，换机 / 换人后静默重生前先撞上这条注释（沿用 P0-13 目录级规则教训） | `git check-ignore -v _harness/publish/x.dll` → `.gitignore:375`；探针目录 `_harness_probe/` 不受影响（规则精确匹配 `_harness/`） |
+| P2-29 度量刷新 | **代码规模口径刷新**：B.2 快照「182 文件 / 24,417 行（含 `_harness/obj`）」中 `_harness/obj` 部分（3 个生成 .cs）随本轮消失；当前源码口径（排除 obj/bin）**223 文件 / 35,042 行**（Core 8,507 / Desktop 6,949 / Infrastructure 5,114 / Agents 1,941 / 主测试 11,064 / Desktop.Tests 1,467；较 v2.0 盘点的增长来自 P1-1~P1-21、P2-26 各轮新增协作者与测试） | `find` + `wc -l` 实跑 |
+
+**验证口径（2026-10-20 P2-29 清理轮实跑）**：`dotnet build --no-incremental` = **0 警告 / 0 错误**；`dotnet test BatchAgentRunner.slnx` = **545 通过 / 0 失败**（主 487 + Desktop 58，与 P2-26 收口轮基线一致——`_harness/` 不在解决方案内，清理零行为影响）；`dotnet format`（CHARSET 假阳性按 §4.7 #9 过滤）**0 问题**。
+
+> 阶段 4 边界（交接必读）：① 本轮为纯仓库卫生操作，无任何 src/tests 改动——545 基线与 P2-26 收口轮逐项一致即是零行为影响的证据。② `_harness/` 与 `samples/` 的「职责重叠」指两者都曾是「给外面看的运行样本」：samples 是 tracked 的只读用户示例（P2-28 已收口），`_harness/publish` 是 ignored 的本机发布堆——清理后该重叠消失，发布输出不应再进仓库根目录。③ 若未来确需常驻 publish 输出（如 E2E 夹具），应先落 `IProcessLauncher` 式注入缝或嵌入式资源（P2-21/P2-28 模式），不得复辟「ignore 了之」。
 
 ---
 
@@ -575,11 +651,11 @@ A 组 10 项互不耦合，与 P0-17 并行完成。代码改动均随既有工�
 
 | 方式            | ID                                                                                                                                               |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **重构**        | P0-1, P0-3~~P0-10, P0-12~~P0-15, P0-17, P1-1~~P1-5, P1-7, P1-9~~P1-12, P1-14~~P1-21, P2-1~~P2-14, P2-16~P2-21, P2-23, P2-24, P2-26, P2-28, P2-31 |
+| **重构**        | P0-1, P0-3~~P0-10, P0-12~~P0-15, P0-17, P1-1~~P1-5, P1-7, P1-9~~P1-12, P1-14~~P1-21, P2-1~~P2-14, P2-16~P2-21, P2-23, P2-24, P2-26, P2-31 |
 | **重写**（仅 4 项） | P0-2(局部), P1-13, P2-6, P2-15                                                                                                                     |
 | **隔离**        | P0-11(钩), P1-1(过渡), P1-9, P1-16(守卫过渡), P2-7, P2-10/P2-11, P2-19/P2-28                                                                            |
-| **主动不偿还**     | P2-24(部分), P2-14, P2-25(部分), P2-27                                                                                                               |
-| **顺手清理**      | P1-18, P1-20, P2-22, P2-29                                                                                                                       |
+| **主动不偿还**     | P2-24(部分), P2-14, P2-25(部分), P2-27（2026-10-20 评估维持，升级触发器见 §5.8）                                                                                                               |
+| **顺手清理**      | P1-18, P1-20, P2-22, P2-29（✅ 2026-10-20 已完成，见 §5.9）                                                                                                                       |
 
 ## 附录 B：本版实测数据与事实更正
 
@@ -598,7 +674,7 @@ A 组 10 项互不耦合，与 P0-17 并行完成。代码改动均随既有工�
 
 | 项                   | 命令                              | 结果                                                               |
 | ------------------- | ------------------------------- | ---------------------------------------------------------------- |
-| 代码规模                | `find -name "*.cs" \| wc -l`    | 182 文件 / 24,417 行（含 `_harness/obj`）                              |
+| 代码规模                | `find -name "*.cs" \| wc -l`    | 182 文件 / 24,417 行（含 `_harness/obj`；该目录 3 个生成 .cs 已随 P2-29 清理于 2026-10-20 删除，当前源码口径 223 文件 / 35,042 行，见 §5.9）                              |
 | 各项目规模               | 逐目录 `wc -l`                     | Core 6,563 / Desktop 5,411 / Infrastructure 4,491 / Agents 1,654 |
 | 增量 vs 全量警告          | `dotnet build --no-incremental` | 增量 **0**；全量重建 Core **36 个 CA2007**                               |
 | 提交信息                | `git log --format="%s"`         | 12 提交，**10 个为空**                                                 |
