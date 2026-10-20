@@ -21,8 +21,7 @@ public sealed class FileRunLogger : IRunLogger
     {
         var dir = logDirectory ?? (!string.IsNullOrWhiteSpace(taskFilePath)
             ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(taskFilePath)) ?? ".", "runs")
-            : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "BatchAgentRunner", "runs"));
+            : AppPaths.RunsDirectory);
 
         Directory.CreateDirectory(dir);
         LogFilePath = Path.Combine(dir, $"run-{DateTime.Now:yyyyMMddHHmmss}.log");

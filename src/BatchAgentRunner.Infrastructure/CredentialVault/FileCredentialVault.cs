@@ -45,9 +45,7 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
         ICliProcessGuard? processGuard = null, IClock? clock = null, Action<string>? auditSink = null,
         ICredentialLocationRegistry? registry = null)
     {
-        _root = root ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "BatchAgentRunner", "vault");
+        _root = root ?? AppPaths.VaultDirectory;
         _protector = protector ?? new DpapiCredentialProtector();
         _registry = registry ?? new CredentialLocationRegistry();
         _processGuard = processGuard ?? new CliProcessGuard(_registry);

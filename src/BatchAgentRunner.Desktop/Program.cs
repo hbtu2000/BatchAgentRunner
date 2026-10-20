@@ -4,6 +4,7 @@ using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Avalonia;
+using BatchAgentRunner.Infrastructure;
 
 namespace BatchAgentRunner.Desktop;
 
@@ -14,9 +15,7 @@ sealed class Program
     // yet and stuff might break.
 
     // 应用级日志目录（与引擎运行日志 runs/ 区分：此处仅记录启动/退出/进程级异常）。
-    private static string AppLogDirectory => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "BatchAgentRunner", "logs");
+    private static string AppLogDirectory => AppPaths.LogsDirectory;
 
     private static string TodayLogPath =>
         Path.Combine(AppLogDirectory, $"app-{DateTime.Now:yyyyMMdd}.log");

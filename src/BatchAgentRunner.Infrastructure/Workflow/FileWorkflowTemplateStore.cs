@@ -16,8 +16,7 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
 
     public FileWorkflowTemplateStore(string? baseDir = null)
     {
-        var root = baseDir ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BatchAgentRunner", "templates");
+        var root = baseDir ?? AppPaths.TemplatesDirectory;
         _builtinDir = Path.Combine(root, "builtin");
         _userDir = Path.Combine(root, "user");
     }

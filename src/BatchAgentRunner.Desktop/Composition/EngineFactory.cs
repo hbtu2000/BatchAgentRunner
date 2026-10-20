@@ -67,9 +67,7 @@ public sealed class EngineFactory : IEngineFactory
     private static CredentialLocationRegistry CreateCredentialLocations()
     {
         var registry = new CredentialLocationRegistry();
-        var mockLiveRoot = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "BatchAgentRunner", "mock-live");
+        var mockLiveRoot = AppPaths.MockLiveDirectory;
         registry.SetLiveRootOverride(AgentKind.Mock, mockLiveRoot);
         return registry;
     }
@@ -105,9 +103,8 @@ public sealed class EngineFactory : IEngineFactory
         if (adapter is MockAdapter mock)
         {
             // Mock 的「Live 凭证文件」与 Vault 共用同一位置，保活回写/切换全链路可用 Mock 联调
-            mock.MockLiveCredentialPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                "BatchAgentRunner", "mock-live", ".credentials.json");
+            mock.MockLiveCredentialPath =
+                Path.Combine(AppPaths.MockLiveDirectory, ".credentials.json");
         }
 
         IDiffCollector? diffCollector = options.CollectDiffs ? new DiffCollector(logger, options) : null;

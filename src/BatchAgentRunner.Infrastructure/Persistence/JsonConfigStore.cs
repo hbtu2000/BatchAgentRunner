@@ -1,51 +1,27 @@
-using System.Text.Json;
 using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Options;
-using BatchAgentRunner.Core.Serialization;
-using BatchAgentRunner.Infrastructure.TaskFiles;
 
 namespace BatchAgentRunner.Infrastructure.Persistence;
 
 /// <summary>运行配置持久化。安全约定：账号仅存标识 + 凭据引用，不明文保存凭据。</summary>
-public sealed class JsonConfigStore : IConfigStore
+public sealed class JsonConfigStore : JsonStoreBase<RunOptions>, IConfigStore
 {
-    private readonly string _filePath;
-
     public JsonConfigStore(string? directory = null)
+        : base(directory, "config.json")
     {
-        ConfigDirectory = directory ?? Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "BatchAgentRunner");
-        Directory.CreateDirectory(ConfigDirectory);
-        _filePath = Path.Combine(ConfigDirectory, "config.json");
     }
 
-    public string ConfigDirectory { get; }
+    public string ConfigDirectory => DataDirectory;
 
-    public async Task<RunOptions> LoadAsync(CancellationToken cancellationToken = default)
+    /// <summary>文件缺失时回落到出厂示例配置（便于用户首次启动直接改）。</summary>
+    protected override RunOptions CreateEmpty() => CreateSample();
+
+    /// <summary>反序列化成功后就地迁移旧版积分领取字段。</summary>
+    protected override ValueTask<RunOptions> NormalizeAsync(RunOptions value, CancellationToken cancellationToken)
     {
-        if (!File.Exists(_filePath))
-        {
-            return CreateSample();
-        }
-
-        try
-        {
-            var json = await File.ReadAllTextAsync(_filePath, cancellationToken).ConfigureAwait(false);
-            var options = JsonSerializer.Deserialize<RunOptions>(json, JsonDefaults.Options) ?? CreateSample();
-            CreditsClaimMigrator.Migrate(options);
-            return options;
-        }
-        catch (JsonException)
-        {
-            return CreateSample();
-        }
-    }
-
-    public async Task SaveAsync(RunOptions options, CancellationToken cancellationToken = default)
-    {
-        await AtomicFileWriter.WriteAsync(_filePath, JsonDefaults.Serialize(options), cancellationToken)
-            .ConfigureAwait(false);
+        CreditsClaimMigrator.Migrate(value);
+        return new(value);
     }
 
     /// <summary>
