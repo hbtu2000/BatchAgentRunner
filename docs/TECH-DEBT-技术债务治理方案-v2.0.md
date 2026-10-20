@@ -4,7 +4,7 @@
 > 盘点范围：`src/**`（117 文件 / 18,119 行）、`tests/**`（32 文件 / 5,845 行）、全部工程配置、git 历史（12 提交）  
 > 事实基线：net10.0 / Avalonia 12.1.4 / CommunityToolkit.Mvvm 8.4.2，**无 CI、无门禁、无 CPM**
 >
-> **当前进度（2026-10-19 晚）**：阶段 −1（B 组 5 项）、阶段 0（A 组 10 项 + P0-17）、阶段 1（建网 6 项）**均已完成**；P0 清单 17 项全部清偿，全量构建 0 警告 / 0 错误（`TreatWarningsAsErrors=true`）。**阶段 2 动骨已完成（2026-10-18 ~ 2026-10-19）**：P1-3（提 `IBatchEngine` + 窄化构造）、P1-9（`IProcessRunner`）、P1-10（`IFileSystem`）、P1-16（取消静态注册表）、P1-1（拆 6 协作者）、P1-2（状态机外置）均已提交；**P1-4/P1-5 已收口（2026-10-19）**——`Desktop/Composition/EngineFactory` 成为 Desktop 中唯一 `new` Infrastructure/Agents 具体类型的位置（原 `CredentialVaultHost.CreateDefault`、`EngineHost` 的 `ShutdownService`、`TemplateEditorViewModel` 的 `FileWorkflowTemplateStore` 三处残留装配全部收回组合根），§4.3「Desktop 不得直接 `new` Infrastructure 具体类型」IL 扫描断言落地（Desktop.Tests 3/3 通过）。**P1-1 已收口（2026-10-19 晚，提交 `39bdb14`）**：补齐拆分产物 ① `ITaskDispatcher` 白箱单测 19 项——该协作者随 REQ-020 功能提交落地时未同步协作者测试模式，是六个协作者中唯一的白箱覆盖缺口，补齐后 §3.4 全部产物均有直接契约测试；同轮 `chore(debt)` 清理 `BatchEngine` 拆分后残留的 3 个空节标题注释（`596c165`）。P1-19（Desktop 补测试 + 契约收敛）已于 2026-10-19 收口（Avalonia headless 测试基座 + `UiThread` 线程收敛契约 2 项 + churn 热点 `ConfigView`/`Login`/`Monitor`/`SetupWizard` VM 契约测试 13 项，Desktop.Tests 39→54）。P1-3 为本轮重点，配套 §4.3 断言与 `BatchEnginePhase2Tests` 契约测试已落地，详见 §5.5。**阶段 2 收尾补漏（2026-10-20）**：P1-6（异步初始化门消除同步阻塞 + IL 断言）、P1-7（事件订阅泄漏退订）、P1-11（Vault 根目录 ACL 加固 + `WriteManifest` 原子写）、P1-12（CLI 权限固化治理：作用域收窄 + 原子写 + 异步化）四项均为阶段 2 声明「完成」后追加的收口项，详见 §5.5 与 §4.8。**阶段 3 持续化补完（2026-10-20）**：P1-13（`CliProcessRunner.KillTree` 重写——原生 `Kill(entireProcessTree:true)` 取代外部 `taskkill` + 同步 `WaitForExit(3000)` 阻塞）为「重写」准入四项中最后一笔收口；P1-14（`LocalGitIntegration` 子进程执行加固——超时回收 + stdin 重定向 + 启动失败收敛）同步收口；**P1-15 高危盲区清零**——`CodeBuddyCreditsApiClient` / `BackupManager` / `ShutdownService` 三项阶段 1 顺延的高危零覆盖盲区补齐白箱测试（`CodeBuddyCreditsApiClientTests` 11 + `BackupManagerTests` 6 + `ShutdownServiceTests` 2），详见 §5.6。测试基线（2026-10-20 P1-15 收口轮实跑）：主测试项目 **475 用例**（快 448 / 慢 27）+ Desktop.Tests **58 用例** = **533 通过 / 0 失败**（主测试较 P1-14 收口轮 450 增加 25 例：P1-15 三个高危盲区白箱测试；本轮复跑未再现测试宿主退出崩溃，历史记录见 §5.5 边界）。
+> **当前进度（2026-10-19 晚）**：阶段 −1（B 组 5 项）、阶段 0（A 组 10 项 + P0-17）、阶段 1（建网 6 项）**均已完成**；P0 清单 17 项全部清偿，全量构建 0 警告 / 0 错误（`TreatWarningsAsErrors=true`）。**阶段 2 动骨已完成（2026-10-18 ~ 2026-10-19）**：P1-3（提 `IBatchEngine` + 窄化构造）、P1-9（`IProcessRunner`）、P1-10（`IFileSystem`）、P1-16（取消静态注册表）、P1-1（拆 6 协作者）、P1-2（状态机外置）均已提交；**P1-4/P1-5 已收口（2026-10-19）**——`Desktop/Composition/EngineFactory` 成为 Desktop 中唯一 `new` Infrastructure/Agents 具体类型的位置（原 `CredentialVaultHost.CreateDefault`、`EngineHost` 的 `ShutdownService`、`TemplateEditorViewModel` 的 `FileWorkflowTemplateStore` 三处残留装配全部收回组合根），§4.3「Desktop 不得直接 `new` Infrastructure 具体类型」IL 扫描断言落地（Desktop.Tests 3/3 通过）。**P1-1 已收口（2026-10-19 晚，提交 `39bdb14`）**：补齐拆分产物 ① `ITaskDispatcher` 白箱单测 19 项——该协作者随 REQ-020 功能提交落地时未同步协作者测试模式，是六个协作者中唯一的白箱覆盖缺口，补齐后 §3.4 全部产物均有直接契约测试；同轮 `chore(debt)` 清理 `BatchEngine` 拆分后残留的 3 个空节标题注释（`596c165`）。P1-19（Desktop 补测试 + 契约收敛）已于 2026-10-19 收口（Avalonia headless 测试基座 + `UiThread` 线程收敛契约 2 项 + churn 热点 `ConfigView`/`Login`/`Monitor`/`SetupWizard` VM 契约测试 13 项，Desktop.Tests 39→54）。P1-3 为本轮重点，配套 §4.3 断言与 `BatchEnginePhase2Tests` 契约测试已落地，详见 §5.5。**阶段 2 收尾补漏（2026-10-20）**：P1-6（异步初始化门消除同步阻塞 + IL 断言）、P1-7（事件订阅泄漏退订）、P1-11（Vault 根目录 ACL 加固 + `WriteManifest` 原子写）、P1-12（CLI 权限固化治理：作用域收窄 + 原子写 + 异步化）四项均为阶段 2 声明「完成」后追加的收口项，详见 §5.5 与 §4.8。**阶段 3 持续化补完（2026-10-20）**：P1-13（`CliProcessRunner.KillTree` 重写——原生 `Kill(entireProcessTree:true)` 取代外部 `taskkill` + 同步 `WaitForExit(3000)` 阻塞）为「重写」准入四项中最后一笔收口；P1-14（`LocalGitIntegration` 子进程执行加固——超时回收 + stdin 重定向 + 启动失败收敛）同步收口；**P1-15 高危盲区清零**——`CodeBuddyCreditsApiClient` / `BackupManager` / `ShutdownService` 三项阶段 1 顺延的高危零覆盖盲区补齐白箱测试（`CodeBuddyCreditsApiClientTests` 11 + `BackupManagerTests` 6 + `ShutdownServiceTests` 2），详见 §5.6。测试基线（2026-10-20 P1-15 收口轮实跑）：主测试项目 **475 用例**（快 448 / 慢 27）+ Desktop.Tests **58 用例** = **533 通过 / 0 失败**（主测试较 P1-14 收口轮 450 增加 25 例：P1-15 三个高危盲区白箱测试；本轮复跑未再现测试宿主退出崩溃，历史记录见 §5.5 边界）。**阶段 4 持续化（2026-10-20 ~ 2026-10-21）**：P2-26（误导性注释清算 + §4.7.1 计划性延期台账 + `CommentHygieneTests`，见 §5.7）、P2-27（评估维持「主动不偿还」，见 §5.8）、P2-29（`_harness/` 产物堆清理，见 §5.9）、P2-30（逃逸阀台账四要素补齐 + 未登记的生产代码豁免归位 + `EscapeValveHygieneTests`，见 §5.10）四项已收口；测试基线刷新为 **550 通过 / 0 失败**（2026-10-21 P2-30 收口轮实跑：主 492 + Desktop 58，较 P2-26 收口轮 545 +5）。
 
 ---
 
@@ -17,7 +17,7 @@
 | **批准日期**   | 2026-10-18                                                                           |
 | **批准范围**   | 全文：阶段 −1 / 0 / 1 执行记录、阶段 2 / 3 路线图、§3 偿还策略、§4 防新增六道墙与逃逸阀台账、附录 A/B                    |
 | **效力说明**   | 自批准日起，本方案为 BatchAgentRunner 技术债务治理的**权威基线**；任何后续变更须按 §4.6 债务预算与 §4.7 逃逸阀规则登记，不得口头覆盖。 |
-| **当前进度基线** | 阶段 −1 / 0 / 1 已完成，P0 清单 17 项全部清偿；阶段 2 动骨全部完成（P1-3/4/5/9/10/16、P1-1 拆 6 协作者、P1-2、P1-19 均已完成，详见 §2 / §5.5）。P1-4/P1-5 于 2026-10-19 收口：组合根 `EngineFactory` 为 Desktop 唯一 `new` 点，§4.3 对应 IL 断言落地。 |
+| **当前进度基线** | 阶段 −1 / 0 / 1 已完成，P0 清单 17 项全部清偿；阶段 2 动骨全部完成（P1-3/4/5/9/10/16、P1-1 拆 6 协作者、P1-2、P1-19 均已完成，详见 §2 / §5.5）。P1-4/P1-5 于 2026-10-19 收口：组合根 `EngineFactory` 为 Desktop 唯一 `new` 点，§4.3 对应 IL 断言落地。阶段 3 持续化补完（P1-13/14/15/21）、阶段 4 P2 第一批（P2-26/P2-27/P2-29/P2-30）已完成（§5.6 ~ §5.10）；测试基线 **550 通过 / 0 失败**（2026-10-21 P2-30 收口轮）。 |
 
 ---
 
@@ -138,7 +138,7 @@ v1.0 的 P0 缺陷清单经本版实测复核**全部仍然成立**（重点复�
 | **P2-27** | `tests/**` 测试方法名为中文（v2.0 盘点 252/252；2026-10-20 复测 **285/494**，仍占多数）                                                                                                                      | `dotnet test --filter` / CI 报表 / 日志 diff 在非 UTF-8 环境下易碎 → **2026-10-20 评估维持「主动不偿还」（见 §5.8）**：CI 实际按 `Category`(Trait) 过滤、不按方法名；`windows-latest` + .NET 10 默认 UTF-8，三处易碎向量均无实锤，触发条件（CI 编码问题）未达成 |
 | **P2-28** | `samples/`（13 文件）                                                                                                                                                                            | 双重角色：既是用户示例，又被测试当契约（`RunOptionsSerializationTests.cs:95` 断言 `samples/config.example.json` 与代码同步）→ 改示例会断测试，改代码要同步示例 **✅ 已完成（2026-10-18，见 §5.4 与阶段 1 小结）**：samples 降级为只读用户示例；测试契约（config.example.json / tasks.json / tasks.md）全部改读 csproj `Link` 指向真实 samples 的**嵌入式资源副本**（内容随 samples 同步、不依赖运行时/克隆路径），`TestSampleResources` 统一读取入口；原 `RunOptionsSerializationTests.cs:95` 不再断言磁盘 samples 与代码同步，仅断言嵌入式模板非空可解析；全部 `RepoRoot()` 磁盘路径探测已清除（顺带随 P2-21 解决） |
 | **P2-29** | `_harness/`（214 文件 / 1.2G，2026-10-20 已删除）                                                                                                                                                                                                                   | 已 ignore 的 publish 产物堆（Avalonia DLL + exe），与 `samples/` 职责重叠，无人清理 ✅ **已完成（2026-10-20，见 §5.9）**：整堆清理（214 文件 / 1.2G 全部为可再生产物——`dotnet publish` 自包含输出 + MSBuild obj 中间产物，`Harness.csproj` 源文件早已不存在仅剩 obj 残骸；git 历史从未跟踪、仓内零引用）；`.gitignore` 补 `/_harness/` 显式目录级规则（此前仅靠通用 `publish/`/`bin/`/`obj/` 规则命中——「ignore 生效却无人清理」正是该债务根因），换机后也无法静默重生 |
-| **P2-30** | `.editorconfig:24` 将 `CA1002` 设为 `none`；`NotificationDispatchers.cs:101` `#pragma warning disable SYSLIB0014`（过时 `SmtpClient`，注释自认"二期换 MailKit"）                                             | 规则豁免无登记、无到期日                                                                                                                                                                                                                                           |
+| **P2-30** | `.editorconfig` 将 `CA1002` 设为 `none`；`NotificationDispatchers.cs` `#pragma warning disable SYSLIB0014`（过时 `SmtpClient`，注释自认"二期换 MailKit"）                                             | 规则豁免无登记、无到期日 ✅ **已完成（2026-10-21，见 §5.10）**：全仓逃逸阀盘点（1 `pragma` + 8 `[SuppressMessage]` + 1 `.editorconfig` `none` + 5 `NoWarn` 规则 + 1 钩子过滤）逐条对账，补齐 §4.7 台账四要素（发现日 / 责任人 / 到期日 / 不变量断言，"长期有效 / 二期换库时"一律折算为具体复核到期日）；**盘点发现 1 项从未登记的生产代码豁免**（Desktop `NoWarn` 的 `AVLN5001` / `AVLN3001` / `CA2007`），其中 `AVLN5001`（10 处过时 API）与 `CA2007`（1 处缺 `ConfigureAwait`）本轮**偿还并删除豁免**，余 `AVLN3001` 登记为 #10；新增 `EscapeValveHygieneTests` 守卫（站点标注 / 台账四要素与到期 / 代码↔台账双向一致 / #10 不变量），负测试实测可捕获 |
 | **P2-31** | `JsonCooldownStore` / `JsonCreditsClaimStore` / `JsonConfigStore` 三份逐行同构（构造 + 默认目录 + `LoadAsync` catch(JsonException) + `AtomicFileWriter.SaveAsync`）；`"BatchAgentRunner"` 路径魔法串在 **9 处**硬编码 | 改一处必漏改两处                                                                                                                                                                                                                                               |
 
 **P2 中三项已随阶段 1「建网」提前偿还（2026-10-18，见 §5.4）**：  
@@ -149,6 +149,8 @@ P2-28（samples 降级为只读示例，测试契约改读嵌入式副本，内�
 **P2-26 随阶段 4「持续化」开轮偿还（2026-10-20，见 §5.7）**：误导注释清算 + 计划性延期台账（§4.7 #D1~#D4）+ `CommentHygieneTests` 守卫。
 
 **P2-29 随阶段 4「持续化」顺手清理（2026-10-20，见 §5.9）**：`_harness/` publish 产物堆整堆删除（214 文件 / 1.2G）+ `.gitignore` 显式目录级规则防复发。
+
+**P2-30 随阶段 4「持续化」偿还（2026-10-21，见 §5.10）**：逃逸阀台账四要素补齐 + 未登记的生产代码豁免归位（偿还 2 项）+ `EscapeValveHygieneTests` 守卫。
 
 ---
 
@@ -236,6 +238,19 @@ P1-19 Desktop 补测试 + 契约收敛                                          
 1. 机会主义偿还 P2 各项（§3.5）
 2. ~~阶段 2 拆出的 5 个协作者各自补齐单测，逐步摆脱对 `BatchEngine` 黑箱测试的依赖~~（2026-10-19 晚已完成：六个协作者均有白箱单测——② `TaskRunnerTests`(10)、③ `FallbackBillingTests`(10)、④ `GitWorkflowTests`(10)、⑤ `BatchCollaboratorTests`(12)、⑥ `PreflightTests`(7)、① `TaskDispatcherTests`(19，最后补齐)；后续重点转为按协作者契约深化场景覆盖，而非从零补测试）
 3. 台账月度复核，按 §4.7 看趋势而非绝对值
+
+### 阶段 4：P2 机会主义偿还（2026-10-20 起，随任务带走）
+
+阶段 3 的「机会主义偿还」进入实际执行后的第一批，按 §3.6 Boy Scout 边界**单独 `chore(debt):` 提交**：
+
+```
+P2-26 误导性注释清算 + 计划性延期台账（§4.7.1）+ CommentHygieneTests 守卫   ✅ 2026-10-20（§5.7）
+P2-27 中文测试方法名 评估：维持「主动不偿还」，升级触发器已写入 §5.8          ✅ 2026-10-20（§5.8）
+P2-29 _harness/ publish 产物堆清理 + .gitignore 显式规则防复发                ✅ 2026-10-20（§5.9）
+P2-30 逃逸阀台账四要素补齐 + 未登记的生产代码豁免归位 + EscapeValveHygieneTests ✅ 2026-10-21（§5.10）
+```
+
+> 下一批候选：P2-31（`JsonCooldownStore` / `JsonCreditsClaimStore` / `JsonConfigStore` 三份逐行同构 + `"BatchAgentRunner"` 路径魔法串 9 处）、P2-6（六个手写 `Clone` → `record with`）、P2-15（五个编辑器 → 泛型 `FieldEditor<T>`）。
 
 ---
 
@@ -373,6 +388,7 @@ P1-19 Desktop 补测试 + 契约收敛                                          
 | 生产程序集不得出现 `FakeClock`/`Mock*` 类型                                         | 防 P2-8 测试替身进生产     | ⏳ 留待 ArchUnitNET 批次（§4.9 迭代 2/3）                                                                    |
 | `Catch (Exception)` 占比不得上升（基线 42/79 = 53%，2026-10-18 复测；盘点时 37/69 = 54%） | 防吞异常继续扩散           | ⏳ 需计数基建；当前靠 PR 评审清单人工兜底（§4.5）                                                                          |
 | `src` 注释不得自述计划性延期 / 能力未实现（"不实现 / 未实现 / 暂不支持 / 待实现"；"占位并/值/实现"等桩声明；"二期 + 扩展/后续/再换/换成"） | 防 P2-26 误导注释复发：延期只进 §4.7.1 台账，注释只描述当前实现 | ✅ `CommentHygieneTests`（Core.Tests，源码词法扫描注释、跳过字符串字面量；2026-10-20 P2-26 收口时落地；负测试实测可捕获原始误导注释） |
+| 每个门禁例外（`#pragma` / `[SuppressMessage]` / `.editorconfig` `severity=none` / `NoWarn` / 钩子过滤）必须就近标注「逃逸阀台账 #N / 到期日 / 责任人」，且台账四要素齐全、到期日未过期、代码↔台账双向一致 | 防 P2-30「豁免无登记、无到期日」复发：登记了却无到期日 = 无人复核，§4.7「到期自动升级 P1」形同虚设 | ✅ `EscapeValveHygieneTests`（Core.Tests，2026-10-21 P2-30 收口时落地；负测试实测可捕获：无标注 `pragma`、无标注 `.editorconfig` 条目、过期到期日、悬空台账 ID 四类） |
 
 > 「Desktop 不得直接 new」断言的实现口径（2026-10-19）：用反射自建最小 IL walker（`OpCodes` 反射建查表，逐指令步进），扫描 Desktop 程序集全部方法体（含构造器 / 属性访问器 / 编译器生成的闭包与异步状态机）中的 `newobj` / `newarr`，解析元数据 token 得目标类型；`Desktop.Composition` 命名空间（组合根）为唯一豁免。**按规则本意排除委托实例化**：捕获型 lambda 会被编译器转换为 `newobj`（如 `CredentialVaultHost.GuidedLoginAsync` 把校验回调传给 `RunAsync`），源码并无 `new`，且回调委托类型是协作者签名强制的契约、无法按「须经接口」替换——规则目标是「UI 不得实例化 Infrastructure/Agents 实现类」，不覆盖编译器产物。
 
@@ -401,6 +417,7 @@ P1-19 Desktop 补测试 + 契约收敛                                          
 - [ ] 是否拼接命令行字符串而非 `ArgumentList`？（P0-3 类）
 - [ ] 是否新增硬编码色值/魔法数字/绝对路径，而非引用 token/常量？
 - [ ] 是否以注释自述计划性延期 / 能力未实现（"二期扩展""暂不支持"等）？延期一律登记 §4.7 台账后在注释引用台账 ID（P2-26 类）— 2026-10-20 起已由 `CommentHygieneTests` 自动把关，新增即测试失败
+- [ ] 是否新增门禁例外（`#pragma warning disable` / `[SuppressMessage]` / `.editorconfig` `severity=none` / `NoWarn` / 钩子过滤）？例外一律先登记 §4.7 逃逸阀台账四要素，再在就近注释写明「逃逸阀台账 #N / 到期日 / 责任人」（P2-30 类）— 2026-10-21 起已由 `EscapeValveHygieneTests` 自动把关，未登记 / 无到期日 / 到期未清理即测试失败
 - [ ] 新增的高危路径（凭证/进程/Git/安全拦截）是否带测试？
 - [ ] 提交信息是否说明「改了什么 / 为什么」？（P0-11 类，钩子已强制）
 
@@ -417,25 +434,33 @@ P1-19 Desktop 补测试 + 契约收敛                                          
 
 门禁必须允许例外，否则会被绕过。规则：
 
-- 例外一律显式：`#pragma warning disable` / `[SuppressMessage]` / `// NOLINT` **必须附理由 + 到期日 + 责任人**
-- CI 统计**逃逸数**并纳入看板（当前基线：`#pragma` 1 处、`.editorconfig` 规则置 `none` 1 处（CA1002）、`NoWarn` 1 项）
-- 到期未清理的逃逸，自动升级为该迭代的 P1
+- 例外一律显式：`#pragma warning disable` / `[SuppressMessage]` / `// NOLINT` **必须附理由 + 到期日 + 责任人**（2026-10-21 P2-30 起统一为就近注释里的结构化标注「逃逸阀台账 #N / 到期日 YYYY-MM-DD / 责任人 X」，由 `EscapeValveHygieneTests` 机器校验）
+- CI 统计**逃逸数**并纳入看板（2026-10-21 P2-30 复核后基线：`#pragma` 1 处、`[SuppressMessage]` 8 处（CA1859×7 + CA1720×1）、`.editorconfig` 规则置 `none` 1 处（CA1002）、`NoWarn` 规则 5 项（CS1591 全仓 / CA1707·CA2007·CA1861 测试项目 / AVLN3001 仅 Desktop）、钩子诊断过滤 1 处（pre-commit CHARSET）= **台账 10 条**；P2-30 偿还 2 条，见 §5.10）
+- 到期未清理的逃逸，自动升级为该迭代的 P1（2026-10-21 起：到期日过期即 `EscapeValveHygieneTests` 失败，无需人工巡台账）
 
-**逃逸阀台账（2026-10-18 阶段 1 更新，共 9 项）**：
+**逃逸阀台账（2026-10-21 P2-30 复核后更新，共 10 项）**：
 
-| # | 逃逸                                                    | 位置                                                       | 理由（为什么必须豁免）                                                                                                                                                               | 到期日 / 责任人            |
-| - | ----------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------- |
-| 1 | `#pragma warning disable SYSLIB0014`（过时 `SmtpClient`） | `Infrastructure/Notification/NotificationDispatchers.cs` | 注释自认「二期换 MailKit」；.NET 仍支持 `SmtpClient`，换库属功能迁移非缺陷修复                                                                                                                      | 二期换 MailKit 时 / 工程   |
-| 2 | `.editorconfig` 将 `CA1002` 置 `none`                   | `.editorconfig:24`                                       | 既有豁免（阶段 −1 基线）：`List<T>` 公开返回是产品 API 契约的一部分                                                                                                                               | 待评估，未登记到期日 / 工程      |
-| 3 | `NoWarn CS1591`（公共 API 缺文档注释）                         | `Directory.Build.props`                                  | 全仓公共 API 文档注释未补齐，一次性开启会爆数百警告；与 P0-15 同期决策「先 warning 不阻断」同源                                                                                                                | 阶段 2 收尾 / 工程         |
-| 4 | `NoWarn CA1707`（标识符含下划线）                              | 两个测试 csproj                                              | 测试项目专用：「下划线 + 中文名」是本仓测试命名约定，对生产代码不适用                                                                                                                                      | 长期有效 / 工程            |
-| 5 | `NoWarn CA2007`（await 须 ConfigureAwait）               | 两个测试 csproj                                              | 测试项目专用：与 xUnit 自家 `xUnit1030` 直接冲突——xUnit 明确建议测试方法**省略** `ConfigureAwait`（可 bypass 并行化限制）；故阶段 1 同步删除了测试中全部 `ConfigureAwait(false)`                                        | 长期有效 / 工程            |
-| 6 | `NoWarn CA1861`（常量数组提 static readonly）                | 两个测试 csproj                                              | 测试项目专用：该规则针对生产热路径的重复分配；测试期望值数组一次性使用且内容各异，提字段损害可读性且无性能收益                                                                                                                   | 长期有效 / 工程            |
-| 7 | `[SuppressMessage] CA1720`（`ExpertKind.Single` 含类型名）  | `Core/Domain/ExpertRef.cs`                               | 持久化兼容：`ExpertKind` 经 `JsonStringEnumConverter` 以字符串形式随用户模板落盘，重命名破坏既有模板（同 `RunOptions` 契约保护原则）                                                                             | 长期有效 / 工程            |
-| 8 | `[SuppressMessage] CA1859`（接口字段/返回改具体类型）              | `Desktop/Composition/EngineFactory.cs`（1 处）+ `Core/Engine/BatchEngine.cs`（6 处，P1-1 协作者测试缝） | 架构方向：接口类型是 P1-4/P1-5「UI 只依赖 Core 抽象 + DI 化」的目标形态，拒绝为微性能向具体类型回退（P1-4/P1-5 收口后 EngineHost 已无此类豁免，余下两处为组合根返回类型与协作者测试缝） | **2026-10-19 收口时已复核：保留（长期有效）/ 工程** |
-| 9 | `dotnet format` CHARSET 类诊断过滤（pre-commit 钩）           | `.githooks/pre-commit`（`grep -v 'error CHARSET'`）        | SDK 10.0.401 回归：`Directory.Build.props` 的 `CodePage=65001`（中文源码跨代码页编译所需，保留）触发 CharsetFixer 对全部 .cs 文件误报，且修复器为空操作（最小复现：同内容去掉 CodePage 即 0 误报）。钩子改用显式 `iconv` UTF-8 有效性校验补偿 | SDK 修复该回归后移除过滤 / 工程  |
+> 字段强制四项（§4.6）：**发现日 / 责任人 / 到期日 / 不变量断言**，缺一不得登记。「长期有效」一律折算为**具体复核到期日**——
+> 「待评估 / 二期换库时」这类无日期的到期列正是 P2-30 的债务本体（台账登记了却无人复核、也无法判断是否过期）。
 
-> 说明：P2-30 登记的 `.editorconfig` CA1002 与 `#pragma` SYSLIB0014 在阶段 1 的警告清零中**保留原样**（不属 CA 警告类），正式登记为本表 #1/#2。
+| #  | 逃逸                                                          | 位置（不变量描述，不用行号）                                                                                                   | 理由（为什么必须豁免）                                                                                                                                                                                                          | 发现日          | 责任人 | 到期日          | 不变量断言（验收）                                                                                                              |
+| -- | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------- | --- | ------------- | --------------------------------------------------------------------------------------------------------------------- |
+| 1  | `#pragma warning disable SYSLIB0014`（过时 `SmtpClient`）       | `Infrastructure/Notification/NotificationDispatchers.cs`（`SmtpNotifier.NotifyAsync` 内 `new System.Net.Mail.SmtpClient`） | .NET 仍支持 `SmtpClient`，换 MailKit 属**功能迁移**非缺陷修复；计划性延期见 §4.7.1 #D1                                                                                                                                            | 2026-10-18    | 工程  | 2026-12-31    | `SmtpNotifierCredentialResolutionTests` 2 项锁死凭据引用解析（环境变量名→取值 / 未设置→空串）；换库前后 `NotificationDispatcherTests` 必须保持绿 |
+| 2  | `.editorconfig` 将 `CA1002` 置 `none`                         | `.editorconfig` 的 `dotnet_diagnostic.CA1002.severity`（原登记 `:24`，2026-10-21 实测已漂移，改用不变量描述）               | 实测开启即 **96 处违规**，全部落在 JSON 序列化契约类型的 `List<T>` 公开属性（`BatchReport` 18 / `RunOptions` 16 / `WorkflowTypes` 12 …）；改 `Collection<T>` / `ReadOnlyCollection<T>` 破坏用户 config.json 与任务模板的往返兼容 | 2026-10-18    | 工程  | 2027-01-20    | `RunOptionsSerializationTests` 与模板兼容测试锁死 `List<T>` 契约属性 JSON 往返无损；改为抽象集合类型即失败                                       |
+| 3  | `NoWarn CS1591`（公共 API 缺文档注释）                              | `Directory.Build.props` 的 `NoWarn`                                                                               | 全仓公共 API 文档注释未补齐，一次性开启会爆数百警告；与 P0-15 同期决策「先 warning 不阻断」同源                                                                                                                                          | 2026-10-18    | 工程  | 2027-01-20    | 无代码级不变量（文档型豁免）：由 `EscapeValveHygieneTests` 锁死本行四要素齐全且到期日未过期，过期即失败并升级为当期 P1                                |
+| 4  | `NoWarn CA1707`（标识符含下划线）                                  | 两个测试 csproj                                                                                                   | 测试项目专用：「下划线 + 中文名」是本仓测试命名约定（对生产代码不适用，见 §5.8 P2-27 评估维持不偿还）                                                                                                                                     | 2026-10-18    | 工程  | 2027-01-20    | 同 #3（约定型豁免）：由守卫锁死登记完整性与到期日                                                                                            |
+| 5  | `NoWarn CA2007`（await 须 ConfigureAwait）                     | 两个测试 csproj（**仅测试**；Desktop 生产侧的同名豁免已于 2026-10-21 P2-30 偿还，见 §5.10）                                         | 与 xUnit 自家 `xUnit1030` 直接冲突——xUnit 明确建议测试方法**省略** `ConfigureAwait`（可 bypass 并行化限制）；故阶段 1 同步删除了测试中全部 `ConfigureAwait(false)`                                                                        | 2026-10-18    | 工程  | 2027-01-20    | 同 #3；且「Desktop 程序集不得新增无 `ConfigureAwait` 的 await」在移除生产侧豁免后由 `TreatWarningsAsErrors` 直接把关                        |
+| 6  | `NoWarn CA1861`（常量数组提 static readonly）                      | 两个测试 csproj                                                                                                   | 测试项目专用：该规则针对生产热路径的重复分配；测试期望值数组一次性使用且内容各异，提字段损害可读性且无性能收益                                                                                                                               | 2026-10-18    | 工程  | 2027-01-20    | 同 #3（约定型豁免）：由守卫锁死登记完整性与到期日                                                                                            |
+| 7  | `[SuppressMessage] CA1720`（`ExpertKind.Single` 含类型名）        | `Core/Domain/ExpertRef.cs`（`ExpertKind.Single` 枚举成员）                                                          | 持久化兼容：`ExpertKind` 经 `JsonStringEnumConverter` 以字符串形式随用户模板落盘，重命名破坏既有模板（同 `RunOptions` 契约保护原则）                                                                                                   | 2026-10-18    | 工程  | 2027-01-20    | 模板兼容测试锁死 `ExpertKind` 字符串序列化契约；重命名成员即失败                                                                                 |
+| 8  | `[SuppressMessage] CA1859`（接口字段 / 返回改具体类型）                 | `Core/Engine/BatchEngine.cs`（6 处协作者字段）+ `Desktop/Composition/EngineFactory.cs`（1 处组合根返回类型）                    | 架构方向：接口类型是 P1-4/P1-5「UI 只依赖 Core 抽象 + DI 化」的目标形态，也是六协作者的**测试注入缝**，拒绝为微性能向具体类型回退                                                                                                            | 2026-10-19    | 工程  | 2027-01-20    | 六协作者白箱单测（`TaskDispatcherTests` 19 / `TaskRunnerTests` 10 / `FallbackBillingTests` 10 / `GitWorkflowTests` 10 / `BatchCollaboratorTests` 12 / `PreflightTests` 7）依赖接口注入替身；改具体类型即不可替换                 |
+| 9  | `dotnet format` CHARSET 类诊断过滤（pre-commit 钩）                 | `.githooks/pre-commit`（`grep -v 'error CHARSET'`）                                                               | SDK 10.0.401 回归：`Directory.Build.props` 的 `CodePage=65001`（中文源码跨代码页编译所需，保留）触发 CharsetFixer 对全部 .cs 文件误报，且修复器为空操作（最小复现：同内容去掉 CodePage 即 0 误报）。钩子改用显式 `iconv` UTF-8 有效性校验补偿   | 2026-10-18    | 工程  | 2026-12-31    | 每次升级 SDK 复测：最小复现仍误报则保留过滤、否则移除；钩子负测试（注入 GBK 字节文件被拒）必须保持有效                                                    |
+| 10 | `NoWarn AVLN3001`（XAML 资源无公开无参构造，运行时加载器不可达）           | `src/BatchAgentRunner.Desktop/BatchAgentRunner.Desktop.csproj`（`ShutdownCountdownWindow`）                       | 该窗口只由 `EngineHost` 以 `ShutdownCountdownWindow(int)` 构造、从不经 XAML URI 加载，AVLN3001 对其是**假阳性**；为消告警补无参构造会平白扩大公开面（2026-10-21 P2-30 盘点发现，此前从未登记）                                          | 2026-10-21    | 工程  | 2026-12-31    | 守卫断言「`src` 内不得出现 `new ShutdownCountdownWindow()`」：一旦新增无参构造，豁免前提消失，须先删豁免再改代码                                     |
+
+> 说明：P2-30 原登记的两项（`.editorconfig` CA1002、`#pragma` SYSLIB0014）已由本表 #2 / #1 **完整登记**（含发现日 / 责任人 / 到期日 / 不变量断言）。
+> P2-30 盘点另发现 1 项**从未登记的生产代码豁免**（Desktop `NoWarn` 中的 `AVLN5001` / `AVLN3001` / `CA2007`）——其中
+> `AVLN5001`（10 处过时 API：`TextBox.Watermark` → `PlaceholderText`、`Window.SystemDecorations` → `WindowDecorations`）与
+> `CA2007`（1 处缺 `ConfigureAwait`）本轮已**偿还并从 NoWarn 移除**，仅 `AVLN3001` 保留并登记为 #10。
+> 同轮纠正一处文档失真：§5.4 阶段 1 边界① 曾写「生产代码 0 豁免」，而 Desktop 生产项目实际存在 3 项 `NoWarn`（见 §5.10 与附录 B.3 #5）。
 
 #### 4.7.1 计划性延期台账（P2-26，2026-10-20 建立，共 4 项）
 
@@ -469,8 +494,9 @@ P2-26 清算结论：**计划性延期一律进本台账，代码注释只描述
 | 每迭代**新增**债务数           | 未采集（阶段 −1 起采集）                                                                                                                                                             | → 趋 0    |
 | churn 热点 Top3          | `BatchEngine.cs`(4)、`RunOptions.cs`(4)、`ConfigView.axaml`(4)                                                                                                               | 热点应随拆分下降 |
 | 同步阻塞调用数（P1-6 类）      | **0**（2026-10-20 归零：原 2 处 `GetAwaiter().GetResult()`——`MainViewModel.cs:20`、`EngineHost.cs:136`——经异步初始化门消除；新增 IL 架构断言 `Desktop程序集_不得存在同步阻塞异步结果的调用` 持续锁住，任何新增 `.GetAwaiter().GetResult()` / `Task.Result` / `Task.Wait()` 即构建/测试失败） | → 0 并保持  |
-| 测试总数                   | **545 用例通过 / 0 失败**（2026-10-20 P2-26 收口轮实跑：主测试项目 487 + Desktop.Tests 58；较 P1-21 收口轮 537 +8：新增 `SessionResumePolicyTests` 5 项 + `SmtpNotifierCredentialResolutionTests` 2 项 + `CommentHygieneTests` 1 项，全绿）                                                                     | ↑        |
+| 测试总数                   | **550 用例通过 / 0 失败**（2026-10-21 P2-30 收口轮实跑：主测试项目 492 + Desktop.Tests 58；较 P2-26 收口轮 545 +5：新增 `EscapeValveHygieneTests` 5 项，全绿）                                                                     | ↑        |
 | 误导性自述注释数（P2-26）      | **0**（2026-10-20 收口：v2.0 盘点 147 处「二期/暂不支持/遗留/尚未」逐条核对——台账点名的脱节注释前序轮次已清、`RetrieveSecret` 一处本轮修正、~100 处「二期」为已交付功能历史标签如实保留；真实延期 4 项进 §4.7.1 台账。`CommentHygieneTests` 源码扫描锁死，新增即失败）                                                                     | → 0 并保持  |
+| 逃逸阀台账条目数（P2-30）       | **10 条**（2026-10-21 收口：全仓盘点去重后登记——`#pragma` 1 + `[SuppressMessage]` 8 + `.editorconfig` `none` 1 + `NoWarn` 规则 5 + 钩子过滤 1；**无到期日条目 0**（原 #1「二期换 MailKit 时」/ #2「待评估」/ #5-#8「长期有效」全部折算为具体复核日）；同轮发现并偿还 2 项**从未登记**的生产代码豁免：`AVLN5001` 10 处过时 API（`Watermark`→`PlaceholderText`、`SystemDecorations`→`WindowDecorations`）+ Desktop `CA2007` 1 处（`ConfigureAwait` 缺失），豁免随之删除） | ↓（新增须登记，到期须清理） |
 
 > **台账登记改用不变量描述，不用行号**。例：P0-1 登记为「`TryFallbackAsync` 中 `cost` 必须被 `MaxCostPerTask` 截断」并配断言测试。理由：既有审查报告记录 `:1011`，实测已漂移到 `:1406`，行号型台账必然失效。
 
@@ -544,7 +570,7 @@ A 组 10 项互不耦合，与 P0-17 并行完成。代码改动均随既有工�
 | P1-20     | `ConfigHubConverters` 两处 `ConvertBack` 由 `throw new NotImplementedException()` 改为返回 `BindingOperations.DoNothing`（表示「不支持反向转换」而非崩溃）                                                                                                                                                                      | 不变量测试 1 项通过（Desktop.Tests）；双向绑定触发不再崩                                                                                                                         |
 | §4.1 格式门禁 | `pre-commit` 钩落地（`.githooks/pre-commit`）：`dotnet format --verify-no-changes`（CHARSET 假阳性按 §4.7 #9 过滤）+ 暂存 `.cs` 显式 `iconv` UTF-8 校验；`.editorconfig` 声明 `end_of_line=lf`、`.gitattributes` 锁 `* text=auto eol=lf`（修复 autocrlf 机器上 CRLF/LF 互踩）；存量格式基线同步清零（23 文件：IMPORTS/WHITESPACE/FINALNEWLINE/ENDOFLINE） | 钩子三项验证：干净状态放行；注入尾随空格文件被拒（WHITESPACE）；注入 GBK 字节文件被拒（UTF-8 守卫）。`dotnet format --verify-no-changes` 过滤 CHARSET 后 0 问题                                           |
 
-> 阶段 1 边界（交接必读）：① CA2007/CA1861/CA1707 在**测试项目**经 NoWarn 豁免（xUnit1030 与 CA2007 直接冲突等原因，已登记 §4.7）；生产代码 0 豁免。② `IProcessLauncher` 目前只被 `CliProcessRunner` 消费，GateEvaluator 内的 `cmd.exe` 直拉（P1-9）仍待阶段 2 抽 `IProcessRunner`。③ 分支保护 / 必需状态检查仍未配置（GitHub 设置），CI 红不阻断合并——这是 P0-16「只报告不阻断」的最后残留，需仓库管理员在 GitHub 页面完成。④ `TreatWarningsAsErrors` 为全量开启而非 §4.2 的分批（存量清零后分批前提已消失，见 §4.9 注）。⑤ `pre-commit` 钩与 commit-msg 钩同为**本机生效**（`core.hooksPath` 写在本机 `.git/config`，clone 不自动继承），新人接入需执行 `git config core.hooksPath .githooks`；CI runner 不跑钩子，靠 `TreatWarningsAsErrors` + CI build 步骤兜底。⑥ CHARSET 过滤依赖 SDK 10.0.401 的回归行为，升级 SDK 后需复测（§4.7 #9）。
+> 阶段 1 边界（交接必读）：① CA2007/CA1861/CA1707 在**测试项目**经 NoWarn 豁免（xUnit1030 与 CA2007 直接冲突等原因，已登记 §4.7 #4/#5/#6）；~~生产代码 0 豁免~~ **2026-10-21 P2-30 事实更正**：该表述与代码真值不符——`src/BatchAgentRunner.Desktop/BatchAgentRunner.Desktop.csproj` 自 `3c20288`（P1-17）起即带 `NoWarn AVLN5001;AVLN3001;CA2007` 三项**生产代码**豁免且从未进 §4.7 台账（教训同 §4.1 ③：「文档声称」≠「代码真值」）。P2-30 本轮偿还 `AVLN5001` 与 `CA2007` 两项、删除其豁免，余 `AVLN3001` 登记为 §4.7 #10（见 §5.10）。② `IProcessLauncher` 目前只被 `CliProcessRunner` 消费，GateEvaluator 内的 `cmd.exe` 直拉（P1-9）仍待阶段 2 抽 `IProcessRunner`。③ 分支保护 / 必需状态检查仍未配置（GitHub 设置），CI 红不阻断合并——这是 P0-16「只报告不阻断」的最后残留，需仓库管理员在 GitHub 页面完成。④ `TreatWarningsAsErrors` 为全量开启而非 §4.2 的分批（存量清零后分批前提已消失，见 §4.9 注）。⑤ `pre-commit` 钩与 commit-msg 钩同为**本机生效**（`core.hooksPath` 写在本机 `.git/config`，clone 不自动继承），新人接入需执行 `git config core.hooksPath .githooks`；CI runner 不跑钩子，靠 `TreatWarningsAsErrors` + CI build 步骤兜底。⑥ CHARSET 过滤依赖 SDK 10.0.401 的回归行为，升级 SDK 后需复测（§4.7 #9）。
 
 ---
 
@@ -645,13 +671,30 @@ A 组 10 项互不耦合，与 P0-17 并行完成。代码改动均随既有工�
 
 > 阶段 4 边界（交接必读）：① 本轮为纯仓库卫生操作，无任何 src/tests 改动——545 基线与 P2-26 收口轮逐项一致即是零行为影响的证据。② `_harness/` 与 `samples/` 的「职责重叠」指两者都曾是「给外面看的运行样本」：samples 是 tracked 的只读用户示例（P2-28 已收口），`_harness/publish` 是 ignored 的本机发布堆——清理后该重叠消失，发布输出不应再进仓库根目录。③ 若未来确需常驻 publish 输出（如 E2E 夹具），应先落 `IProcessLauncher` 式注入缝或嵌入式资源（P2-21/P2-28 模式），不得复辟「ignore 了之」。
 
+### 5.10 阶段 4：P2-30 逃逸阀治理（2026-10-21）
+
+> **本轮重点：P2-30（规则豁免无登记、无到期日）**——P2 批次中第二项「治理元债务」。§4.7 的规则一直写着「例外必须附理由 + 到期日 + 责任人」，
+> 但台账自己就没做到：#1 到期日是「二期换 MailKit 时」、#2 是「待评估，未登记到期日」、#4~#8 是「长期有效」——**没有日期就无法判断是否过期，
+> 「到期未清理自动升级为当期 P1」这条规则等于没写**。本轮按「盘点 → 偿还 → 登记 → 守卫」四步收口。
+
+**验证统一口径（2026-10-21 P2-30 收口轮实跑）**：`dotnet build --no-incremental` = **0 警告 / 0 错误**；`dotnet test BatchAgentRunner.slnx` = **550 通过 / 0 失败**（主测试项目 492 + Desktop.Tests 58，较 P2-29 轮 545 +5：`EscapeValveHygieneTests` 5 项）；`dotnet format`（CHARSET 假阳性按 §4.7 #9 过滤）**0 问题**。
+
+| 步骤         | 落地内容                                                                                                                                                                                                                                                                                                                                                                                                                      | 验证 / 提交                                                                                                                                                                    |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ① 全量盘点 | 按 §4.7 定义逐类扫描全仓逃逸阀：`#pragma warning disable` 1 处（SYSLIB0014）、`[SuppressMessage]` 8 处（CA1859×7 + CA1720×1）、`.editorconfig` `severity = none` 1 处（CA1002）、`NoWarn` 规则 5 项（CS1591 全仓 / CA1707·CA2007·CA1861 测试项目 / AVLN5001·AVLN3001·CA2007 Desktop）、钩子诊断过滤 1 处（pre-commit CHARSET）——**与 9 条台账对账后，发现 Desktop 的 3 项 `NoWarn` 从未登记**，且 §5.4 边界①「生产代码 0 豁免」与代码真值不符 | grep 实证（src / tests / `.editorconfig` / `*.csproj` / `Directory.Build.props` / `.githooks`）；`git log -S AVLN5001` 定位到 `3c20288`（P1-17）引入时未走 §4.7 登记 |
+| ② 偿还可偿项 | **AVLN5001（10 处）偿还**：`TextBox.Watermark` → `PlaceholderText`（ConfigView 5 / DiffView 1 / TemplateEditorView 3）、`Window.SystemDecorations` → `WindowDecorations`（ShutdownCountdownWindow 1）——均为 Avalonia 12 过时 API 改名，仓内其余 10 处本就写 `PlaceholderText`，本次是补齐历史漏改。**Desktop `CA2007`（1 处）偿还**：`ConfigView.PickTaskFileAsync` 补 `.ConfigureAwait(false)`（与仓内 VM「ConfigureAwait(false) + UiThread.Post」模式一致）。两项豁免从 `Desktop.csproj` 的 `NoWarn` 移除 | `dotnet build --no-incremental` 0 警告 / 0 错误（移除豁免后无任何 AVLN5001 / CA2007 残留）；`ConfigViewTests` 与既有 VM 测试全绿（文件选择回调契约不变）        |
+| ③ 完整登记   | §4.7 台账扩为 **8 列 × 10 行**，补齐 §4.6 强制四项：`发现日` / `责任人` / `到期日` / `不变量断言`（原表只有理由 + 到期日/责任人）。「长期有效」「二期换 MailKit 时」「待评估」全部折算为**具体复核到期日**（2026-12-31 / 2027-01-20），并按规则给出可验收的不变量断言（可测的指向既有测试，不可测的声明由守卫锁死登记完整性）。新增 #10（Desktop `AVLN3001`），并把代码侧标注统一为「逃逸阀台账 #N / 到期日 YYYY-MM-DD / 责任人 X」 | 台账 10 行四要素齐全、无到期日条目 0；代码侧标注与台账双向一致（由守卫第 3 项断言锁死）                                                                                                |
+| ④ 守卫落地   | 新增 `EscapeValveHygieneTests`（`tests/BatchAgentRunner.Tests/Architecture`，5 项）：① 站点标注（`src` 内 `pragma` / `SuppressMessage`、`.editorconfig` `none`、csproj/props `NoWarn` 就近注释必须含台账 ID + 到期日 + 责任人）；② 台账四要素齐全且**到期日未过期**（过期即失败 = 自动升级当期 P1）；③ 代码↔台账双向一致（悬空 ID / 台账无引用均失败）；④ #10 的不变量（`src` 内不得出现 `new ShutdownCountdownWindow()`）       | 收口轮 5/5 通过；**负测试实测四类可捕获**：无标注 `pragma`（报文件:行）、`.editorconfig` 条目删标注、台账到期日改为 2020-01-01（报「已过期 → 升级 P1」）、标注删导致双向不一致 |
+
+> 阶段 4 边界（交接必读）：① **保留的 #10（AVLN3001）是假阳性豁免**：`ShutdownCountdownWindow` 只由 `EngineHost` 带参构造、从不经 XAML URI 加载，为消告警补无参构造反而扩大公开面——故豁免保留、并由守卫第 4 项锁死「不得新增无参构造」，前提消失时须先删豁免再改代码。② **CA1002 豁免是承重结构**：实测开启即 96 处违规，全部是 JSON 契约类型的 `List<T>` 公开属性（`BatchReport` 18 / `RunOptions` 16 / `WorkflowTypes` 12 …），改抽象集合类型破坏用户 config 与模板兼容——偿还它的正确时机是「契约版本化」，不是顺手改。③ 到期日是**复核日**而非「必须修完日」：到期只要求当轮给出「续期并说明理由」或「清理」，两者都要在台账留痕；守卫只判过期与否，不代做决策。④ 守卫解析 `docs/TECH-DEBT-技术债务治理方案-v2.0.md` 的 §4.7 表格（列序耦合），改动表结构须同步更新 `EscapeValveHygieneTests.ReadLedger`。
+
 ---
 
 ## 附录 A：台账索引（按偿还方式分组）
 
 | 方式            | ID                                                                                                                                               |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **重构**        | P0-1, P0-3~~P0-10, P0-12~~P0-15, P0-17, P1-1~~P1-5, P1-7, P1-9~~P1-12, P1-14~~P1-21, P2-1~~P2-14, P2-16~P2-21, P2-23, P2-24, P2-26, P2-31 |
+| **重构**        | P0-1, P0-3~~P0-10, P0-12~~P0-15, P0-17, P1-1~~P1-5, P1-7, P1-9~~P1-12, P1-14~~P1-21, P2-1~~P2-14, P2-16~P2-21, P2-23, P2-24, P2-26, P2-30 ✅（2026-10-21 已完成，见 §5.10）, P2-31 |
 | **重写**（仅 4 项） | P0-2(局部), P1-13, P2-6, P2-15                                                                                                                     |
 | **隔离**        | P0-11(钩), P1-1(过渡), P1-9, P1-16(守卫过渡), P2-7, P2-10/P2-11, P2-19/P2-28                                                                            |
 | **主动不偿还**     | P2-24(部分), P2-14, P2-25(部分), P2-27（2026-10-20 评估维持，升级触发器见 §5.8）                                                                                                               |
@@ -688,3 +731,4 @@ A 组 10 项互不耦合，与 P0-17 并行完成。代码改动均随既有工�
 2. **缺陷行号**：`docs/CODE-REVIEW-性能瓶颈与Bug审查报告.md` 记 B1 为 `BatchEngine.cs:1011`，实测当前为 **`:1406`**；台账改用不变量描述
 3. **"构建 0 警告"不成立**：增量构建不重跑分析器，真实基线为全量重建的 36+（P0-12）
 4. **v1.0 未收录 git 历史、仓库卫生、构建真相三个维度**，本版补齐（P0-11~~P0-14、P2-26~~P2-31）
+5. **P2-30 台账行号漂移 + 文档断言失真（2026-10-21 更正）**：① 原记「`.editorconfig:24` 将 `CA1002` 设为 `none`」，实测已漂移至 `:31`（同附录 B.3 #2 教训：台账一律改用不变量描述）；② §5.4 阶段 1 边界① 曾写「生产代码 0 豁免」，实测 `Desktop.csproj` 自 `3c20288` 起带 3 项 `NoWarn` 且从未登记——P2-30 本轮偿还 2 项、登记 1 项（§4.7 #10）并更正该表述

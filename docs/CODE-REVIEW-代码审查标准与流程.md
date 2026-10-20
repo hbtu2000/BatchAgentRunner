@@ -90,6 +90,7 @@
 - 🟡 **分层职责**：`Core` 不依赖 `Desktop`/`Infrastructure` 具体实现（只依赖 `Abstractions` 接口）；CLI 适配只在 `Agents`；文件/系统操作只在 `Infrastructure`。跨层 new 具体类要警惕。
 - 🟡 **命名与注释**：公共类型/方法有 XML 注释且标注关键决策出处（PRD/DESIGN 条款）；命名表达意图，避免 `tmp`、`data2`、`flag` 之类。
 - 🟡 **注释只描述当前实现（P2-26）**：禁止以注释自述计划性延期或能力未实现（"二期扩展""暂不支持""待实现"等）——真实延期登记 `TECH-DEBT-技术债务治理方案-v2.0.md` §4.7.1 计划性延期台账后在注释引用台账 ID；已由 `CommentHygieneTests` 源码扫描自动把关，新增即测试失败。
+- 🟡 **门禁例外先登记再落地（P2-30）**：`#pragma warning disable` / `[SuppressMessage]` / `.editorconfig` `severity = none` / csproj `NoWarn` / 钩子诊断过滤，一律先在 `TECH-DEBT-技术债务治理方案-v2.0.md` §4.7 逃逸阀台账登记四要素（发现日 / 责任人 / 到期日 / 不变量断言），再在就近注释写明「逃逸阀台账 #N / 到期日 YYYY-MM-DD / 责任人 X」；已由 `EscapeValveHygieneTests` 自动把关——未登记、无到期日、到期未清理、代码与台账不一致，任一即测试失败。
 - 🟡 **方法/类复杂度**：单方法超过 ~80 行或嵌套超过 4 层，建议拆分子方法（`ExecuteTaskAsync` 已按 P1-2 内拆 1790708 显式状态机化，全部子方法 ≤60 行 / 圈复杂度 ≤15；新增分支优先抽子方法而非继续膨胀）。
 - 💭 **`record` vs `class`**：值语义（组合键、结果）用 `record`；有可变状态/身份的对象用 `class`；当前 `AgentCombo`/`RestoreCandidate` 用 `record` 合理，新增时遵循此区分。
 
@@ -132,6 +133,7 @@
 | H12 | 包版本只写在 `Directory.Packages.props` | 🔴 | CPM + NU1008 构建错误 |
 | H13 | 测试分层：E2E/Usability/Process 打 `[Trait("Category", …)]`；高危路径（凭证/进程/Git/安全拦截/二进制写回）须带测试 | 🟡 | CI 快慢两步 + 人工 |
 | H14 | 持 `IDisposable` 字段的类型自身须可释放（`SemaphoreSlim`/`CancellationTokenSource`/日志） | 🟡 | 分析器 `CA1001`（error） |
+| H15 | 门禁例外须登记 §4.7 逃逸阀台账四要素并就近标注台账 ID / 到期日 / 责任人 | 🔴 | `EscapeValveHygieneTests`（2026-10-21 P2-30 落地） |
 
 ---
 
@@ -229,7 +231,9 @@ dotnet_diagnostic.CA2007.severity = warning
 <AnalysisLevel>latest-recommended</AnalysisLevel>
 <AnalysisMode>Recommended</AnalysisMode>
 <!-- 存量警告清零后已开启：新增任何分析器警告即构建失败。
-     豁免须走治理方案 §4.7 逃逸阀台账（理由 + 到期日 + 责任人）。 -->
+     豁免须走治理方案 §4.7 逃逸阀台账四要素（发现日 / 责任人 / 到期日 / 不变量断言），
+     并在代码就近注释写明「逃逸阀台账 #N / 到期日 YYYY-MM-DD / 责任人 X」；
+     2026-10-21 P2-30 起由 EscapeValveHygieneTests 机器校验。 -->
 <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
 ```
 > 历史路径记录：直接开 `TreatWarningsAsErrors` 会因历史 warning 让构建失败；本项目先开 `EnforceCodeStyleInBuild` + 分析器，阶段 1（2026-10-18）把 99 个存量警告清零后才升格为 error。测试项目的 `CA1707`/`CA2007`/`CA1861` 豁免见 `tests/**/*.csproj` 注释与治理方案 §4.7 台账。
