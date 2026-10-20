@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Text;
 using BatchAgentRunner.Core.Abstractions;
@@ -30,6 +31,25 @@ public static class GitRefName
 /// </summary>
 public sealed class LocalGitIntegration : IGitIntegration
 {
+    /// <summary>
+    /// 默认进程超时。git/gh 子进程超过该时长未退出即整树回收并按失败返回——
+    /// P1-14：原实现 <c>WaitForExitAsync(ct)</c> 只响应取消令牌，挂死的 git/gh
+    /// （网络卡死、等待终端凭证输入等）会无限期挂起任务线程。
+    /// </summary>
+    public const int DefaultTimeoutSeconds = 120;
+
+    private readonly TimeSpan _timeout;
+
+    public LocalGitIntegration() : this(TimeSpan.FromSeconds(DefaultTimeoutSeconds))
+    {
+    }
+
+    /// <param name="timeout">单个 git/gh 子进程的超时上限；非正值回落默认值。</param>
+    public LocalGitIntegration(TimeSpan timeout)
+    {
+        _timeout = timeout > TimeSpan.Zero ? timeout : TimeSpan.FromSeconds(DefaultTimeoutSeconds);
+    }
+
     public async Task<string?> CreateBranchAsync(ProjectRef projectRef, string taskId, CancellationToken cancellationToken = default)
     {
         if (!TryResolveRepoPath(projectRef.RepoPath, out var repoPath))
@@ -57,7 +77,7 @@ public sealed class LocalGitIntegration : IGitIntegration
             args.Add(baseBranch);
         }
 
-        var (code, _, _) = await RunGitAsync(args, cancellationToken).ConfigureAwait(false);
+        var (code, _, _) = await RunGitAsync(args, _timeout, cancellationToken).ConfigureAwait(false);
         return code == 0 ? branch : null;
     }
 
@@ -75,7 +95,7 @@ public sealed class LocalGitIntegration : IGitIntegration
         }
 
         // 先推送分支
-        var push = await RunGitAsync(new[] { "-C", repoPath, "push", "-u", "origin", branch }, cancellationToken).ConfigureAwait(false);
+        var push = await RunGitAsync(new[] { "-C", repoPath, "push", "-u", "origin", branch }, _timeout, cancellationToken).ConfigureAwait(false);
         if (push.Code != 0)
         {
             return null;
@@ -88,7 +108,7 @@ public sealed class LocalGitIntegration : IGitIntegration
             "pr", "create",
             $"--title={prTitle}",
             "--body=自动生成 PR（BatchAgentRunner）"
-        }, repoPath, cancellationToken).ConfigureAwait(false);
+        }, repoPath, _timeout, cancellationToken).ConfigureAwait(false);
         if (gh.Code == 0 && !string.IsNullOrWhiteSpace(gh.StdOut))
         {
             return gh.StdOut.Trim();
@@ -110,16 +130,27 @@ public sealed class LocalGitIntegration : IGitIntegration
         return true;
     }
 
-    private static Task<(int Code, string StdOut, string StdErr)> RunGitAsync(IReadOnlyList<string> args, CancellationToken ct) =>
-        RunAsync("git", args, null, ct);
+    private static Task<(int Code, string StdOut, string StdErr)> RunGitAsync(IReadOnlyList<string> args, TimeSpan timeout, CancellationToken ct) =>
+        RunAsync("git", args, null, timeout, ct);
 
-    private static async Task<(int Code, string StdOut, string StdErr)> RunAsync(string fileName, IReadOnlyList<string> args, string? workDir, CancellationToken ct)
+    /// <summary>
+    /// 执行 git/gh 子进程并回收输出。P1-14 三项加固：
+    /// ① <b>stdin 重定向</b>——<c>RedirectStandardInput=true</c> 并在启动后立即关闭，
+    /// 等待终端输入的子进程（如 git 凭证提示、gh 交互）立刻得到 EOF，不会挂起；
+    /// ② <b>超时回收</b>——<c>WaitForExitAsync</c> 经 linked CTS 设上限，超时即
+    /// <c>Kill(entireProcessTree: true)</c> 整树回收并按失败返回，不无限期挂起调用线程；
+    /// ③ <b>启动失败收敛</b>——可执行文件不在 PATH 等场景 <c>Start()</c> 抛异常而非返回
+    /// false，按「尽力而为」契约收敛为失败码，不把异常抛给调用方。
+    /// </summary>
+    internal static async Task<(int Code, string StdOut, string StdErr)> RunAsync(string fileName, IReadOnlyList<string> args, string? workDir, TimeSpan timeout, CancellationToken ct)
     {
         var psi = new ProcessStartInfo
         {
             FileName = fileName,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            // P1-14：重定向 stdin 并立即关闭——子进程任何「等待输入」的提示都会拿到 EOF
+            RedirectStandardInput = true,
             UseShellExecute = false,
             CreateNoWindow = true
         };
@@ -139,20 +170,50 @@ public sealed class LocalGitIntegration : IGitIntegration
         p.OutputDataReceived += (_, e) => { if (e.Data is not null) outSb.AppendLine(e.Data); };
         p.ErrorDataReceived += (_, e) => { if (e.Data is not null) errSb.AppendLine(e.Data); };
 
-        if (!p.Start())
+        try
         {
-            return (-1, string.Empty, "无法启动 git/gh 进程");
+            if (!p.Start())
+            {
+                return (-1, string.Empty, $"无法启动 {fileName} 进程");
+            }
+        }
+        catch (Exception ex) when (ex is Win32Exception or InvalidOperationException)
+        {
+            // 可执行文件不存在 / 无权限等：Start() 抛异常而非返回 false（原 if (!p.Start()) 分支不可达），
+            // 收敛为失败码以维持「失败返回 null，不阻断任务」的接口契约。
+            return (-1, string.Empty, $"无法启动 {fileName} 进程：{ex.Message}");
+        }
+
+        // P1-14：启动后立即关闭 stdin——任何等待终端输入的提示直接得到 EOF
+        try
+        {
+            p.StandardInput.Close();
+        }
+        catch (Exception ex) when (ex is IOException or ObjectDisposedException or InvalidOperationException)
+        {
+            // 子进程已自行退出导致 stdin 句柄失效：不影响后续等待与输出读取
         }
 
         p.BeginOutputReadLine();
         p.BeginErrorReadLine();
         try
         {
-            await p.WaitForExitAsync(ct).ConfigureAwait(false);
+            // P1-14：超时保护。WaitForExitAsync(ct) 只响应调用方取消；挂死的 git/gh 会无限期等待，
+            // 故经 linked CTS 叠加上限，超时（非调用方取消）时整树回收并按失败返回。
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(timeout);
+            await p.WaitForExitAsync(timeoutCts.Token).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+        {
+            // 超时取消（调用方令牌未触发）：整树回收后按失败返回
+            try { p.Kill(entireProcessTree: true); } catch { /* 进程已退出等：回收目的已达成，忽略 */ }
+            return (-1, outSb.ToString(), $"{fileName} 执行超时（>{timeout.TotalSeconds:0}s），已整树回收");
         }
         catch (OperationCanceledException)
         {
-            try { p.Kill(true); } catch { /* ignore */ }
+            // 调用方取消：与原语义一致，整树回收后向上传播
+            try { p.Kill(entireProcessTree: true); } catch { /* ignore */ }
             throw;
         }
 

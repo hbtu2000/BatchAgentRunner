@@ -15,4 +15,10 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- P1-14：LocalGitIntegration.RunAsync 置为 internal，供 BatchAgentRunner.Tests
+       直接驱动 git/gh 子进程执行路径（stdin 重定向 / 超时回收 / 启动失败的行为验证）。 -->
+  <ItemGroup>
+    <InternalsVisibleTo Include="BatchAgentRunner.Tests" />
+  </ItemGroup>
+
 </Project>
