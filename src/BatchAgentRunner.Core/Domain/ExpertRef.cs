@@ -14,7 +14,7 @@ public enum ExpertKind
     /// <see cref="ExpertKind"/> 经 <c>JsonStringEnumConverter</c> 以字符串形式持久化在用户模板文件中，
     /// 重命名成员会破坏既有模板兼容性（同 <c>RunOptions</c> 契约保护原则）。
     /// </summary>
-    [SuppressMessage("Naming", "CA1720:标识符包含类型名称", Justification = "持久化兼容：ExpertKind.Single 已随用户模板落盘，重命名破坏兼容")]
+    [SuppressMessage("Naming", "CA1720:标识符包含类型名称", Justification = "持久化兼容：ExpertKind.Single 已随用户模板落盘，重命名破坏兼容；逃逸阀台账 #7 / 到期日 2027-01-20 / 责任人 工程")]
     Single,
     Team
 }

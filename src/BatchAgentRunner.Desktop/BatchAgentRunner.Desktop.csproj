@@ -7,10 +7,11 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <!-- 使用反射绑定：避免为每处 XAML 声明 x:DataType，降低维护成本 -->
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
-    <!-- P0-12 / P2-30：Desktop 的 AVLN 警告（Avalonia 绑定命名约定）为样式性告警；
-         且部分 UI await 必须回到 UI 线程（ConfigureAwait(false) 会破坏 P0-6/7 的线程收敛），故登记豁免。
-         登记依据见 TECH-DEBT v2.0 §4.8 / P2-30；待阶段 2 引入 headless 测试基座后再评估逐一修正。 -->
-    <NoWarn>$(NoWarn);AVLN5001;AVLN3001;CA2007</NoWarn>
+    <!-- 逃逸阀台账 #10 / 到期日 2026-12-31 / 责任人 工程 —— AVLN3001（XAML 资源无公开无参构造、
+         运行时加载器不可达）：ShutdownCountdownWindow 只由 EngineHost 以 ShutdownCountdownWindow(int)
+         构造、从不经 XAML URI 加载，该告警对本窗口是假阳性；为消告警而补无参构造会平白扩大公开面。
+         （2026-10-21 P2-30 复核：同批 AVLN5001 过时 API 与 CA2007 已偿还并从 NoWarn 移除。） -->
+    <NoWarn>$(NoWarn);AVLN3001</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>

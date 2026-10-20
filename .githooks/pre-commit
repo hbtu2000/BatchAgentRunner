@@ -5,11 +5,12 @@
 # 修复：dotnet format BatchAgentRunner.slnx，然后重新 git add。
 #
 # 已知 SDK 限制（2026-10-18 实测，SDK 10.0.401）——CHARSET 类诊断放行：
+# 逃逸阀台账 #9 / 到期日 2026-12-31 / 责任人 工程
 #   Directory.Build.props 的 <CodePage>65001</CodePage>（中文源码在非 UTF-8 代码页
 #   机器上仍能正确编译，故保留）会触发 dotnet format CharsetFixer 对全部 .cs 文件
 #   误报，且修复器是空操作（修复模式下不改写任何文件，最小复现：同内容同目录，
 #   仅去掉 CodePage 即 0 误报）。因此 CHARSET 类输出过滤，改用下面的显式 UTF-8
-#   有效性校验补偿。SDK 修复此回归后应移除过滤（登记于治理方案 §4.7 逃逸阀台账）。
+#   有效性校验补偿。SDK 修复此回归后应移除过滤（每次升级 SDK 须复测）。
 
 repo_root=$(git rev-parse --show-toplevel) || exit 1
 cd "$repo_root" || exit 1

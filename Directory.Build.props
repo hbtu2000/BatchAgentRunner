@@ -6,11 +6,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <!-- P0-12 / 治理方案阶段 1：存量警告已全量清零（no-incremental 全量重建实测 0 警告），
-         警告转错误，防止新增警告悄悄入库。例外走 §4.7 逃逸阀台账（须附理由 + 到期日 + 责任人）：
-         - CS1591（公共 API 文档）：全仓抑制（既有基线，见方案 §4.7）；
-         - CA1707 / CA2007 / CA1861：仅测试项目抑制（理由见各测试 csproj 注释）；
-         - CA1720（ExpertKind.Single）/ CA1859（EngineHost 接口成员）：逐点 [SuppressMessage]，
-           理由写在特性上并登记于方案 §4.7 台账。 -->
+         警告转错误，防止新增警告悄悄入库。 -->
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <!-- EnforceCodeStyleInBuild 使 .editorconfig 的 40+ 条规则在构建期执行（阶段 -1 / P0-15 落地）。 -->
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
@@ -18,6 +14,12 @@
     <AnalysisMode>Recommended</AnalysisMode>
     <InvariantGlobalization>true</InvariantGlobalization>
     <EnableDefaultItems>true</EnableDefaultItems>
+    <!-- 逃逸阀台账 #3 / 到期日 2027-01-20 / 责任人 工程 —— CS1591（公共 API 缺文档注释）全仓抑制：
+         补齐需数百处，与 P0-15「先 warning 不阻断」同期决策同源。
+         其余例外一律登记于治理方案 §4.7 台账并就近写明台账 ID 与到期日：CA1707 / CA2007 / CA1861
+         （#4 / #5 / #6，仅测试项目，理由见各测试 csproj）、CA1720 / CA1859（#7 / #8，逐点
+         [SuppressMessage]，写在其 Justification 上）、AVLN3001（#10，仅 Desktop，见其 csproj）。
+         2026-10-21 P2-30 起由 EscapeValveHygieneTests 机器校验：四要素齐全 + 到期日未过期 + 代码与台账双向一致。 -->
     <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 

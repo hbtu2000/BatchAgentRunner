@@ -5,7 +5,7 @@
         CanResize="False"
         ShowInTaskbar="False"
         WindowStartupLocation="CenterOwner"
-        SystemDecorations="BorderOnly"
+        WindowDecorations="BorderOnly"
         Title="即将关机"
         FontFamily="{DynamicResource FontUi}">
 

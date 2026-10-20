@@ -5,12 +5,13 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
-    <!-- P0-12 / P2-20：测试项目规则豁免（均已登记于治理方案 §4.7 逃逸阀台账）：
-         CA1707（标识符不得含下划线）对测试命名是误报——「下划线 + 中文名」是本仓测试约定；
-         CA2007（await 须 ConfigureAwait）与 xUnit 自家 xUnit1030 直接冲突——xUnit 建议测试方法
-         省略 ConfigureAwait（其同步上下文不模拟 UI，且可 bypass 并行化限制），故在测试项目抑制；
-         CA1861（常量数组提 static readonly）针对生产热路径的重复分配——测试期望值数组一次性
-         使用且内容各异，提字段损害可读性且无性能收益。 -->
+    <!-- P0-12 / P2-20 / P2-30：测试项目规则豁免（逐条登记于治理方案 §4.7 逃逸阀台账，四要素齐全）：
+         逃逸阀台账 #4 / 到期日 2027-01-20 / 责任人 工程 —— CA1707（标识符不得含下划线）
+         对测试命名是误报：「下划线 + 中文名」是本仓测试约定（见 §5.8 P2-27 评估）；
+         逃逸阀台账 #5 / 到期日 2027-01-20 / 责任人 工程 —— CA2007（await 须 ConfigureAwait）
+         与 xUnit 自家 xUnit1030 直接冲突：xUnit 建议测试方法省略 ConfigureAwait（可 bypass 并行化限制）；
+         逃逸阀台账 #6 / 到期日 2027-01-20 / 责任人 工程 —— CA1861（常量数组提 static readonly）
+         针对生产热路径的重复分配：测试期望值数组一次性使用且内容各异，提字段损害可读性且无性能收益。 -->
     <NoWarn>$(NoWarn);CA1707;CA2007;CA1861</NoWarn>
   </PropertyGroup>
 

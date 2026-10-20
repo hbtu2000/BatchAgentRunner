@@ -35,7 +35,7 @@
                 <TextBlock Text="阶段筛选：" VerticalAlignment="Center"
                            Foreground="{DynamicResource TextSecondaryBrush}" />
                 <TextBox Width="180" Text="{Binding StageFilter}"
-                         Watermark="留空 = 全部阶段" />
+                         PlaceholderText="留空 = 全部阶段" />
                 <TextBlock Text="{Binding ReportPathText, StringFormat='报告：{0}'}" FontSize="12"
                            VerticalAlignment="Center" TextTrimming="CharacterEllipsis"
                            Foreground="{DynamicResource TextMutedBrush}" />

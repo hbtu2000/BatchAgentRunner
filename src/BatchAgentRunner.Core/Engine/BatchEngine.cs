@@ -75,7 +75,7 @@ public sealed class BatchEngine : IBatchEngine
     /// 拒绝为微性能向具体类型回退（同 EngineHost CA1859 豁免的架构方向理由）。
     /// </remarks>
     [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能",
-        Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假计费验证不变量），拒绝向具体类型回退")]
+        Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假计费验证不变量），拒绝向具体类型回退；逃逸阀台账 #8 / 到期日 2027-01-20 / 责任人 工程")]
     private readonly IFallbackBilling _fallback;
     /// <summary>
     /// 报告聚合协作者（P1-1 拆分产物 ⑤，§3.4 <c>IReportBuilder</c>）：
@@ -85,7 +85,7 @@ public sealed class BatchEngine : IBatchEngine
     /// CA1859（§4.7 逃逸阀）：同 <see cref="_fallback"/>——接口字段是拆分后的测试缝。
     /// </remarks>
     [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能",
-        Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假报告构建器验证聚合），拒绝向具体类型回退")]
+        Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假报告构建器验证聚合），拒绝向具体类型回退；逃逸阀台账 #8 / 到期日 2027-01-20 / 责任人 工程")]
     private readonly IBatchReportBuilder _report;
     /// <summary>单任务级暂停等待累计（DESIGN-额度耗尽暂停续跑：从任务时长中剔除）。key 不区分大小写。</summary>
     private readonly Dictionary<string, double> _taskWaitSeconds = new(StringComparer.OrdinalIgnoreCase);
@@ -106,7 +106,7 @@ public sealed class BatchEngine : IBatchEngine
     /// CA1859（§4.7 逃逸阀）：同 <see cref="_fallback"/>——接口字段是拆分后的测试缝。
     /// </remarks>
     [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能",
-        Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假 Git 工作流验证尽力而为语义），拒绝向具体类型回退")]
+        Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假 Git 工作流验证尽力而为语义），拒绝向具体类型回退；逃逸阀台账 #8 / 到期日 2027-01-20 / 责任人 工程")]
     private readonly IGitWorkflow _gitWorkflow;
     /// <summary>
     /// 批处理通知协作者（P1-1 拆分产物 ⑤）：按触发时机组装通知上下文并分发。
@@ -115,7 +115,7 @@ public sealed class BatchEngine : IBatchEngine
     /// CA1859（§4.7 逃逸阀）：同 <see cref="_fallback"/>——接口字段是拆分后的测试缝。
     /// </remarks>
     [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能",
-        Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假通知器验证分发时机），拒绝向具体类型回退")]
+        Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假通知器验证分发时机），拒绝向具体类型回退；逃逸阀台账 #8 / 到期日 2027-01-20 / 责任人 工程")]
     private readonly IBatchNotifier _notifier;
     /// <summary>
     /// 启动前预检协作者（P1-1 拆分产物 ⑥，§3.4 <c>IPreflight</c>）：承接「启动前预检（REQ-010）」全部逻辑。
@@ -124,7 +124,7 @@ public sealed class BatchEngine : IBatchEngine
     /// CA1859（§4.7 逃逸阀）：同 <see cref="_fallback"/>——接口字段是拆分后的测试缝。
     /// </remarks>
     [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能",
-        Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假预检验证报告契约），拒绝向具体类型回退")]
+        Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假预检验证报告契约），拒绝向具体类型回退；逃逸阀台账 #8 / 到期日 2027-01-20 / 责任人 工程")]
     private readonly IPreflight _preflight;
     /// <summary>
     /// 单任务执行协作者（P1-1 拆分产物 ②，§3.4 <c>ITaskRunner</c>）：承载「单任务状态机
@@ -135,7 +135,7 @@ public sealed class BatchEngine : IBatchEngine
     /// CA1859（§4.7 逃逸阀）：同 <see cref="_fallback"/>——接口字段是拆分后的测试缝。
     /// </remarks>
     [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能",
-        Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假单任务执行器验证状态机不变量），拒绝向具体类型回退")]
+        Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假单任务执行器验证状态机不变量），拒绝向具体类型回退；逃逸阀台账 #8 / 到期日 2027-01-20 / 责任人 工程")]
     private readonly ITaskRunner _runner;
     /// <summary>
     /// 派发协作者（P1-1 拆分产物 ①，§3.4 <c>ITaskDispatcher</c>）：独占「派发主循环 / 受控并发 / DAG 依赖判定」
@@ -145,7 +145,7 @@ public sealed class BatchEngine : IBatchEngine
     /// CA1859（§4.7 逃逸阀）：同 <see cref="_fallback"/>——接口字段是拆分后的测试缝。
     /// </remarks>
     [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能",
-        Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假派发器验证并发/DAG 不变量），拒绝向具体类型回退")]
+        Justification = "接口字段是 P1-1 拆分后的测试缝（可注入假派发器验证并发/DAG 不变量），拒绝向具体类型回退；逃逸阀台账 #8 / 到期日 2027-01-20 / 责任人 工程")]
     private readonly ITaskDispatcher _dispatcher;
     /// <summary>
     /// 并行调度协调器（REQ-020 / REQ-021）：引擎持有唯一实例，分别注入派发器（读写为飞/暂停/目标）与

@@ -196,10 +196,10 @@
                                     <TextBlock Grid.Column="1" Text="{Binding SourceText}" FontSize="12"
                                                VerticalAlignment="Center"
                                                Foreground="{DynamicResource TextMutedBrush}" />
-                                    <TextBox Grid.Column="2" Text="{Binding Value}" Watermark="取值（默认）"
+                                    <TextBox Grid.Column="2" Text="{Binding Value}" PlaceholderText="取值（默认）"
                                              Margin="0,0,6,0" />
                                     <TextBox Grid.Column="3" Text="{Binding ValuesText}"
-                                             Watermark="多值（逗号分隔，做笛卡尔积）" />
+                                             PlaceholderText="多值（逗号分隔，做笛卡尔积）" />
                                 </Grid>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
@@ -208,7 +208,7 @@
                         <TextBlock Text="工作空间：" VerticalAlignment="Center"
                                    Foreground="{DynamicResource TextSecondaryBrush}" />
                         <TextBox Width="280" Text="{Binding Workspace}"
-                                 Watermark="命名工作空间名或目录路径（将写入生成的任务）" />
+                                 PlaceholderText="命名工作空间名或目录路径（将写入生成的任务）" />
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button Content="展开预览" Classes="primary" Command="{Binding PreviewCommand}" />

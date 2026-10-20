@@ -43,7 +43,7 @@ public partial class ConfigView : UserControl
                 },
                 FilePickerFileTypes.All
             }
-        });
+        }).ConfigureAwait(false);
 
         return files.Count > 0 ? files[0].Path.LocalPath : null;
     }

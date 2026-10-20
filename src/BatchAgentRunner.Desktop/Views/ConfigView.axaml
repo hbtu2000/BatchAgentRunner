@@ -711,13 +711,13 @@
                                             <StackPanel IsVisible="{Binding IsSmtp}" Spacing="4">
                                                 <TextBlock Text="SMTP（密码走凭据引用，不明文落地）" />
                                                 <StackPanel Orientation="Horizontal" Spacing="10">
-                                                    <TextBox Text="{Binding SmtpHost}" Width="180" Watermark="smtp.example.com" />
-                                                    <TextBox Text="{Binding SmtpPortText}" Width="60" Watermark="587" />
-                                                    <TextBox Text="{Binding SmtpFrom}" Width="200" Watermark="from@example.com" />
+                                                    <TextBox Text="{Binding SmtpHost}" Width="180" PlaceholderText="smtp.example.com" />
+                                                    <TextBox Text="{Binding SmtpPortText}" Width="60" PlaceholderText="587" />
+                                                    <TextBox Text="{Binding SmtpFrom}" Width="200" PlaceholderText="from@example.com" />
                                                 </StackPanel>
                                                 <StackPanel Orientation="Horizontal" Spacing="10">
-                                                    <TextBox Text="{Binding SmtpToText}" Width="300" Watermark="收件人（逗号分隔多个）" />
-                                                    <TextBox Text="{Binding SmtpCredentialRef}" Width="200" Watermark="凭据引用 key" />
+                                                    <TextBox Text="{Binding SmtpToText}" Width="300" PlaceholderText="收件人（逗号分隔多个）" />
+                                                    <TextBox Text="{Binding SmtpCredentialRef}" Width="200" PlaceholderText="凭据引用 key" />
                                                 </StackPanel>
                                             </StackPanel>
                                         </StackPanel>

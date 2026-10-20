@@ -5,9 +5,12 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
-    <!-- P0-12 / P2-20：同主测试项目的测试项目规则豁免（登记于治理方案 §4.7）：
-         CA1707 / CA2007（与 xUnit1030 冲突，xUnit 建议测试省略 ConfigureAwait）/ CA1861（测试期望值
-         数组一次性使用，提 static readonly 损害可读性且无性能收益）。 -->
+    <!-- P0-12 / P2-20 / P2-30：同主测试项目的测试项目规则豁免（逐条登记于治理方案 §4.7 逃逸阀台账）：
+         逃逸阀台账 #4 / 到期日 2027-01-20 / 责任人 工程 —— CA1707（下划线 + 中文名是本仓测试命名约定）；
+         逃逸阀台账 #5 / 到期日 2027-01-20 / 责任人 工程 —— CA2007（与 xUnit 自家 xUnit1030 冲突，
+         xUnit 建议测试方法省略 ConfigureAwait）；
+         逃逸阀台账 #6 / 到期日 2027-01-20 / 责任人 工程 —— CA1861（测试期望值数组一次性使用，
+         提 static readonly 损害可读性且无性能收益）。 -->
     <NoWarn>$(NoWarn);CA1707;CA2007;CA1861</NoWarn>
   </PropertyGroup>
 

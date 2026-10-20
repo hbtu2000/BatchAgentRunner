@@ -24,5 +24,8 @@ dotnet_diagnostic.CS8604.severity = warning
 # 库层 async 必须 ConfigureAwait(false)（CA2007）
 dotnet_diagnostic.CA2007.severity = warning
 
-# 阻止反序列化目标声明接口集合类型（项目历史坑：NotSupportedException）
+# 逃逸阀台账 #2 / 到期日 2027-01-20 / 责任人 工程 —— CA1002（不要公开泛型 List）要求把 List<T>
+# 换成 Collection<T>/ReadOnlyCollection<T>，但本仓 List<T> 公开属性全部是 System.Text.Json 的
+# 反序列化契约（实测开启即 96 处违规：BatchReport 18 / RunOptions 16 / WorkflowTypes 12 …），
+# 换抽象集合类型会破坏用户 config.json 与任务模板的往返兼容。
 dotnet_diagnostic.CA1002.severity = none

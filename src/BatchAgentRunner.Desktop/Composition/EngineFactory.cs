@@ -156,7 +156,7 @@ public sealed class EngineFactory : IEngineFactory
     public static Task<string> WriteCreditsClaimReportAsync(CreditsClaimSummary summary, string directory, CancellationToken cancellationToken)
         => CreditsClaimReportWriter.WriteAsync(summary, directory, cancellationToken);
 
-    [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能", Justification = "接口返回类型是 P1-4/P1-5 DI 目标形态，拒绝向具体类型回退")]
+    [SuppressMessage("Performance", "CA1859:使用具体类型以获得性能", Justification = "接口返回类型是 P1-4/P1-5 DI 目标形态，拒绝向具体类型回退；逃逸阀台账 #8 / 到期日 2027-01-20 / 责任人 工程")]
     private static INotificationDispatcher CreateNotificationDispatcher(IRunLogger logger, Action<string, string> raiseToast)
     {
         var notifiers = new List<INotifier>

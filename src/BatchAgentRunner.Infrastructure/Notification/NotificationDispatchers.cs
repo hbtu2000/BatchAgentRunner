@@ -98,7 +98,7 @@ public sealed class SmtpNotifier : INotifier
             return;
         }
 
-#pragma warning disable SYSLIB0014 // SmtpClient 已过时但 .NET 仍支持；换 MailKit 属计划性延期，登记于 TECH-DEBT v2.0 §4.7.1 计划性延期台账 #D1（P2-26：原自述改台账登记）
+#pragma warning disable SYSLIB0014 // 逃逸阀台账 #1 / 到期日 2026-12-31 / 责任人 工程 —— SmtpClient 已过时但 .NET 仍支持；换 MailKit 属功能迁移而非缺陷修复，计划性延期见 TECH-DEBT v2.0 §4.7.1 台账 #D1
         try
         {
             using var client = new System.Net.Mail.SmtpClient(cfg.Host, cfg.Port)
