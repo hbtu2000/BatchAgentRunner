@@ -77,7 +77,7 @@ public sealed class TaskRunner : ITaskRunner
     /// 单任务执行兜底：引擎自身的未预期异常（如启动进程失败、落盘失败）不允许静默冒泡
     /// 杀死整批（2026-10-16 实测：异常被 UI 吞掉、运行日志无记录、报告不落盘，排障极困难）。
     /// 此处记录 ERROR 日志与事件、任务判失败后继续下一任务；用户取消（OCE）按终止处理。
-    /// 二期扩展（P1-1 拆分产物 ④）：执行前后的 diff 采集 / Git 分支与 PR / Markdown 回写
+    /// （P1-1 拆分产物 ④）：执行前后的 diff 采集 / Git 分支与 PR / Markdown 回写
     /// 全部委托 <see cref="IGitWorkflow"/>（尽力而为，失败不阻断任务）。
     /// </summary>
     private async Task<TaskOutcome> ExecuteTaskSafeAsync(TaskItem task, CancellationToken ct)

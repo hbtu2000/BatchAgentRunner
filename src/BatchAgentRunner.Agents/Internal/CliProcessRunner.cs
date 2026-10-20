@@ -359,29 +359,18 @@ public sealed class CliProcessRunner
     }
 
     /// <summary>进程树回收，避免残留子进程（第 8 章可靠性）。</summary>
+    /// <remarks>
+    /// P1-13 重写：改用 .NET 原生 <see cref="Process.Kill(bool)"/>（<c>entireProcessTree: true</c>）整树回收，
+    /// 取代原「外部 <c>taskkill /T /F</c> + 同步 <c>WaitForExit(3000)</c>」方案。收益：
+    /// ① 消除对外部进程（taskkill）的跨平台不可移植依赖；② 消除最长 3 秒的线程同步阻塞
+    /// （<see cref="Process.Kill"/> 仅发送终止信号、不等待退出，无阻塞）；③ 语义等价（整树回收），
+    /// 行为由 <c>CliProcessRunnerTests</c> 的整树回收用例锁定，重写前后等价。
+    /// </remarks>
     public static void KillTree(Process process)
     {
-        try
+        if (process is null)
         {
-            if (OperatingSystem.IsWindows())
-            {
-                var killInfo = new ProcessStartInfo("taskkill")
-                {
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-                killInfo.ArgumentList.Add("/pid");
-                killInfo.ArgumentList.Add(process.Id.ToString());
-                killInfo.ArgumentList.Add("/T");
-                killInfo.ArgumentList.Add("/F");
-
-                var killer = Process.Start(killInfo);
-                killer?.WaitForExit(3000);
-            }
-        }
-        catch
-        {
-            // 忽略：降级到 process.Kill
+            return;
         }
 
         try
@@ -393,7 +382,7 @@ public sealed class CliProcessRunner
         }
         catch
         {
-            // 进程已退出
+            // 进程已退出或已无权访问：回收目的已达成（无残留威胁），忽略。
         }
     }
 

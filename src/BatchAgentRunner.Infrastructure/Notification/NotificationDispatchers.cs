@@ -98,7 +98,7 @@ public sealed class SmtpNotifier : INotifier
             return;
         }
 
-#pragma warning disable SYSLIB0014 // SmtpClient 已过时，但 .NET 仍支持；二期后续可换 MailKit
+#pragma warning disable SYSLIB0014 // SmtpClient 已过时但 .NET 仍支持；换 MailKit 属计划性延期，登记于 TECH-DEBT v2.0 §4.7.1 计划性延期台账 #D1（P2-26：原自述改台账登记）
         try
         {
             using var client = new System.Net.Mail.SmtpClient(cfg.Host, cfg.Port)
@@ -129,9 +129,13 @@ public sealed class SmtpNotifier : INotifier
 #pragma warning restore SYSLIB0014
     }
 
-    private static string RetrieveSecret(string credentialRef)
+    /// <summary>
+    /// 凭据引用解析：环境变量名直接取其值，未设置时为空串（调用方按无凭据发送）。
+    /// ICredentialVault 集成属计划性延期，登记于「TECH-DEBT-技术债务治理方案-v2.0.md §4.7.1 计划性延期台账 #D1」，
+    /// 按 P2-26 规则只在台账滚动状态、注释只描述当前实现。
+    /// </summary>
+    internal static string RetrieveSecret(string credentialRef)
     {
-        // 凭据引用解析（二期：接入 ICredentialVault 或环境变量）；当前返回占位并提示
         return Environment.GetEnvironmentVariable(credentialRef) ?? string.Empty;
     }
 }

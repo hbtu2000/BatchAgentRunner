@@ -13,9 +13,6 @@ public static class CreditsClaimMigrator
     private const string LegacyBalancePath = "/console/credits";
     private const string LegacyClaimPath = "/console/credits/daily-claim";
 
-    private const string CurrentBalancePath = "/billing/meter/get-user-resource-summary";
-    private const string CurrentClaimPath = "/billing/meter/daily-checkin";
-
     /// <summary>识别并迁移旧默认端点（幂等；用户自定义值不迁移）。返回是否发生了迁移。</summary>
     public static bool Migrate(RunOptions options)
     {
@@ -24,13 +21,13 @@ public static class CreditsClaimMigrator
 
         if (string.Equals(claim.BalancePath?.Trim(), LegacyBalancePath, StringComparison.OrdinalIgnoreCase))
         {
-            claim.BalancePath = CurrentBalancePath;
+            claim.BalancePath = CodeBuddyApiConstants.BalancePath;
             migrated = true;
         }
 
         if (string.Equals(claim.ClaimPath?.Trim(), LegacyClaimPath, StringComparison.OrdinalIgnoreCase))
         {
-            claim.ClaimPath = CurrentClaimPath;
+            claim.ClaimPath = CodeBuddyApiConstants.ClaimPath;
             migrated = true;
         }
 

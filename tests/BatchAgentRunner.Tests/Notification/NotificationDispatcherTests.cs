@@ -138,3 +138,38 @@ public class NotificationDispatcherTests
         Assert.Equal(expected, NotificationDispatcher.IsQuietHoursAt(quietHours, new TimeOnly(hour, minute)));
     }
 }
+
+/// <summary>
+/// P2-26 防回归：SMTP 凭据引用解析的行为契约。
+/// 原注释自称「返回占位并提示」与实际实现脱节（实况：环境变量解析已实现）——
+/// 本组锁死「环境变量名 → 取其值 / 未设置 → 空串」，实现若退化为占位即失败；
+/// 未实现的仅剩 ICredentialVault 集成（TECH-DEBT v2.0 §4.7 计划性延期台账 #D1）。
+/// </summary>
+public class SmtpNotifierCredentialResolutionTests
+{
+    [Fact]
+    public void 凭据引用_按环境变量名解析取值()
+    {
+        // 唯一变量名避免与并行用例相互污染；用后即还
+        var name = $"BATCHAGENT_TEST_SECRET_{Guid.NewGuid():N}";
+        var original = Environment.GetEnvironmentVariable(name);
+        try
+        {
+            Environment.SetEnvironmentVariable(name, "s3cret");
+
+            Assert.Equal("s3cret", SmtpNotifier.RetrieveSecret(name));
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(name, original);
+        }
+    }
+
+    [Fact]
+    public void 凭据引用_环境变量未设置_返回空串()
+    {
+        var name = $"BATCHAGENT_TEST_MISSING_{Guid.NewGuid():N}";
+
+        Assert.Equal(string.Empty, SmtpNotifier.RetrieveSecret(name));
+    }
+}

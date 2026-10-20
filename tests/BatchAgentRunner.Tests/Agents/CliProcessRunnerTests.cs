@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Text;
+using System.Threading;
 using BatchAgentRunner.Agents.Internal;
 using BatchAgentRunner.Core.Options;
 
@@ -214,5 +215,139 @@ public class CliProcessRunnerTests
         {
             File.Delete(script);
         }
+    }
+
+    // ───────────────────────── P1-13：KillTree 重写（整树回收，不再依赖外部 taskkill / 同步阻塞） ─────────────────────────
+
+    /// <summary>
+    /// P1-13 不变量：<see cref="CliProcessRunner.KillTree"/> 必须整树回收——父进程拉起的常驻子进程（beacon）
+    /// 在调用后必须停止存活，否则会残留僵尸子进程（原 taskkill /T 与重写后的 Kill(entireProcessTree:true) 均须满足）。
+    /// 若被回退为「仅杀父进程」，beacon 子进程会继续存活，本用例失败，从而锁死整树语义。
+    /// </summary>
+    [Fact]
+    public void KillTree_父进程拉起常驻子进程_整树回收后子进程不再存活()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return; // 依赖 cmd/start，仅 Windows 验证
+        }
+
+        var dir = Path.Combine(Path.GetTempPath(), $"bar-killtree-{Guid.NewGuid()}");
+        Directory.CreateDirectory(dir);
+        try
+        {
+            var beacon = Path.Combine(dir, "beacon.txt");
+            var childCmd = Path.Combine(dir, "child_beacon.cmd");
+            var parentCmd = Path.Combine(dir, "parent.cmd");
+
+            // beacon 路径直接烤进脚本，避免多层 cmd 参数引号传递导致的不可靠
+            // 子进程：每秒向 beacon 写入时间戳（心跳），用于判定其是否仍存活
+            File.WriteAllText(childCmd,
+                $"@echo off\r\n:loop\r\necho %TIME% > \"{beacon}\"\r\nping -n 2 127.0.0.1 > nul\r\ngoto loop\r\n",
+                Encoding.Default);
+            // 父进程：同步拉起 beacon 子进程（作为 Process 对象的直接后代），自身阻塞等待，
+            // 使 KillTree(父) 必须整树回收才能同时干掉 beacon 后代
+            File.WriteAllText(parentCmd,
+                "@echo off\r\ncmd /c child_beacon.cmd\r\n",
+                Encoding.Default);
+
+            using var process = Process.Start(new ProcessStartInfo("cmd.exe", $"/c \"{parentCmd}\"")
+            {
+                UseShellExecute = false,
+                CreateNoWindow = true,
+                WorkingDirectory = dir
+            })!;
+
+            // 先确认 beacon 子进程确实在持续心跳（存活）
+            Assert.True(WaitForBeaconHeartbeat(beacon, TimeSpan.FromSeconds(20)),
+                "beacon 子进程未如期启动并持续写入，测试前置不成立");
+
+            CliProcessRunner.KillTree(process);
+
+            // 整树回收后 beacon 必须停止更新（子进程已随父进程一并被杀）
+            var lastWrite = File.GetLastWriteTimeUtc(beacon);
+            Thread.Sleep(3000);
+            Assert.Equal(lastWrite, File.GetLastWriteTimeUtc(beacon));
+            Assert.True(process.HasExited);
+        }
+        finally
+        {
+            try { Directory.Delete(dir, true); } catch { /* 进程残留时忽略 */ }
+        }
+    }
+
+    /// <summary>
+    /// P1-13 健壮性：对已经退出的进程调用 KillTree 不得抛异常（回收目的已达成）。
+    /// </summary>
+    [Fact]
+    public void KillTree_进程已退出_不抛异常()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var process = Process.Start(new ProcessStartInfo("cmd.exe", "/c exit 0")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true
+        })!;
+        process.WaitForExit();
+        Assert.True(process.HasExited);
+
+        var ex = Record.Exception(() => CliProcessRunner.KillTree(process));
+        Assert.Null(ex);
+    }
+
+    /// <summary>
+    /// P1-13 基本语义：KillTree 必须真正终止目标进程（取代原 taskkill 的终止职责）。
+    /// </summary>
+    [Fact]
+    public void KillTree_单进程_被立即终止()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        using var process = Process.Start(new ProcessStartInfo("cmd.exe", "/c ping -n 60 127.0.0.1 > nul")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true
+        })!;
+        Assert.False(process.HasExited);
+
+        CliProcessRunner.KillTree(process);
+
+        Assert.True(SpinWait.SpinUntil(() => process.HasExited, TimeSpan.FromSeconds(5)));
+    }
+
+    /// <summary>轮询 beacon 文件，直到其 mtime 至少推进一次（证明子进程心跳循环在跑）。</summary>
+    private static bool WaitForBeaconHeartbeat(string beaconPath, TimeSpan timeout)
+    {
+        var deadline = DateTime.UtcNow + timeout;
+        // 等待首次写入
+        while (DateTime.UtcNow < deadline && !File.Exists(beaconPath))
+        {
+            Thread.Sleep(50);
+        }
+
+        if (!File.Exists(beaconPath))
+        {
+            return false;
+        }
+
+        var lastWrite = File.GetLastWriteTimeUtc(beaconPath);
+        while (DateTime.UtcNow < deadline)
+        {
+            Thread.Sleep(100);
+            var current = File.GetLastWriteTimeUtc(beaconPath);
+            if (current != lastWrite)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

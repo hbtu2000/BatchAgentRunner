@@ -19,7 +19,7 @@ public sealed class CliLoginLauncher : ICliLoginLauncher
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
     }
 
-    public Task LaunchAsync(AgentKind cli, CancellationToken cancellationToken = default)
+    public async Task LaunchAsync(AgentKind cli, CancellationToken cancellationToken = default)
     {
         var spec = _registry.Resolve(cli);
         if (spec.LoginArguments is null)
@@ -37,7 +37,8 @@ public sealed class CliLoginLauncher : ICliLoginLauncher
         }
 
         // 全程零确认：拉起前把权限模式持久化为 bypassPermissions（否则登录会话内工具调用会卡在审批框）
-        CliPermissionSettings.EnsureBypassPermissions(_registry, spec);
+        await CliPermissionSettings.EnsureBypassPermissionsAsync(_registry, spec, cancellationToken)
+            .ConfigureAwait(false);
 
         Process.Start(new ProcessStartInfo
         {
@@ -45,7 +46,6 @@ public sealed class CliLoginLauncher : ICliLoginLauncher
             Arguments = spec.LoginArguments,
             UseShellExecute = true
         });
-        return Task.CompletedTask;
     }
 
     private static string? FindOnPath(string name)

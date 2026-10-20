@@ -87,8 +87,9 @@ public interface IAgentCliAdapter
     Task<IReadOnlyList<ModelCatalogEntry>> ListModelCatalogAsync(AccountConfig account, CancellationToken cancellationToken = default);
 
     /// <summary>
-    /// 该 adapter 是否支持恢复指定会话（二期方案 b，PRD 15.4.6）。
-    /// 默认 <c>false</c>（回退一期方案 a：完整指令重发）。真实 CLI 适配器在 M0 V-8 验证支持后重写。
+    /// 该 adapter 是否支持恢复指定会话（方案 b，PRD 15.4.6；SessionResumePolicy 默认关，不满足条件一律回退方案 a）。
+    /// 默认 <c>false</c>（完整指令重发）。真实 CLI 适配器启用本能力的前置验证（M0 V-8）属计划性延期，
+    /// 登记于「TECH-DEBT-技术债务治理方案-v2.0.md §4.7.1 计划性延期台账 #D2」（P2-26）。
     /// </summary>
     bool CanResume(SessionHandle handle) => false;
 }

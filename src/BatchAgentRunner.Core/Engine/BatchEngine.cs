@@ -91,7 +91,7 @@ public sealed class BatchEngine : IBatchEngine
     private readonly Dictionary<string, double> _taskWaitSeconds = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string>? _idSnapshot;
 
-    // ---------------- 二期扩展（全部可选，向后兼容） ----------------
+    // ---------------- 工作流 / 通知 / 会话恢复 / Git 协作等增强协作者 ----------------
     private readonly List<NotificationRule> _notifications;
     private readonly SessionResumePolicy _sessionPolicy;
     private readonly INotificationDispatcher? _notificationDispatcher;
@@ -377,7 +377,7 @@ public sealed class BatchEngine : IBatchEngine
                 : t.Status is TaskStatus.Pending or TaskStatus.Interrupted)
             .ToList();
 
-        // 二期 DAG：存在任务依赖时按拓扑序派发，保证依赖先于其下游执行；环在加载期快速失败
+        // DAG 派发：存在任务依赖时按拓扑序派发，保证依赖先于其下游执行；环在加载期快速失败
         if (queue.Any(t => t.DependsOn is { Count: > 0 }))
         {
             try
@@ -475,7 +475,7 @@ public sealed class BatchEngine : IBatchEngine
         await PersistAsync(token).ConfigureAwait(false);
         Report = _report.Build(startedAt);
 
-        // 二期：批处理终态通知推送（REQ-018；按规则触发，失败不阻断）
+        // 批处理终态通知推送（REQ-018；按规则触发，失败不阻断）
         await _notifier.DispatchAsync(
             Status switch
             {
@@ -549,12 +549,12 @@ public sealed class BatchEngine : IBatchEngine
         NotifyConfigurationChanged();
     }
 
-    // ---------------- 二期：工作流执行 ----------------
+    // ---------------- 工作流执行 ----------------
 
     /// <summary>
-    /// 二期：工作流任务执行（多阶段顺序驱动 + 质量门禁 + 修订循环）。
-    /// 委托给自包含的 <see cref="WorkflowExecutor"/>（其内部复用一期降级矩阵/免费时段/额度冷却/兜底语义），
-    /// 引擎只负责落盘与终态映射，不改动一期单指令执行路径。
+    /// 工作流任务执行（多阶段顺序驱动 + 质量门禁 + 修订循环）。
+    /// 委托给自包含的 <see cref="WorkflowExecutor"/>（其内部复用降级矩阵/免费时段/额度冷却/兜底语义），
+    /// 引擎只负责落盘与终态映射，不改动既有单指令执行路径。
     /// </summary>
     private async Task<TaskOutcome> ExecuteWorkflowAsync(TaskItem task, CancellationToken ct)
     {
@@ -595,7 +595,7 @@ public sealed class BatchEngine : IBatchEngine
         };
     }
 
-    /// <summary>构造工作流执行上下文（把引擎的一期内核能力注入二期执行器）。</summary>
+    /// <summary>构造工作流执行上下文（把引擎的降级/额度/冷却/兜底内核能力注入工作流执行器）。</summary>
     private WorkflowEngineContext BuildWorkflowContext() => new()
     {
         Options = _options,

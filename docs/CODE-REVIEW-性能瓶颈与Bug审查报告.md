@@ -7,7 +7,7 @@
 
 > **修复跟踪（2026-10-19 更新）**：本文档记录的缺陷已按 `docs/TECH-DEBT-技术债务治理方案-v2.0.md`
 > 「阶段 0（止血）」**全部处理完毕**（阶段 1 建网后口径：`dotnet build` 0 警告 / 0 错误且 `TreatWarningsAsErrors=true`、345/345 测试通过，治理前基线 270；其中 13 项为 `tests/BatchAgentRunner.Desktop.Tests`）。
-> 最新基线（2026-10-19 晚，阶段 2 动骨后 + P1-1 收口）：全量构建仍 0 警告 / 0 错误；测试 **467 通过 / 0 失败**（主测试项目 428 = 快 401 / 慢 27，Desktop.Tests 39；较前次 441 增加的 26 例来自并发工作方 TaskRunner 防御性终止测试调整与 P1-1 收口的 `TaskDispatcherTests` 19 项白箱单测）；P1-1 收口白箱测试期间新发现 B3/B4 两类 `0x80131506` CLR 致命崩溃（TaskRunner 无限空转、PromptClassifier 编译正则动态程序集累积），已随 `2299f22` 兜底）。
+> 最新基线（2026-10-20，阶段 3 持续化 + P2-26 收口后）：全量构建 0 警告 / 0 错误；测试 **545 通过 / 0 失败**（主测试项目 487 + Desktop.Tests 58；较 2026-10-19 晚的 467 增加的 78 例来自 P1-6/P1-7/P1-11/P1-12/P1-13/P1-14/P1-15/P1-21 各轮偿还与 2026-10-20 P2-26 收口的守卫测试 8 项）；P1-1 收口白箱测试期间新发现 B3/B4 两类 `0x80131506` CLR 致命崩溃（TaskRunner 无限空转、PromptClassifier 编译正则动态程序集累积），已随 `2299f22` 兜底；P2-26 误导注释已清算（修正 `SmtpNotifier.RetrieveSecret` 脱节注释，计划性延期 4 项进 TECH-DEBT §4.7.1 台账，`CommentHygieneTests` 守卫防复发）。
 > 由于行号会随修复继续漂移，**后续追踪一律以该方案的阶段落地表（不变量断言）为准**，本文档保留为原始审查记录。
 
 ---
@@ -25,7 +25,7 @@
 | Agents / Adapters | `CliAdapterBase.cs`、`MockAdapter.cs`、`CliCommandBuilder.cs` | CLI 适配、权限固化、命令构建 |
 | Desktop / Services | `EngineHost.cs` | 后台线程 → UI 线程分发 |
 | Infrastructure / Logging | `FileRunLogger.cs` | 运行日志落盘 |
-| Infrastructure / CredentialVault | `CliPermissionSettings.cs` | 权限 bypass 固化 |
+| Infrastructure / CredentialVault | `CliPermissionSettings.cs` | 权限 bypass 固化（P1-12 已治理：作用域收窄 + 原子写） |
 
 ---
 
@@ -191,6 +191,8 @@ var regex = ChoiceRegexCache.GetOrAdd(pattern, p => new Regex(p, RegexOptions.Mu
 
 **建议**：仅在“目标值≠当前值”时写；或进程内缓存“已确保”标志，避免重复落盘。
 
+**状态**：✅ 已治理（P1-12，2026-10-20）。`CliPermissionSettings.EnsureBypassPermissions` 重构为 `EnsureBypassPermissionsAsync`：① 作用域收窄——仅当 `permissions.defaultMode` 缺失/为空时才写入 bypassPermissions，用户已显式设值（含 bypass 或任何其它模式）一律幂等保留、不再覆盖；高频任务下不再产生无谓磁盘写；② 落盘改走 `AtomicFileWriter`（临时文件 + `File.Move` 原子替换），消除并发读到一半的风险。两处调用点（`CliAdapterBase.ExecuteAsync` / `CliLoginLauncher.LaunchAsync`）同步改 `await`，异常不阻断语义不变。
+
 ---
 
 ### P6. 分类器重复小写化（性能）
@@ -280,4 +282,4 @@ var regex = ChoiceRegexCache.GetOrAdd(pattern, p => new Regex(p, RegexOptions.Mu
 - `ResetTimeParser.cs`：N2(68)
 - `MockAdapter.cs`：N6
 - `FileRunLogger.cs`：P2
-- `CliPermissionSettings.cs`：P5
+- `CliPermissionSettings.cs`：P5（✅ 已治理，P1-12）

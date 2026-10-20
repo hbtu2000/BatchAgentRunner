@@ -1,4 +1,6 @@
+using System.Security.AccessControl;
 using System.Security.Cryptography;
+using System.Security.Principal;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using BatchAgentRunner.Core.Abstractions;
@@ -14,6 +16,9 @@ namespace BatchAgentRunner.Infrastructure.CredentialVault;
 ///   vault\live-state.json                              （Live 归属记账）
 ///   vault\audit.log                                    （审计日志：时间/账号/动作/结果，不含内容）
 /// 安全约定：快照内凭证文件经 <see cref="ICredentialProtector"/> 加密落盘；审计只记账号 id 与哈希前 8 位。
+/// Vault 根目录在每次变更时由 <see cref="SecureVaultRoot"/> 加固 ACL（P1-11）：
+/// 移除继承的默认 ACL，仅当前用户与 SYSTEM 可读写——即便 <c>manifest.json</c> 为明文元数据，
+/// 目录级权限也将其暴露面收口到本机当前用户（内容级 DPAPI 保护之外的防御纵深）。
 /// </summary>
 /// <remarks>
 /// CA1001（P0-12）：持有 <see cref="SemaphoreSlim"/> 序列化门，实现 <see cref="IDisposable"/>；
@@ -34,6 +39,7 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
     private readonly Action<string>? _auditSink;
     private readonly ICredentialLocationRegistry _registry;
     private readonly SemaphoreSlim _gate = new(1, 1);
+    private bool _rootSecured;
 
     public FileCredentialVault(string? root = null, ICredentialProtector? protector = null,
         ICliProcessGuard? processGuard = null, IClock? clock = null, Action<string>? auditSink = null,
@@ -81,6 +87,7 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            EnsureRootSecured();
             EnsureCliNotRunning(spec, "备份凭证");
 
             var collected = CollectLiveFiles(spec);
@@ -137,6 +144,7 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            EnsureRootSecured();
             EnsureCliNotRunning(spec, "切换凭证");
 
             var target = ReadManifest(cli, id)
@@ -344,6 +352,7 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            EnsureRootSecured();
             var manifest = ReadManifest(cli, id)
                            ?? throw new CredentialVaultException($"账号 {id} 在 Vault 中没有凭证快照");
             manifest.LastVerifiedAt = _clock.Now;
@@ -365,6 +374,7 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
         await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
+            EnsureRootSecured();
             var dir = Path.Combine(_root, spec.CliId, id);
             if (Directory.Exists(dir))
             {
@@ -468,7 +478,7 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
             Since = _clock.Now
         };
 
-        Directory.CreateDirectory(_root);
+        EnsureRootSecured();
         var path = Path.Combine(_root, "live-state.json");
         var tempPath = $"{path}.tmp-{Guid.NewGuid():N}";
         await File.WriteAllTextAsync(tempPath,
@@ -487,11 +497,16 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
         return JsonSerializer.Deserialize<SnapshotManifest>(File.ReadAllText(path), ManifestOptions);
     }
 
+    // P1-11：统一原子写——与 WriteProtectedSnapshotFile / SetLiveAccountAsync 同款
+    // 「临时文件 + 原子替换」，消除本类唯一的非原子写（崩溃/强杀不再产生半截 manifest）。
     private void WriteManifest(AgentKind cli, string accountId, SnapshotManifest manifest)
     {
         var dir = AccountDirectory(_registry.Resolve(cli).CliId, accountId);
         Directory.CreateDirectory(dir);
-        File.WriteAllText(Path.Combine(dir, "manifest.json"), JsonSerializer.Serialize(manifest, ManifestOptions));
+        var target = Path.Combine(dir, "manifest.json");
+        var tempPath = $"{target}.tmp-{Guid.NewGuid():N}";
+        File.WriteAllText(tempPath, JsonSerializer.Serialize(manifest, ManifestOptions));
+        File.Move(tempPath, target, overwrite: true);
     }
 
     private void WriteProtectedSnapshotFile(string cliId, string accountId, string relativePath, byte[] plaintext)
@@ -545,12 +560,88 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
 
     private static string ShortHash(string sha256) => sha256[..Math.Min(8, sha256.Length)];
 
+    // ---------------- 根目录 ACL 加固（P1-11） ----------------
+
+    /// <summary>
+    /// 确保 Vault 根目录存在并已被 ACL 加固（仅首次执行，幂等）。
+    /// 所有变更操作在持 <see cref="_gate"/> 期间首先调用本方法，
+    /// 使 <c>_root</c> 下的账号子目录与快照/清单文件都继承受限 ACL。
+    /// </summary>
+    private void EnsureRootSecured()
+    {
+        Directory.CreateDirectory(_root);
+        if (_rootSecured)
+        {
+            return;
+        }
+
+        SecureVaultRoot();
+        _rootSecured = true;
+    }
+
+    /// <summary>
+    /// Vault 根目录 ACL 加固（P1-11 之「收 ACL」）：
+    /// 移除从父目录继承的默认 ACL，仅显式授予<b>当前用户</b>与 <b>SYSTEM</b> 完全控制
+    /// （带容器/对象继承，子目录与快照/清单文件自动继承）。
+    /// 凭证落盘后即便 <c>manifest.json</c> 为明文元数据（DESIGN §4.2 设计如此），
+    /// 目录级权限也保证仅本机当前用户可读——明文暴露面被收口到单用户。
+    /// 非 Windows 平台跳过（凭证功能本身仅 Windows，见 <see cref="DpapiCredentialProtector"/>）；
+    /// 加固失败仅记审计、不阻断业务（DPAPI 仍提供内容级保护，属防御纵深）。
+    /// </summary>
+    private void SecureVaultRoot()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        try
+        {
+            var root = Path.GetFullPath(_root);
+            Directory.CreateDirectory(root);
+
+            var dirInfo = new DirectoryInfo(root);
+            var acl = dirInfo.GetAccessControl();
+
+            // 去掉继承的宽松父 ACL，改为显式最小权限（preserveInheritance=false 丢弃既有继承规则）
+            acl.SetAccessRuleProtection(isProtected: true, preserveInheritance: false);
+
+            // 当前用户：显式授予完全控制，且随子项继承
+            if (WindowsIdentity.GetCurrent().User is { } userSid)
+            {
+                acl.PurgeAccessRules(userSid);
+                acl.AddAccessRule(new FileSystemAccessRule(
+                    userSid,
+                    FileSystemRights.FullControl,
+                    InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                    PropagationFlags.None,
+                    AccessControlType.Allow));
+            }
+
+            // SYSTEM：系统还原/备份服务依赖，同样显式授予并继承
+            var systemSid = new SecurityIdentifier(WellKnownSidType.LocalSystemSid, null);
+            acl.PurgeAccessRules(systemSid);
+            acl.AddAccessRule(new FileSystemAccessRule(
+                systemSid,
+                FileSystemRights.FullControl,
+                InheritanceFlags.ContainerInherit | InheritanceFlags.ObjectInherit,
+                PropagationFlags.None,
+                AccessControlType.Allow));
+
+            dirInfo.SetAccessControl(acl);
+        }
+        catch
+        {
+            // 防御纵深失败不阻断凭证业务
+        }
+    }
+
     private void Audit(string message)
     {
         var line = $"[{_clock.Now:yyyy-MM-dd HH:mm:ss}] {message}";
         try
         {
-            Directory.CreateDirectory(_root);
+            EnsureRootSecured();
             File.AppendAllText(Path.Combine(_root, "audit.log"), line + Environment.NewLine);
         }
         catch

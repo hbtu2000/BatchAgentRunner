@@ -4,7 +4,7 @@ using BatchAgentRunner.Infrastructure.CredentialVault;
 
 namespace BatchAgentRunner.Tests.CredentialVault;
 
-/// <summary>「全程零确认」保障测试：拉起登录前 settings.json 权限模式应被持久化为 bypassPermissions。</summary>
+/// <summary>「全程零确认」保障测试（P1-12 收口）：作用域收窄（不静默覆盖用户既有 defaultMode）+ 原子写。</summary>
 [Collection("credential-vault")]
 public class CliPermissionSettingsTests : IDisposable
 {
@@ -23,37 +23,70 @@ public class CliPermissionSettingsTests : IDisposable
     private string SettingsPath => Path.Combine(_root, "settings.json");
 
     [Fact]
-    public void 无settings时_创建并写入bypass权限模式()
+    public async Task 无settings时_创建并写入bypass权限模式()
     {
-        CliPermissionSettings.EnsureBypassPermissions(_registry, _registry.Resolve(AgentKind.CodeBuddy));
+        await CliPermissionSettings.EnsureBypassPermissionsAsync(
+            _registry, _registry.Resolve(AgentKind.CodeBuddy));
 
         var json = JsonNode.Parse(File.ReadAllText(SettingsPath))!;
         Assert.Equal("bypassPermissions", json["permissions"]?["defaultMode"]?.ToString());
     }
 
     [Fact]
-    public void 已有settings时_保留其他字段只改权限模式()
+    public async Task 用户已显式设defaultMode时_不静默覆盖保留其选择()
     {
         File.WriteAllText(SettingsPath,
             """{"theme":"dark","permissions":{"defaultMode":"default","allow":["Bash(ls*)"]}}""");
 
-        CliPermissionSettings.EnsureBypassPermissions(_registry, _registry.Resolve(AgentKind.CodeBuddy));
+        await CliPermissionSettings.EnsureBypassPermissionsAsync(
+            _registry, _registry.Resolve(AgentKind.CodeBuddy));
 
         var json = JsonNode.Parse(File.ReadAllText(SettingsPath))!;
+        // P1-12 作用域收窄：不得把用户显式设的 "default" 改成 "bypassPermissions"
+        Assert.Equal("default", json["permissions"]?["defaultMode"]?.ToString());
         Assert.Equal("dark", json["theme"]?.ToString());
+        Assert.Equal("Bash(ls*)", json["permissions"]?["allow"]?[0]?.ToString());
+    }
+
+    [Fact]
+    public async Task 已为bypass时_幂等不重复写_保留其它字段()
+    {
+        File.WriteAllText(SettingsPath,
+            """{"theme":"dark","permissions":{"defaultMode":"bypassPermissions","allow":["Bash(ls*)"]}}""");
+        var before = File.ReadAllText(SettingsPath);
+
+        await CliPermissionSettings.EnsureBypassPermissionsAsync(
+            _registry, _registry.Resolve(AgentKind.CodeBuddy));
+
+        // 幂等：内容不变（未触发覆盖写），且不破坏既有字段
+        Assert.Equal(before, File.ReadAllText(SettingsPath));
+        var json = JsonNode.Parse(File.ReadAllText(SettingsPath))!;
         Assert.Equal("bypassPermissions", json["permissions"]?["defaultMode"]?.ToString());
         Assert.Equal("Bash(ls*)", json["permissions"]?["allow"]?[0]?.ToString());
     }
 
     [Fact]
-    public void settings损坏时_重建为可用的bypass配置()
+    public async Task settings损坏时_重建为可用的bypass配置()
     {
         File.WriteAllText(SettingsPath, "{not valid json");
 
-        CliPermissionSettings.EnsureBypassPermissions(_registry, _registry.Resolve(AgentKind.CodeBuddy));
+        await CliPermissionSettings.EnsureBypassPermissionsAsync(
+            _registry, _registry.Resolve(AgentKind.CodeBuddy));
 
         var json = JsonNode.Parse(File.ReadAllText(SettingsPath))!;
         Assert.Equal("bypassPermissions", json["permissions"]?["defaultMode"]?.ToString());
+    }
+
+    [Fact]
+    public async Task 原子写_目录内不残留临时文件()
+    {
+        await CliPermissionSettings.EnsureBypassPermissionsAsync(
+            _registry, _registry.Resolve(AgentKind.CodeBuddy));
+
+        // P1-12 原子写：落盘走 AtomicFileWriter，目标存在且同目录无 *.tmp-* 残留
+        Assert.True(File.Exists(SettingsPath));
+        var stray = Directory.GetFiles(_root, "*.tmp-*", SearchOption.AllDirectories);
+        Assert.Empty(stray);
     }
 
     public void Dispose()

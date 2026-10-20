@@ -114,7 +114,8 @@ public abstract class CliAdapterBase : IAgentCliAdapter
         {
             try
             {
-                CliPermissionSettings.EnsureBypassPermissions(Locations, Locations.Resolve(Kind));
+                await CliPermissionSettings.EnsureBypassPermissionsAsync(
+                    Locations, Locations.Resolve(Kind), cancellationToken).ConfigureAwait(false);
             }
             catch (Exception ex)
             {

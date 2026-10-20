@@ -7,13 +7,15 @@ public enum SessionResumeDecision
 {
     /// <summary>不恢复：以全新会话执行（一期方案 a，等价「完整指令重发」）。</summary>
     NoSession,
-    /// <summary>恢复既有会话（二期方案 b，仅在 CLI 支持且配置开启时）。</summary>
+    /// <summary>恢复既有会话（方案 b，PRD 15.4.6；仅在 CLI 支持且配置开启时，否则回退方案 a）。</summary>
     Resume
 }
 
 /// <summary>
-/// 断点会话恢复策略（二期：PRD 15.4.6）。
-/// 默认关闭（EnableSessionResume=false），任何不满足条件的情形一律回退一期方案 a，保证向后兼容与可灰度。
+/// 断点会话恢复策略（PRD 15.4.6，方案 b）。
+/// 默认关闭（EnableSessionResume=false），任何不满足条件的情形一律回退方案 a（完整指令重发），保证向后兼容与可灰度。
+/// 「真实 CLI 适配器声明支持恢复（CanResume）」的前置验证 M0 V-8 属计划性延期，
+/// 登记于「TECH-DEBT-技术债务治理方案-v2.0.md §4.7.1 计划性延期台账 #D2」（P2-26）。
 /// </summary>
 public sealed class SessionResumePolicy
 {

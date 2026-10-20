@@ -12,9 +12,10 @@ namespace BatchAgentRunner.Infrastructure.Http;
 /// <summary>
 /// CodeBuddy 控制台积分 API 客户端（每日积分领取）。
 /// 契约 2026-10-16 已抓包实测确认（Bearer accessToken 鉴权，统一信封 code/msg/data/requestId）：
-/// - 余额：POST /billing/meter/get-user-resource-summary {} → data.Packages[].CycleRemainCapacity 求和
-/// - 领取：POST /billing/meter/daily-checkin {} → 200 + code:0 + data.credit（本次发放量）；
+/// - 余额：POST <see cref="CodeBuddyApiConstants.BalancePath"/> {} → data.Packages[].CycleRemainCapacity 求和
+/// - 领取：POST <see cref="CodeBuddyApiConstants.ClaimPath"/> {} → 200 + code:0 + data.credit（本次发放量）；
 ///   今日已领取 → HTTP 400 + code:10001「今天已签到，请明天再来」
+/// 基址与路径的规范值集中在 <see cref="CodeBuddyApiConstants"/>（P1-21），此处仅为契约说明，实际取值来自 <c>CreditsClaimConfig</c>。
 /// 重要：余额接口有 WAF 校验——不带浏览器 User-Agent 的请求会被 403（code:10085「请求不合法」）
 /// 拦截（实测），故必须携带浏览器 UA。
 /// </summary>

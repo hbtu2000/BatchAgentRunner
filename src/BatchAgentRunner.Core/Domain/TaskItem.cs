@@ -7,8 +7,8 @@ namespace BatchAgentRunner.Core.Domain;
 
 /// <summary>
 /// 任务项（PRD 第 10 章数据模型 + 附录 A 字段口径）。
-/// 一期不实现二期预留字段（workflow / depends_on / max_loops / batch_size），
-/// 反序列化时忽略未知字段以保证前向兼容。
+/// 工作流（workflow）、依赖（depends_on）、模板变量（template_vars）、项目关联（project_ref）、
+/// 门禁修订循环上限（max_loops）等扩展字段由工作流执行与 DAG 派发使用；反序列化时忽略未知字段以保证前向兼容。
 /// </summary>
 public sealed class TaskItem : INotifyPropertyChanged
 {
@@ -137,7 +137,7 @@ public sealed class TaskItem : INotifyPropertyChanged
         set => SetField(ref _durationSeconds, value);
     }
 
-    // ---------------- 二期扩展字段（一期不写盘，反序列化忽略未知字段以保证前向兼容） ----------------
+    // ---------------- 工作流 / DAG / 模板扩展字段（反序列化忽略未知字段以保证前向兼容） ----------------
 
     /// <summary>工作流定义（取代单条 Instruction 时设置）。</summary>
     [JsonPropertyName("workflow")]

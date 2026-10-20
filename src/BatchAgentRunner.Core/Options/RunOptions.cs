@@ -275,17 +275,17 @@ public sealed class CreditsClaimConfig
     [JsonPropertyName("force")]
     public bool Force { get; set; } = true;
 
-    /// <summary>积分服务端 API 基址（实测值）。</summary>
+    /// <summary>积分服务端 API 基址（实测值，见 <see cref="CodeBuddyApiConstants.ProductionApiBase"/>）。</summary>
     [JsonPropertyName("api_base")]
-    public string ApiBase { get; set; } = "https://www.codebuddy.cn";
+    public string ApiBase { get; set; } = CodeBuddyApiConstants.ProductionApiBase;
 
-    /// <summary>余额查询路径（POST，资源包剩余 credits 求和；实测值）。</summary>
+    /// <summary>余额查询路径（POST，资源包剩余 credits 求和；实测值，见 <see cref="CodeBuddyApiConstants.BalancePath"/>）。</summary>
     [JsonPropertyName("balance_path")]
-    public string BalancePath { get; set; } = "/billing/meter/get-user-resource-summary";
+    public string BalancePath { get; set; } = CodeBuddyApiConstants.BalancePath;
 
-    /// <summary>每日领取路径（POST；实测值）。</summary>
+    /// <summary>每日领取路径（POST；实测值，见 <see cref="CodeBuddyApiConstants.ClaimPath"/>）。</summary>
     [JsonPropertyName("claim_path")]
-    public string ClaimPath { get; set; } = "/billing/meter/daily-checkin";
+    public string ClaimPath { get; set; } = CodeBuddyApiConstants.ClaimPath;
 
     /// <summary>单次 HTTP 调用超时（秒）。</summary>
     [JsonPropertyName("timeout_seconds")]
