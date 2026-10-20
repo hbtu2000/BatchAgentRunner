@@ -4,7 +4,7 @@
 > 盘点范围：`src/**`（117 文件 / 18,119 行）、`tests/**`（32 文件 / 5,845 行）、全部工程配置、git 历史（12 提交）  
 > 事实基线：net10.0 / Avalonia 12.1.4 / CommunityToolkit.Mvvm 8.4.2，**无 CI、无门禁、无 CPM**
 >
-> **当前进度（2026-10-19 晚）**：阶段 −1（B 组 5 项）、阶段 0（A 组 10 项 + P0-17）、阶段 1（建网 6 项）**均已完成**；P0 清单 17 项全部清偿，全量构建 0 警告 / 0 错误（`TreatWarningsAsErrors=true`）。**阶段 2 动骨已完成（2026-10-18 ~ 2026-10-19）**：P1-3（提 `IBatchEngine` + 窄化构造）、P1-9（`IProcessRunner`）、P1-10（`IFileSystem`）、P1-16（取消静态注册表）、P1-1（拆 6 协作者）、P1-2（状态机外置）均已提交；**P1-4/P1-5 已收口（2026-10-19）**——`Desktop/Composition/EngineFactory` 成为 Desktop 中唯一 `new` Infrastructure/Agents 具体类型的位置（原 `CredentialVaultHost.CreateDefault`、`EngineHost` 的 `ShutdownService`、`TemplateEditorViewModel` 的 `FileWorkflowTemplateStore` 三处残留装配全部收回组合根），§4.3「Desktop 不得直接 `new` Infrastructure 具体类型」IL 扫描断言落地（Desktop.Tests 3/3 通过）。**P1-1 已收口（2026-10-19 晚，提交 `39bdb14`）**：补齐拆分产物 ① `ITaskDispatcher` 白箱单测 19 项——该协作者随 REQ-020 功能提交落地时未同步协作者测试模式，是六个协作者中唯一的白箱覆盖缺口，补齐后 §3.4 全部产物均有直接契约测试；同轮 `chore(debt)` 清理 `BatchEngine` 拆分后残留的 3 个空节标题注释（`596c165`）。P1-19（Desktop 补测试 + 契约收敛）已于 2026-10-19 收口（Avalonia headless 测试基座 + `UiThread` 线程收敛契约 2 项 + churn 热点 `ConfigView`/`Login`/`Monitor`/`SetupWizard` VM 契约测试 13 项，Desktop.Tests 39→54）。P1-3 为本轮重点，配套 §4.3 断言与 `BatchEnginePhase2Tests` 契约测试已落地，详见 §5.5。**阶段 2 收尾补漏（2026-10-20）**：P1-6（异步初始化门消除同步阻塞 + IL 断言）、P1-7（事件订阅泄漏退订）、P1-11（Vault 根目录 ACL 加固 + `WriteManifest` 原子写）、P1-12（CLI 权限固化治理：作用域收窄 + 原子写 + 异步化）四项均为阶段 2 声明「完成」后追加的收口项，详见 §5.5 与 §4.8。**阶段 3 持续化补完（2026-10-20）**：P1-13（`CliProcessRunner.KillTree` 重写——原生 `Kill(entireProcessTree:true)` 取代外部 `taskkill` + 同步 `WaitForExit(3000)` 阻塞）为「重写」准入四项中最后一笔收口；P1-14（`LocalGitIntegration` 子进程执行加固——超时回收 + stdin 重定向 + 启动失败收敛）同步收口；**P1-15 高危盲区清零**——`CodeBuddyCreditsApiClient` / `BackupManager` / `ShutdownService` 三项阶段 1 顺延的高危零覆盖盲区补齐白箱测试（`CodeBuddyCreditsApiClientTests` 11 + `BackupManagerTests` 6 + `ShutdownServiceTests` 2），详见 §5.6。测试基线（2026-10-20 P1-15 收口轮实跑）：主测试项目 **475 用例**（快 448 / 慢 27）+ Desktop.Tests **58 用例** = **533 通过 / 0 失败**（主测试较 P1-14 收口轮 450 增加 25 例：P1-15 三个高危盲区白箱测试；本轮复跑未再现测试宿主退出崩溃，历史记录见 §5.5 边界）。**阶段 4 持续化（2026-10-20 ~ 2026-10-21）**：P2-26（误导性注释清算 + §4.7.1 计划性延期台账 + `CommentHygieneTests`，见 §5.7）、P2-27（评估维持「主动不偿还」，见 §5.8）、P2-29（`_harness/` 产物堆清理，见 §5.9）、P2-30（逃逸阀台账四要素补齐 + 未登记的生产代码豁免归位 + `EscapeValveHygieneTests`，见 §5.10）四项已收口；测试基线刷新为 **550 通过 / 0 失败**（2026-10-21 P2-30 收口轮实跑：主 492 + Desktop 58，较 P2-26 收口轮 545 +5）。
+> **当前进度（2026-10-19 晚）**：阶段 −1（B 组 5 项）、阶段 0（A 组 10 项 + P0-17）、阶段 1（建网 6 项）**均已完成**；P0 清单 17 项全部清偿，全量构建 0 警告 / 0 错误（`TreatWarningsAsErrors=true`）。**阶段 2 动骨已完成（2026-10-18 ~ 2026-10-19）**：P1-3（提 `IBatchEngine` + 窄化构造）、P1-9（`IProcessRunner`）、P1-10（`IFileSystem`）、P1-16（取消静态注册表）、P1-1（拆 6 协作者）、P1-2（状态机外置）均已提交；**P1-4/P1-5 已收口（2026-10-19）**——`Desktop/Composition/EngineFactory` 成为 Desktop 中唯一 `new` Infrastructure/Agents 具体类型的位置（原 `CredentialVaultHost.CreateDefault`、`EngineHost` 的 `ShutdownService`、`TemplateEditorViewModel` 的 `FileWorkflowTemplateStore` 三处残留装配全部收回组合根），§4.3「Desktop 不得直接 `new` Infrastructure 具体类型」IL 扫描断言落地（Desktop.Tests 3/3 通过）。**P1-1 已收口（2026-10-19 晚，提交 `39bdb14`）**：补齐拆分产物 ① `ITaskDispatcher` 白箱单测 19 项——该协作者随 REQ-020 功能提交落地时未同步协作者测试模式，是六个协作者中唯一的白箱覆盖缺口，补齐后 §3.4 全部产物均有直接契约测试；同轮 `chore(debt)` 清理 `BatchEngine` 拆分后残留的 3 个空节标题注释（`596c165`）。P1-19（Desktop 补测试 + 契约收敛）已于 2026-10-19 收口（Avalonia headless 测试基座 + `UiThread` 线程收敛契约 2 项 + churn 热点 `ConfigView`/`Login`/`Monitor`/`SetupWizard` VM 契约测试 13 项，Desktop.Tests 39→54）。P1-3 为本轮重点，配套 §4.3 断言与 `BatchEnginePhase2Tests` 契约测试已落地，详见 §5.5。**阶段 2 收尾补漏（2026-10-20）**：P1-6（异步初始化门消除同步阻塞 + IL 断言）、P1-7（事件订阅泄漏退订）、P1-11（Vault 根目录 ACL 加固 + `WriteManifest` 原子写）、P1-12（CLI 权限固化治理：作用域收窄 + 原子写 + 异步化）四项均为阶段 2 声明「完成」后追加的收口项，详见 §5.5 与 §4.8。**阶段 3 持续化补完（2026-10-20）**：P1-13（`CliProcessRunner.KillTree` 重写——原生 `Kill(entireProcessTree:true)` 取代外部 `taskkill` + 同步 `WaitForExit(3000)` 阻塞）为「重写」准入四项中最后一笔收口；P1-14（`LocalGitIntegration` 子进程执行加固——超时回收 + stdin 重定向 + 启动失败收敛）同步收口；**P1-15 高危盲区清零**——`CodeBuddyCreditsApiClient` / `BackupManager` / `ShutdownService` 三项阶段 1 顺延的高危零覆盖盲区补齐白箱测试（`CodeBuddyCreditsApiClientTests` 11 + `BackupManagerTests` 6 + `ShutdownServiceTests` 2），详见 §5.6。测试基线（2026-10-20 P1-15 收口轮实跑）：主测试项目 **475 用例**（快 448 / 慢 27）+ Desktop.Tests **58 用例** = **533 通过 / 0 失败**（主测试较 P1-14 收口轮 450 增加 25 例：P1-15 三个高危盲区白箱测试；本轮复跑未再现测试宿主退出崩溃，历史记录见 §5.5 边界）。**阶段 4 持续化（2026-10-20 ~ 2026-10-21）**：P2-26（误导性注释清算 + §4.7.1 计划性延期台账 + `CommentHygieneTests`，见 §5.7）、P2-27（评估维持「主动不偿还」，见 §5.8）、P2-29（`_harness/` 产物堆清理，见 §5.9）、P2-30（逃逸阀台账四要素补齐 + 未登记的生产代码豁免归位 + `EscapeValveHygieneTests`，见 §5.10）四项已收口；测试基线刷新为 **550 通过 / 0 失败**（2026-10-21 P2-30 收口轮实跑：主 492 + Desktop 58，较 P2-26 收口轮 545 +5）。**P2-31 已收口（2026-10-21）**：三份 `Json*Store` 的加载/原子写样板抽为 `JsonStoreBase<T>`，9 处 `"BatchAgentRunner"` 路径魔法串收口为 `AppPaths` 常量类，并新增 `AppPathsHygieneTests` 守卫；测试基线 **565 通过 / 0 失败**（主 507 + Desktop 58，+15）。
 
 ---
 
@@ -17,7 +17,7 @@
 | **批准日期**   | 2026-10-18                                                                           |
 | **批准范围**   | 全文：阶段 −1 / 0 / 1 执行记录、阶段 2 / 3 路线图、§3 偿还策略、§4 防新增六道墙与逃逸阀台账、附录 A/B                    |
 | **效力说明**   | 自批准日起，本方案为 BatchAgentRunner 技术债务治理的**权威基线**；任何后续变更须按 §4.6 债务预算与 §4.7 逃逸阀规则登记，不得口头覆盖。 |
-| **当前进度基线** | 阶段 −1 / 0 / 1 已完成，P0 清单 17 项全部清偿；阶段 2 动骨全部完成（P1-3/4/5/9/10/16、P1-1 拆 6 协作者、P1-2、P1-19 均已完成，详见 §2 / §5.5）。P1-4/P1-5 于 2026-10-19 收口：组合根 `EngineFactory` 为 Desktop 唯一 `new` 点，§4.3 对应 IL 断言落地。阶段 3 持续化补完（P1-13/14/15/21）、阶段 4 P2 第一批（P2-26/P2-27/P2-29/P2-30）已完成（§5.6 ~ §5.10）；测试基线 **550 通过 / 0 失败**（2026-10-21 P2-30 收口轮）。 |
+| **当前进度基线** | 阶段 −1 / 0 / 1 已完成，P0 清单 17 项全部清偿；阶段 2 动骨全部完成（P1-3/4/5/9/10/16、P1-1 拆 6 协作者、P1-2、P1-19 均已完成，详见 §2 / §5.5）。P1-4/P1-5 于 2026-10-19 收口：组合根 `EngineFactory` 为 Desktop 唯一 `new` 点，§4.3 对应 IL 断言落地。阶段 3 持续化补完（P1-13/14/15/21）、阶段 4 P2 第一批（P2-26/P2-27/P2-29/P2-30/P2-31）已完成（§5.6 ~ §5.11）；测试基线 **565 通过 / 0 失败**（2026-10-21 P2-31 收口轮）。 |
 
 ---
 
@@ -139,7 +139,7 @@ v1.0 的 P0 缺陷清单经本版实测复核**全部仍然成立**（重点复�
 | **P2-28** | `samples/`（13 文件）                                                                                                                                                                            | 双重角色：既是用户示例，又被测试当契约（`RunOptionsSerializationTests.cs:95` 断言 `samples/config.example.json` 与代码同步）→ 改示例会断测试，改代码要同步示例 **✅ 已完成（2026-10-18，见 §5.4 与阶段 1 小结）**：samples 降级为只读用户示例；测试契约（config.example.json / tasks.json / tasks.md）全部改读 csproj `Link` 指向真实 samples 的**嵌入式资源副本**（内容随 samples 同步、不依赖运行时/克隆路径），`TestSampleResources` 统一读取入口；原 `RunOptionsSerializationTests.cs:95` 不再断言磁盘 samples 与代码同步，仅断言嵌入式模板非空可解析；全部 `RepoRoot()` 磁盘路径探测已清除（顺带随 P2-21 解决） |
 | **P2-29** | `_harness/`（214 文件 / 1.2G，2026-10-20 已删除）                                                                                                                                                                                                                   | 已 ignore 的 publish 产物堆（Avalonia DLL + exe），与 `samples/` 职责重叠，无人清理 ✅ **已完成（2026-10-20，见 §5.9）**：整堆清理（214 文件 / 1.2G 全部为可再生产物——`dotnet publish` 自包含输出 + MSBuild obj 中间产物，`Harness.csproj` 源文件早已不存在仅剩 obj 残骸；git 历史从未跟踪、仓内零引用）；`.gitignore` 补 `/_harness/` 显式目录级规则（此前仅靠通用 `publish/`/`bin/`/`obj/` 规则命中——「ignore 生效却无人清理」正是该债务根因），换机后也无法静默重生 |
 | **P2-30** | `.editorconfig` 将 `CA1002` 设为 `none`；`NotificationDispatchers.cs` `#pragma warning disable SYSLIB0014`（过时 `SmtpClient`，注释自认"二期换 MailKit"）                                             | 规则豁免无登记、无到期日 ✅ **已完成（2026-10-21，见 §5.10）**：全仓逃逸阀盘点（1 `pragma` + 8 `[SuppressMessage]` + 1 `.editorconfig` `none` + 5 `NoWarn` 规则 + 1 钩子过滤）逐条对账，补齐 §4.7 台账四要素（发现日 / 责任人 / 到期日 / 不变量断言，"长期有效 / 二期换库时"一律折算为具体复核到期日）；**盘点发现 1 项从未登记的生产代码豁免**（Desktop `NoWarn` 的 `AVLN5001` / `AVLN3001` / `CA2007`），其中 `AVLN5001`（10 处过时 API）与 `CA2007`（1 处缺 `ConfigureAwait`）本轮**偿还并删除豁免**，余 `AVLN3001` 登记为 #10；新增 `EscapeValveHygieneTests` 守卫（站点标注 / 台账四要素与到期 / 代码↔台账双向一致 / #10 不变量），负测试实测可捕获 |
-| **P2-31** | `JsonCooldownStore` / `JsonCreditsClaimStore` / `JsonConfigStore` 三份逐行同构（构造 + 默认目录 + `LoadAsync` catch(JsonException) + `AtomicFileWriter.SaveAsync`）；`"BatchAgentRunner"` 路径魔法串在 **9 处**硬编码 | 改一处必漏改两处                                                                                                                                                                                                                                               |
+| **P2-31** | `JsonCooldownStore` / `JsonCreditsClaimStore` / `JsonConfigStore` 三份逐行同构（构造 + 默认目录 + `LoadAsync` catch(JsonException) + `AtomicFileWriter.SaveAsync`）；`"BatchAgentRunner"` 路径魔法串在 **9 处**硬编码 | 改一处必漏改两处 ✅ **已完成（2026-10-21，见 §5.11）**：① 抽 `JsonStoreBase<T>`（目录解析 + 建目录 + 文件名拼接 + 「文件缺失 / `JsonException` / 反序列化为空」三条回落 + `AtomicFileWriter` 原子保存），派生类只保留 `CreateEmpty()` 与可选的 `NormalizeAsync()` 自愈/迁移钩子；② 9 处魔法串收口为 `AppPaths`（`Root`/`ConfigDirectory`/`TemplatesDirectory`/`VaultDirectory`/`RunsDirectory`/`LogsDirectory`/`MockLiveDirectory`），`AppPaths.cs` 为应用名字符串字面量的唯一出现位置；③ 新增 `AppPathsHygieneTests` 守卫（魔法串清零 + 样板清零 + 派生目录不脱根）与 `JsonStoreBaseTests` 行为不变量 12 项。**行为零变化**（三份仓储对外契约与落盘字节不变），故用户 config.json / cooldowns.json / credits-claims.json 无需迁移 |
 
 **P2 中三项已随阶段 1「建网」提前偿还（2026-10-18，见 §5.4）**：  
 P2-20（测试分层：E2E/Usability/Process 打 `Trait`，CI 快跑单元 / 慢跑集成）、  
@@ -151,6 +151,8 @@ P2-28（samples 降级为只读示例，测试契约改读嵌入式副本，内�
 **P2-29 随阶段 4「持续化」顺手清理（2026-10-20，见 §5.9）**：`_harness/` publish 产物堆整堆删除（214 文件 / 1.2G）+ `.gitignore` 显式目录级规则防复发。
 
 **P2-30 随阶段 4「持续化」偿还（2026-10-21，见 §5.10）**：逃逸阀台账四要素补齐 + 未登记的生产代码豁免归位（偿还 2 项）+ `EscapeValveHygieneTests` 守卫。
+
+**P2-31 随阶段 4「持续化」偿还（2026-10-21，见 §5.11）**：三份 `Json*Store` 抽 `JsonStoreBase<T>` + 9 处路径魔法串收口 `AppPaths` + `AppPathsHygieneTests` 守卫。
 
 ---
 
@@ -248,9 +250,10 @@ P2-26 误导性注释清算 + 计划性延期台账（§4.7.1）+ CommentHygiene
 P2-27 中文测试方法名 评估：维持「主动不偿还」，升级触发器已写入 §5.8          ✅ 2026-10-20（§5.8）
 P2-29 _harness/ publish 产物堆清理 + .gitignore 显式规则防复发                ✅ 2026-10-20（§5.9）
 P2-30 逃逸阀台账四要素补齐 + 未登记的生产代码豁免归位 + EscapeValveHygieneTests ✅ 2026-10-21（§5.10）
+P2-31 三份 Json*Store 抽 JsonStoreBase<T> + 9 处路径魔法串收口 AppPaths + AppPathsHygieneTests ✅ 2026-10-21（§5.11）
 ```
 
-> 下一批候选：P2-31（`JsonCooldownStore` / `JsonCreditsClaimStore` / `JsonConfigStore` 三份逐行同构 + `"BatchAgentRunner"` 路径魔法串 9 处）、P2-6（六个手写 `Clone` → `record with`）、P2-15（五个编辑器 → 泛型 `FieldEditor<T>`）。
+> 下一批候选：P2-6（六个手写 `Clone` → `record with`）、P2-15（五个编辑器 → 泛型 `FieldEditor<T>`）。
 
 ---
 
@@ -389,6 +392,7 @@ P2-30 逃逸阀台账四要素补齐 + 未登记的生产代码豁免归位 + Es
 | `Catch (Exception)` 占比不得上升（基线 42/79 = 53%，2026-10-18 复测；盘点时 37/69 = 54%） | 防吞异常继续扩散           | ⏳ 需计数基建；当前靠 PR 评审清单人工兜底（§4.5）                                                                          |
 | `src` 注释不得自述计划性延期 / 能力未实现（"不实现 / 未实现 / 暂不支持 / 待实现"；"占位并/值/实现"等桩声明；"二期 + 扩展/后续/再换/换成"） | 防 P2-26 误导注释复发：延期只进 §4.7.1 台账，注释只描述当前实现 | ✅ `CommentHygieneTests`（Core.Tests，源码词法扫描注释、跳过字符串字面量；2026-10-20 P2-26 收口时落地；负测试实测可捕获原始误导注释） |
 | 每个门禁例外（`#pragma` / `[SuppressMessage]` / `.editorconfig` `severity=none` / `NoWarn` / 钩子过滤）必须就近标注「逃逸阀台账 #N / 到期日 / 责任人」，且台账四要素齐全、到期日未过期、代码↔台账双向一致 | 防 P2-30「豁免无登记、无到期日」复发：登记了却无到期日 = 无人复核，§4.7「到期自动升级 P1」形同虚设 | ✅ `EscapeValveHygieneTests`（Core.Tests，2026-10-21 P2-30 收口时落地；负测试实测可捕获：无标注 `pragma`、无标注 `.editorconfig` 条目、过期到期日、悬空台账 ID 四类） |
+| `src` 内除 `AppPaths.cs` 外不得内联应用名路径魔法串；三份 `Json*Store` 必须继承 `JsonStoreBase<T>` 且不得自带「建目录 / `JsonSerializer` / `AtomicFileWriter`」样板；`AppPaths` 全部派生目录必须以应用根为前缀 | 防 P2-31「三份仓储逐行同构 + 路径魔法串 9 处」复发：新数据目录只在 `AppPaths` 登记，加载/落盘样板只在基类 | ✅ `AppPathsHygieneTests`（Core.Tests，2026-10-21 P2-31 收口时落地；负测试实测可捕获：派生仓储内联魔法串、样板回潮两类） |
 
 > 「Desktop 不得直接 new」断言的实现口径（2026-10-19）：用反射自建最小 IL walker（`OpCodes` 反射建查表，逐指令步进），扫描 Desktop 程序集全部方法体（含构造器 / 属性访问器 / 编译器生成的闭包与异步状态机）中的 `newobj` / `newarr`，解析元数据 token 得目标类型；`Desktop.Composition` 命名空间（组合根）为唯一豁免。**按规则本意排除委托实例化**：捕获型 lambda 会被编译器转换为 `newobj`（如 `CredentialVaultHost.GuidedLoginAsync` 把校验回调传给 `RunAsync`），源码并无 `new`，且回调委托类型是协作者签名强制的契约、无法按「须经接口」替换——规则目标是「UI 不得实例化 Infrastructure/Agents 实现类」，不覆盖编译器产物。
 
@@ -415,7 +419,7 @@ P2-30 逃逸阀台账四要素补齐 + 未登记的生产代码豁免归位 + Es
 - [ ] 后台线程 `await` 后是否直接改了 UI 集合？（P0-6 类）
 - [ ] 是否新增文件读写而未走 `AtomicFileWriter`？（P0-8 类）
 - [ ] 是否拼接命令行字符串而非 `ArgumentList`？（P0-3 类）
-- [ ] 是否新增硬编码色值/魔法数字/绝对路径，而非引用 token/常量？
+- [ ] 是否新增硬编码色值/魔法数字/绝对路径，而非引用 token/常量？路径一律走 `AppPaths`，新数据目录须先在 `AppPaths` 登记（P2-31 类）— 2026-10-21 起已由 `AppPathsHygieneTests` 自动把关，`src` 内联应用名路径魔法串即测试失败；新单文件 JSON 仓储须继承 `JsonStoreBase<T>`，不得自带「建目录 / `JsonSerializer` / `AtomicFileWriter`」样板
 - [ ] 是否以注释自述计划性延期 / 能力未实现（"二期扩展""暂不支持"等）？延期一律登记 §4.7 台账后在注释引用台账 ID（P2-26 类）— 2026-10-20 起已由 `CommentHygieneTests` 自动把关，新增即测试失败
 - [ ] 是否新增门禁例外（`#pragma warning disable` / `[SuppressMessage]` / `.editorconfig` `severity=none` / `NoWarn` / 钩子过滤）？例外一律先登记 §4.7 逃逸阀台账四要素，再在就近注释写明「逃逸阀台账 #N / 到期日 / 责任人」（P2-30 类）— 2026-10-21 起已由 `EscapeValveHygieneTests` 自动把关，未登记 / 无到期日 / 到期未清理即测试失败
 - [ ] 新增的高危路径（凭证/进程/Git/安全拦截）是否带测试？
@@ -494,7 +498,7 @@ P2-26 清算结论：**计划性延期一律进本台账，代码注释只描述
 | 每迭代**新增**债务数           | 未采集（阶段 −1 起采集）                                                                                                                                                             | → 趋 0    |
 | churn 热点 Top3          | `BatchEngine.cs`(4)、`RunOptions.cs`(4)、`ConfigView.axaml`(4)                                                                                                               | 热点应随拆分下降 |
 | 同步阻塞调用数（P1-6 类）      | **0**（2026-10-20 归零：原 2 处 `GetAwaiter().GetResult()`——`MainViewModel.cs:20`、`EngineHost.cs:136`——经异步初始化门消除；新增 IL 架构断言 `Desktop程序集_不得存在同步阻塞异步结果的调用` 持续锁住，任何新增 `.GetAwaiter().GetResult()` / `Task.Result` / `Task.Wait()` 即构建/测试失败） | → 0 并保持  |
-| 测试总数                   | **550 用例通过 / 0 失败**（2026-10-21 P2-30 收口轮实跑：主测试项目 492 + Desktop.Tests 58；较 P2-26 收口轮 545 +5：新增 `EscapeValveHygieneTests` 5 项，全绿）                                                                     | ↑        |
+| 测试总数                   | **565 用例通过 / 0 失败**（2026-10-21 P2-31 收口轮实跑：主测试项目 507 + Desktop.Tests 58；较 P2-30 收口轮 550 +15：新增 `AppPathsHygieneTests` 3 项 + `JsonStoreBaseTests` 12 项，全绿）                                                                     | ↑        |
 | 误导性自述注释数（P2-26）      | **0**（2026-10-20 收口：v2.0 盘点 147 处「二期/暂不支持/遗留/尚未」逐条核对——台账点名的脱节注释前序轮次已清、`RetrieveSecret` 一处本轮修正、~100 处「二期」为已交付功能历史标签如实保留；真实延期 4 项进 §4.7.1 台账。`CommentHygieneTests` 源码扫描锁死，新增即失败）                                                                     | → 0 并保持  |
 | 逃逸阀台账条目数（P2-30）       | **10 条**（2026-10-21 收口：全仓盘点去重后登记——`#pragma` 1 + `[SuppressMessage]` 8 + `.editorconfig` `none` 1 + `NoWarn` 规则 5 + 钩子过滤 1；**无到期日条目 0**（原 #1「二期换 MailKit 时」/ #2「待评估」/ #5-#8「长期有效」全部折算为具体复核日）；同轮发现并偿还 2 项**从未登记**的生产代码豁免：`AVLN5001` 10 处过时 API（`Watermark`→`PlaceholderText`、`SystemDecorations`→`WindowDecorations`）+ Desktop `CA2007` 1 处（`ConfigureAwait` 缺失），豁免随之删除） | ↓（新增须登记，到期须清理） |
 
@@ -688,13 +692,39 @@ A 组 10 项互不耦合，与 P0-17 并行完成。代码改动均随既有工�
 
 > 阶段 4 边界（交接必读）：① **保留的 #10（AVLN3001）是假阳性豁免**：`ShutdownCountdownWindow` 只由 `EngineHost` 带参构造、从不经 XAML URI 加载，为消告警补无参构造反而扩大公开面——故豁免保留、并由守卫第 4 项锁死「不得新增无参构造」，前提消失时须先删豁免再改代码。② **CA1002 豁免是承重结构**：实测开启即 96 处违规，全部是 JSON 契约类型的 `List<T>` 公开属性（`BatchReport` 18 / `RunOptions` 16 / `WorkflowTypes` 12 …），改抽象集合类型破坏用户 config 与模板兼容——偿还它的正确时机是「契约版本化」，不是顺手改。③ 到期日是**复核日**而非「必须修完日」：到期只要求当轮给出「续期并说明理由」或「清理」，两者都要在台账留痕；守卫只判过期与否，不代做决策。④ 守卫解析 `docs/TECH-DEBT-技术债务治理方案-v2.0.md` 的 §4.7 表格（列序耦合），改动表结构须同步更新 `EscapeValveHygieneTests.ReadLedger`。
 
+### 5.11 阶段 4：P2-31 路径常量与 JSON 仓储收口（2026-10-21）
+
+> **本轮重点：P2-31（三份 `Json*Store` 逐行同构 + `"BatchAgentRunner"` 路径魔法串 9 处）**。
+> 与 P2-26 / P2-30 不同，这一项是**纯重复代码**：三份仓储的构造、默认目录、`LoadAsync` 的两条 catch、
+> `AtomicFileWriter` 调用逐行同构，路径前缀再散落 9 处——任改一处要同步改三处。
+> 本轮按「抽骨架 → 收口常量 → 锁守卫」三步完成，**对外行为与落盘字节零变化**。
+
+**验证统一口径（2026-10-21 P2-31 收口轮实跑）**：`dotnet build --no-incremental` = **0 警告 / 0 错误**；`dotnet test BatchAgentRunner.slnx` = **565 通过 / 0 失败**（主测试项目 507 + Desktop.Tests 58，较 P2-30 收口轮 550 +15：`AppPathsHygieneTests` 3 + `JsonStoreBaseTests` 12）；`dotnet format`（CHARSET 假阳性按 §4.7 #9 过滤）**0 问题**。
+
+| 步骤         | 落地内容                                                                                                                                                                                                                                             | 验证 / 提交                                                                                                                                                                    |
+| ------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ① 抽骨架     | 新增 `Infrastructure/Persistence/JsonStoreBase<T>`：目录解析（`null` → `AppPaths.Root`）+ `Directory.CreateDirectory` + `FilePath` 拼接 + `LoadAsync` 三条回落（文件缺失 / `JsonException` / 反序列化为空 → `CreateEmpty()`）+ `SaveAsync` 走 `AtomicFileWriter`。派生类只留 `CreateEmpty()` 抽象工厂与可选 `NormalizeAsync()` 自愈钩子 | 三份仓储改造后全量测试全绿（既有 `JsonCooldownStoreTests` 2 项 + `JsonCreditsClaimStoreTests` 2 项逐项通过，行为零变化）                                                                       |
+| ② 收口常量   | 新增 `Infrastructure/AppPaths`：`Root`（`%LOCALAPPDATA%\BatchAgentRunner`）、`ConfigDirectory`、`TemplatesDirectory`、`VaultDirectory`、`RunsDirectory`、`LogsDirectory`、`MockLiveDirectory`。替换 9 处魔法串——三份仓储（经基类 `Root`）、`FileWorkflowTemplateStore`、`FileCredentialVault`、`FileRunLogger`、`Desktop/Program`、`Desktop/Composition/EngineFactory`（2 处） | `grep -rn '"BatchAgentRunner"' src` 现仅剩 `AppPaths.cs` 一处声明；`dotnet build --no-incremental` 0 警告 / 0 错误                                                                      |
+| ③ 守卫落地   | 新增 `AppPathsHygieneTests`（`tests/BatchAgentRunner.Tests/Architecture`，3 项）：① `src` 内除 `AppPaths.cs` 外不得内联应用名路径魔法串；② 三份仓储必须继承 `JsonStoreBase<T>` 且源码不得自带「`Directory.CreateDirectory` / `JsonSerializer.` / `AtomicFileWriter`」样板；③ `AppPaths` 全部 `string` 静态属性必须以 `Root` 为前缀 | 收口轮 3/3 通过；**负测试实测可捕获**：在 `JsonConfigStore.cs` 临时内联 `"BatchAgentRunner"` → 报「src\...\JsonConfigStore.cs:11 发现内联的应用名路径魔法串」；临时把 `AtomicFileWriter` 样板搬回派生仓储 → 报「仍自带样板：AtomicFileWriter」 |
+| ④ 行为不变量  | 新增 `JsonStoreBaseTests`（`tests/BatchAgentRunner.Tests/Infrastructure`，12 项）锁住骨架提取后的对外可观测行为：三份仓储 ×（文件缺失 / 非法 JSON / `null` 字面量）回落语义、显式目录与默认目录的路径解析、积分台账与运行配置的保存—加载往返无损（含迁移钩子执行） | 收口轮 12/12 通过；既有三份仓储测试未改动仍全绿                                                                                                                                         |
+
+**改造后的三类形态**（派生类只剩差异部分，样板一律在基类）：
+
+| 仓储                     | `CreateEmpty()`        | `NormalizeAsync()`                                        | 行数变化         |
+| ---------------------- | ---------------------- | --------------------------------------------------------- | ------------ |
+| `JsonCooldownStore`    | `new List<…>()`        | **自愈**：超长 `RawValue` 截断 + 确有变化时原子重写（原 2026-10-18 现场逻辑原样保留）   | 71 → 57      |
+| `JsonCreditsClaimStore` | `new CreditsClaimLedger()` | 无（默认钩子）                                                  | 51 → 24      |
+| `JsonConfigStore`      | `CreateSample()`       | **迁移**：`CreditsClaimMigrator.Migrate` 在反序列化成功后就地执行 | 191 → 165    |
+
+> 阶段 4 边界（交接必读）：① **`AppPaths` 落在 Infrastructure 而非 Core**：路径布局是「文件存放在哪」的基础设施事实，Core 不消费它；Desktop 已直接引用 Infrastructure（`EngineFactory` 是组合根，本就 `new` 具体类型），故不违反 §4.3 分层断言（该断言只约束 `new` 具体类型，`AppPaths` 无实例）。② **`ConfigDirectory` 语义保持不变**：历史原因 `config.json` 与另两个 JSON 直接落在应用根而非子目录，收口时**刻意不改目录结构**——改了会让既有用户的配置/冷却/台账「凭空消失」，属数据丢失类风险，收益却不对称。③ **仅收口「路径」魔法串**：`NotificationDispatchers` 里的 `[BatchAgentRunner]` 是通知标题的品牌前缀，不是路径，不在本项范围内，保持原样未动。④ `JsonStoreBase<T>` 的 `NormalizeAsync` 默认同步返回原值；如需在加载后回写（冷却自愈），派生类须自行 `await SaveAsync`，基类不隐式回写——避免「只读加载」意外产生磁盘写入。
+
 ---
 
 ## 附录 A：台账索引（按偿还方式分组）
 
 | 方式            | ID                                                                                                                                               |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **重构**        | P0-1, P0-3~~P0-10, P0-12~~P0-15, P0-17, P1-1~~P1-5, P1-7, P1-9~~P1-12, P1-14~~P1-21, P2-1~~P2-14, P2-16~P2-21, P2-23, P2-24, P2-26, P2-30 ✅（2026-10-21 已完成，见 §5.10）, P2-31 |
+| **重构**        | P0-1, P0-3~~P0-10, P0-12~~P0-15, P0-17, P1-1~~P1-5, P1-7, P1-9~~P1-12, P1-14~~P1-21, P2-1~~P2-14, P2-16~P2-21, P2-23, P2-24, P2-26, P2-30 ✅（2026-10-21 已完成，见 §5.10）, P2-31 ✅（2026-10-21 已完成，见 §5.11） |
 | **重写**（仅 4 项） | P0-2(局部), P1-13, P2-6, P2-15                                                                                                                     |
 | **隔离**        | P0-11(钩), P1-1(过渡), P1-9, P1-16(守卫过渡), P2-7, P2-10/P2-11, P2-19/P2-28                                                                            |
 | **主动不偿还**     | P2-24(部分), P2-14, P2-25(部分), P2-27（2026-10-20 评估维持，升级触发器见 §5.8）                                                                                                               |

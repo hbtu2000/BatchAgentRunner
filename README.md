@@ -54,20 +54,22 @@ Mock 适配器不调用任何 CLI，用来验证调度逻辑（降级、时段�
 
 ## 开发约定（技术债务治理阶段 −1 起生效）
 
-本仓库按 [`docs/TECH-DEBT-技术债务治理方案-v2.0.md`](docs/TECH-DEBT-技术债务治理方案-v2.0.md) 治理。**当前进度：阶段 −1（B 组 5 项，2026-10-17）、阶段 0（A 组 10 项 + P0-17，2026-10-17）、阶段 1（建网 6 项，2026-10-18）均已完成；P0 清单 17 项全部清偿**。**阶段 2 动骨大部分完成（2026-10-18 ~ 2026-10-19）**：P1-3 提接口、P1-4/P1-5 DI 与组合根唯一化（已收口）、P1-9/P1-10 端口化、P1-16 取消静态注册表、P1-1 拆 6 协作者（已收口：六个协作者均有白箱单测，产物 ① `ITaskDispatcher` 的 19 项白箱测试于 2026-10-19 晚补齐）、P1-2 状态机外置均已提交；仅 P1-19（Desktop 补测试）待做。测试基线（2026-10-19 晚实跑）：主测试项目 428 用例（快 401 / 慢 27）+ Desktop.Tests 39 用例 = **467 通过 / 0 失败**（`dotnet test BatchAgentRunner.slnx`；测试宿主退出时崩溃的历史问题在最近两轮复跑中未再现，以已执行用例为准）。下一站：阶段 2-G（P1-19）→ 阶段 3 持续化。
+本仓库按 [`docs/TECH-DEBT-技术债务治理方案-v2.0.md`](docs/TECH-DEBT-技术债务治理方案-v2.0.md) 治理。**当前进度：阶段 −1（B 组 5 项，2026-10-17）、阶段 0（A 组 10 项 + P0-17，2026-10-17）、阶段 1（建网 6 项，2026-10-18）、阶段 2（动骨，2026-10-18 ~ 10-20）、阶段 3（持续化补完，2026-10-20）均已完成；P0 清单 17 项全部清偿**。阶段 4（持续化，2026-10-20 ~ 10-21）已收口 P2 批次五项：P2-26（误导性注释清算 + 计划性延期台账 + `CommentHygieneTests`）、P2-27（评估维持主动不偿还）、P2-29（`_harness/` 产物堆清理）、P2-30（逃逸阀台账四要素补齐 + 未登记的生产代码豁免归位 + `EscapeValveHygieneTests`）、P2-31（三份 `Json*Store` 抽 `JsonStoreBase<T>` + 路径魔法串收口 `AppPaths` + `AppPathsHygieneTests`）。测试基线（2026-10-21 P2-31 收口轮实跑）：主测试项目 507 用例 + Desktop.Tests 58 用例 = **565 通过 / 0 失败**（`dotnet test BatchAgentRunner.slnx`）。下一站：P2 余项（P2-6 手写 `Clone` → `record with`、P2-15 编辑器泛型化等）机会主义偿还。
 
 已落地的「防新增」机制：
 
-- **提交信息门禁**：`.githooks/commit-msg` 拒绝空消息 / 纯标点 / 缺「改了什么·为什么」正文的提交；模板见 `.gitmessage.txt`。
+- **提交信息门禁**：`.githooks/commit-msg` 拒绝空消息 / 纯标点 / 缺「改了什么·为什么」正文的提交；模板见 `.gitmessage.txt`。  
   新 clone 需先启用钩子（本机已配置，其他环境执行一次）：
   ```bash
   git config core.hooksPath .githooks
   git config commit.template .gitmessage.txt
   ```
-- **编译期门禁**：`EnforceCodeStyleInBuild` + `AnalysisLevel=latest-recommended` + **`TreatWarningsAsErrors=true`**（阶段 1 / P0-12：存量警告清零后开启，新增任何分析器警告即构建失败）。豁免走治理方案 §4.7 逃逸阀台账（含理由/到期/责任人）。
+- **编译期门禁**：`EnforceCodeStyleInBuild` + `AnalysisLevel=latest-recommended` + **`TreatWarningsAsErrors=true`**（阶段 1 / P0-12：存量警告清零后开启，新增任何分析器警告即构建失败）。豁免走治理方案 §4.7 逃逸阀台账（四要素：发现日 / 责任人 / 到期日 / 不变量断言），并须在代码就近注释写明「逃逸阀台账 #N / 到期日 / 责任人」——由 `EscapeValveHygieneTests` 机器校验（P2-30，2026-10-21）。
 - **CPM**：`Directory.Packages.props` 集中全部包版本；任何 csproj 再写内联 `Version=` 即 NU1008 构建错误。
 - **CI（build 失败即红，合并仍不阻断）**：`.github/workflows/ci.yml` 在 `windows-latest` 上 `dotnet build --no-incremental` + 分层测试（快跑单元 / 慢跑 E2E·Usability·Process）。必须用 `--no-incremental` 全量重建，否则增量构建会掩盖真实警告（P0-12）。分支保护（必需状态检查）尚未配置，需仓库管理员在 GitHub 设置。
 - **`.gitignore` 目录级规则**：`.workbuddy/`、`/.playwright-cli/`、`/TaskList/`、`*.backup-*`、`/models.yaml`、`/.tmp_reflect.ps1` 等运行产物/隐私不再入库。
+- **路径常量收口**（P2-31，2026-10-21）：应用本地数据目录一律走 `Infrastructure/AppPaths`（`Root` / `ConfigDirectory` / `TemplatesDirectory` / `VaultDirectory` / `RunsDirectory` / `LogsDirectory` / `MockLiveDirectory`），`src` 内不得再内联应用名路径魔法串；新增数据目录先在 `AppPaths` 登记。由 `AppPathsHygieneTests` 机器校验。
+- **单文件 JSON 仓储**（P2-31，2026-10-21）：新增 `Json*Store` 须继承 `Infrastructure/Persistence/JsonStoreBase<T>`，只实现 `CreateEmpty()`；加载后的自愈/迁移走 `NormalizeAsync()` 钩子，不得自带「建目录 / `JsonSerializer` / `AtomicFileWriter`」样板。
 - **测试约定**：E2E / Usability / Process 三类打 `[Trait("Category", …)]`，CI 分快慢跑；测试方法省略 `ConfigureAwait`（xUnit 建议）；高危路径（凭证/进程/Git/安全拦截/二进制写回）改动须带测试。
 
 ---
