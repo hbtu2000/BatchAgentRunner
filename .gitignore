@@ -370,3 +370,6 @@ FodyWeavers.xsd
 /.tmp_reflect.ps1
 /.tmp_testout
 /generated
+# P2-29（2026-10-20）：_harness/ 曾是 Desktop publish 产物堆（214 文件 / 1.2G，无人清理），已整堆删除；
+# 显式目录级规则防止其换台机器后静默重生（通用 publish/、[Bb]in/、[Oo]bj/ 规则此前已命中但无人清理）
+/_harness/
