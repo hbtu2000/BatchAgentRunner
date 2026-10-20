@@ -21,6 +21,7 @@
     <PackageVersion Include="Avalonia.Desktop" Version="12.1.4" />
     <PackageVersion Include="Avalonia.Themes.Fluent" Version="12.1.4" />
     <PackageVersion Include="Avalonia.Fonts.Inter" Version="12.1.4" />
+    <PackageVersion Include="Avalonia.Headless.XUnit" Version="12.1.4" />
     <PackageVersion Include="AvaloniaUI.DiagnosticsSupport" Version="2.2.3" />
     <PackageVersion Include="CommunityToolkit.Mvvm" Version="8.4.2" />
 
@@ -33,6 +34,8 @@
     <PackageVersion Include="coverlet.collector" Version="6.0.4" />
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.0" />
     <PackageVersion Include="xunit" Version="2.9.3" />
+    <!-- P1-19：Desktop.Tests 改用 xunit v3（Avalonia.Headless.XUnit 仅面向 v3）；主测试项目仍用 xunit v2 -->
+    <PackageVersion Include="xunit.v3" Version="3.2.2" />
     <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.4" />
   </ItemGroup>
 

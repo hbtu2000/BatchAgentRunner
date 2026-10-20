@@ -14,10 +14,13 @@
   <ItemGroup>
     <PackageReference Include="coverlet.collector" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
-    <PackageReference Include="xunit" />
+    <!-- P1-19：xunit v3（Avalonia.Headless.XUnit 面向 v3；主测试项目仍用 v2） -->
+    <PackageReference Include="xunit.v3" />
     <PackageReference Include="xunit.runner.visualstudio" />
     <!-- Desktop 依赖 Avalonia；冒烟测试只触碰其纯 UI 无关单元（值转换器），不创建窗口/不启动 Application -->
     <PackageReference Include="Avalonia" />
+    <!-- P1-19：Avalonia headless 测试基座（真实 headless Application + UI 线程消息循环），用于视图构造与线程收敛契约测试 -->
+    <PackageReference Include="Avalonia.Headless.XUnit" />
   </ItemGroup>
 
   <ItemGroup>
