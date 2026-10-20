@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Reflection.Emit;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace BatchAgentRunner.Desktop.Tests.Architecture;
@@ -139,6 +140,59 @@ public class LayeringRulesTests
         Assert.Empty(violations);
     }
 
+    [Fact]
+    public void Desktop程序集_不得存在同步阻塞异步结果的调用()
+    {
+        // P1-6 回归断言（§4.5 PR 清单：「是否新增 .GetAwaiter().GetResult() / .Result / .Wait()？」）。
+        // 扫描全部方法体 IL 的 call/callvirt：凡在「非编译器生成类型」中命中以下调用，即 sync-over-async 反模式：
+        //   1) *Awaiter.GetResult()（TaskAwaiter / ConfiguredTaskAwaitable.ConfiguredTaskAwaiter / ValueTaskAwaiter …）；
+        //   2) System.Threading.Tasks.Task（含 Task<T>）的 get_Result；
+        //   3) System.Threading.Tasks.Task 的 Wait(...)。
+        // 排除：编译器生成的异步状态机 / 闭包类（类型名含 '<'），因为合法 await 必然在其中生成 Awaiter.GetResult()，
+        // 那不是新增债务。本断言锁住「用户代码不得再引入 P1-6 类同步阻塞」，配合全量构建零警告双重兜底。
+        var desktop = typeof(BatchAgentRunner.Desktop.Services.EngineHost).Assembly;
+        var taskType = typeof(Task);
+        var violations = new List<string>();
+
+        foreach (var type in desktop.GetTypes())
+        {
+            // 编译器生成类型（异步状态机 / 闭包显示类）一律跳过：其中的 GetResult 是 await 的合法产物。
+            if (type.Name.Contains('<'))
+            {
+                continue;
+            }
+
+            foreach (var method in EnumerateMethods(type))
+            {
+                foreach (var called in ScanMethodCalls(method))
+                {
+                    var declaring = called.DeclaringType;
+                    if (declaring is null) continue;
+
+                    var isTask = declaring == taskType ||
+                                 (declaring.IsGenericType &&
+                                  declaring.GetGenericTypeDefinition() == typeof(Task<>));
+
+                    if (called.Name == "GetResult" &&
+                        declaring.Name.Contains("Awaiter", StringComparison.Ordinal))
+                    {
+                        violations.Add($"{type.FullName}.{method.Name} 同步阻塞：{declaring.Name}.GetResult()（P1-6）");
+                    }
+                    else if (isTask && called.Name == "get_Result")
+                    {
+                        violations.Add($"{type.FullName}.{method.Name} 同步阻塞：{declaring.Name}.Result（P1-6）");
+                    }
+                    else if (declaring == taskType && called.Name == "Wait")
+                    {
+                        violations.Add($"{type.FullName}.{method.Name} 同步阻塞：Task.Wait()（P1-6）");
+                    }
+                }
+            }
+        }
+
+        Assert.Empty(violations);
+    }
+
     private static IEnumerable<MethodBase> EnumerateMethods(Type type)
     {
         const BindingFlags flags = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance |
@@ -236,6 +290,94 @@ public class LayeringRulesTests
                     target = op == OpCodes.Newobj
                         ? module.ResolveMethod(token)?.DeclaringType
                         : module.ResolveType(token);
+                }
+                catch
+                {
+                    // token 无法解析（如无泛型上下文的 MethodSpec）：跳过该指令继续扫描
+                }
+
+                if (target is not null)
+                {
+                    yield return target;
+                }
+            }
+
+            if (op.OperandType == OperandType.InlineSwitch)
+            {
+                if (operandStart + 4 > il.Length)
+                {
+                    yield break;
+                }
+
+                var count = BitConverter.ToInt32(il, operandStart);
+                position = operandStart + 4 + (count * 4);
+                continue;
+            }
+
+            position = operandStart + OperandSize(op);
+        }
+    }
+
+    /// <summary>扫描方法体 IL 的 call/callvirt，解析并返回被调用的 <see cref="MethodBase"/>。</summary>
+    private static IEnumerable<MethodBase> ScanMethodCalls(MethodBase method)
+    {
+        byte[] il;
+        try
+        {
+            il = method.GetMethodBody()?.GetILAsByteArray() ?? Array.Empty<byte>();
+        }
+        catch
+        {
+            yield break;
+        }
+
+        if (il.Length == 0)
+        {
+            yield break;
+        }
+
+        var module = method.Module;
+        var position = 0;
+        while (position < il.Length)
+        {
+            var lead = il[position];
+            short value;
+            int opSize;
+            if (lead == 0xFE)
+            {
+                if (position + 1 >= il.Length)
+                {
+                    yield break;
+                }
+
+                value = (short)(0xFE00 | il[position + 1]);
+                opSize = 2;
+            }
+            else
+            {
+                value = lead;
+                opSize = 1;
+            }
+
+            if (!OpCodeMap.TryGetValue(value, out var op))
+            {
+                yield break; // 无法识别的字节序列：放弃（编译器产物均为良构 IL，理论不可达）
+            }
+
+            var operandStart = position + opSize;
+
+            if (op == OpCodes.Call || op == OpCodes.Callvirt)
+            {
+                if (operandStart + 4 > il.Length)
+                {
+                    yield break;
+                }
+
+                var token = BitConverter.ToInt32(il, operandStart);
+                MethodBase? target = null;
+                try
+                {
+                    target = module.ResolveMethod(token);
                 }
                 catch
                 {

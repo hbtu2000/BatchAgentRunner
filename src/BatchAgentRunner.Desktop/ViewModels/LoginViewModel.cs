@@ -398,7 +398,7 @@ public sealed class LoginViewModel : ViewModelBase, IDisposable
             }
 
             await _host.SaveConfigAsync().ConfigureAwait(true);
-            _host.RebuildEngine();
+            await _host.RebuildEngineAsync().ConfigureAwait(true);
             RebuildRows();
 
             IsSuccess = true;
@@ -677,7 +677,7 @@ public sealed class LoginViewModel : ViewModelBase, IDisposable
                 await _host.SaveConfigAsync().ConfigureAwait(true);
             }
 
-            _host.RebuildEngine();
+            await _host.RebuildEngineAsync().ConfigureAwait(true);
             RebuildRows();
 
             IsError = false;

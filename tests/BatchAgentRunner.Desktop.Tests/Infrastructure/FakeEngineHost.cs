@@ -75,11 +75,15 @@ public sealed class FakeEngineHost : IEngineHost
     /// <summary>探针：SaveConfigAsync 被调用次数（断言 SaveAsync 确实落盘）。</summary>
     public int SaveConfigAsyncCallCount => _saveCount;
 
-    /// <summary>探针：RebuildEngine 被调用次数。</summary>
+    /// <summary>探针：RebuildEngineAsync 被调用次数。</summary>
     public int RebuildEngineCallCount => _rebuildCount;
 
     public Task InitializeAsync() => Task.CompletedTask;
-    public void RebuildEngine() => _rebuildCount++;
+    public Task RebuildEngineAsync(CancellationToken cancellationToken = default)
+    {
+        _rebuildCount++;
+        return Task.CompletedTask;
+    }
     public Task SaveConfigAsync() { _saveCount++; return Task.CompletedTask; }
 
     public Task<IReadOnlyList<ModelCatalogEntry>> FetchModelsAsync(AccountConfig? account = null,

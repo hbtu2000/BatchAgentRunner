@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Threading;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using BatchAgentRunner.Core.Abstractions;
@@ -127,13 +128,17 @@ public sealed class EngineHost : ObservableObject, IEngineHost
         return engine;
     }
 
-    /// <summary>配置变更后重建引擎（账号/模型/时段等即时生效）。</summary>
-    public void RebuildEngine()
+    /// <summary>
+    /// 配置变更后重建引擎（账号/模型/时段等即时生效）。
+    /// P1-6 异步初始化门：改为 <c>async</c>，调用方 <c>await</c>，不再同步阻塞（原
+    /// <c>_engine.InitializeAsync().GetAwaiter().GetResult()</c> 在 UI 线程会死锁/占用线程池）。
+    /// </summary>
+    public async Task RebuildEngineAsync(CancellationToken cancellationToken = default)
     {
         _engine = CreateEngine();
-        _engine.InitializeAsync().GetAwaiter().GetResult();
+        await _engine.InitializeAsync(cancellationToken).ConfigureAwait(false);
         Status = _engine.Status;
-        TasksChanged?.Invoke(this, EventArgs.Empty);
+        UiThread.Post(() => TasksChanged?.Invoke(this, EventArgs.Empty));
     }
 
     public async Task SaveConfigAsync()

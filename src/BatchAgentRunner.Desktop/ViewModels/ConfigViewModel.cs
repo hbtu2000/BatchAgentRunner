@@ -1005,7 +1005,7 @@ public sealed class ConfigViewModel : ViewModelBase
         }
 
         await _host.SaveConfigAsync().ConfigureAwait(false);
-        _host.RebuildEngine();
+        await _host.RebuildEngineAsync().ConfigureAwait(false);
 
         UiThread.Post(() =>
         {

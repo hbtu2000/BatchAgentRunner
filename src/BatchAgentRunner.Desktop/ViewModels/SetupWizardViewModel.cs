@@ -323,7 +323,7 @@ public sealed class SetupWizardViewModel : ViewModelBase
         o.CliPath = string.IsNullOrWhiteSpace(CliPath) ? null : CliPath;
 
         await _host.SaveConfigAsync().ConfigureAwait(true);
-        _host.RebuildEngine();
+        await _host.RebuildEngineAsync().ConfigureAwait(true);
 
         CompletedMessage =
             $"配置已保存到 {System.IO.Path.Combine(_host.ConfigDirectory, "config.json")}，引擎已按新配置重建。" + Environment.NewLine +

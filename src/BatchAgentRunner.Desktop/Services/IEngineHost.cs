@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Threading;
 using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Engine;
@@ -64,7 +65,7 @@ public interface IEngineHost : IDisposable
     event PropertyChangedEventHandler? PropertyChanged;
 
     Task InitializeAsync();
-    void RebuildEngine();
+    Task RebuildEngineAsync(CancellationToken cancellationToken = default);
     Task SaveConfigAsync();
     Task<IReadOnlyList<ModelCatalogEntry>> FetchModelsAsync(AccountConfig? account = null, CancellationToken cancellationToken = default);
     Task<IReadOnlyList<TaskItem>> LoadTasksAsync();
