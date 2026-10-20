@@ -227,7 +227,7 @@ var regex = ChoiceRegexCache.GetOrAdd(pattern, p => new Regex(p, RegexOptions.Mu
 
 ## 💭 Nits（轻微 / 可优化）
 
-- **N1** `EngineHost.cs:128`：`InitializeAsync().GetAwaiter().GetResult()` 同步阻塞异步（sync-over-async 反模式；当前因 `ConfigureAwait(false)` 未死锁，但建议 `await` 或改用异步初始化门）。
+- **N1** `EngineHost.cs:128`（原）：`InitializeAsync().GetAwaiter().GetResult()` 同步阻塞异步（sync-over-async 反模式）✅ **已修复（2026-10-20，P1-6）**：`MainViewModel` 抽 `InitializeAsync` 异步初始化门（App 在窗口可见前 `await` 完成后展示窗口），`EngineHost.RebuildEngine` 改为 `RebuildEngineAsync(CancellationToken)`，`MainViewModel`/`EngineHost` 两处阻塞全部消除，并新增 IL 架构断言 `Desktop程序集_不得存在同步阻塞异步结果的调用` 持续兜住（见 TECH-DEBT v2.0 §5.5）。
 - **N2** `ResetTimeParser.cs:68`：`InDurationRegex` 与 `RelativeRegex` 重叠（`"in 2 hours"` 被两者匹配），`InDurationRegex` 分支冗余，可合并。
 - **N3** `DegradationMatrix.cs:70`：`AccountFirst` 用 `Contains` 嵌套 → O(n²)；模型数小可接受，但可换 `HashSet<string>`。
 - **N4** `AvailabilityEvaluator.cs:90`：混合（时段+额度）且额度更早时 `reason=Cooldown` 但 `WaitKind=Mixed`，`DescribeSkip` 文案与真实恢复类型不一致，建议文案按更晚的恢复时间类型描述。
