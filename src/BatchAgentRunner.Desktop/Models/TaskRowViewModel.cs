@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using Avalonia.Media;
 using BatchAgentRunner.Core.Domain;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -5,12 +6,37 @@ using CommunityToolkit.Mvvm.ComponentModel;
 namespace BatchAgentRunner.Desktop.Models;
 
 /// <summary>任务列表行：把领域任务项映射为界面友好的展示属性。</summary>
-public sealed class TaskRowViewModel : ObservableObject
+/// <remarks>
+/// P1-7：行 VM 订阅长生命周期 <see cref="TaskItem"/> 的 <see cref="TaskItem.PropertyChanged"/> 以驱动自身刷新，
+/// 但 <see cref="TaskItem"/> 由引擎持有、贯穿整轮批处理，若不显式退订会把已被 <c>MonitorViewModel.Tasks</c>
+/// 移除的旧行 VM 永久拽在内存里（每次 <c>SyncTasks</c> 重建都会泄漏一批）。故实现 <see cref="IDisposable"/>，
+/// 由宿主在行被移出集合时调用 <see cref="Dispose"/> 解除订阅。
+/// </remarks>
+public sealed class TaskRowViewModel : ObservableObject, IDisposable
 {
+    private readonly PropertyChangedEventHandler _itemChangedHandler;
+    private bool _disposed;
+
     public TaskRowViewModel(TaskItem item)
     {
         Item = item;
-        item.PropertyChanged += (_, _) => Refresh();
+        _itemChangedHandler = (_, _) => Refresh();
+        item.PropertyChanged += _itemChangedHandler;
+    }
+
+    /// <summary>
+    /// 解除对本行所绑定 <see cref="TaskItem"/> 的订阅，避免长生命周期领域对象永久持有本行 VM（P1-7）。
+    /// 幂等：重复调用安全。
+    /// </summary>
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        Item.PropertyChanged -= _itemChangedHandler;
     }
 
     public TaskItem Item { get; }

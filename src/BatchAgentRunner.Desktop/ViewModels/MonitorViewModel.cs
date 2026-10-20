@@ -683,10 +683,22 @@ public sealed class MonitorViewModel : ViewModelBase
             return;
         }
 
+        // P1-7：移出集合前先处置旧行 VM，解除其对长生命周期 TaskItem 的订阅，避免反复重建泄漏。
+        foreach (var old in Tasks)
+        {
+            old.Dispose();
+        }
+
         Tasks.Clear();
         foreach (var t in tasks)
         {
             Tasks.Add(new TaskRowViewModel(t));
+        }
+
+        // 重建后若选中行已被替换，重新指向同 Id 的新行，避免 _selectedTask 悬空指向已处置实例。
+        if (_selectedTask is not null)
+        {
+            _selectedTask = Tasks.FirstOrDefault(r => r.Id == _selectedTask.Id);
         }
 
         RebuildDagRows();
