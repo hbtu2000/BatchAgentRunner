@@ -2,6 +2,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
+using BatchAgentRunner.Core.Text;
 
 namespace BatchAgentRunner.Core.Scheduling;
 
@@ -126,5 +127,5 @@ public sealed class GateEvaluator
     }
 
     private static string Truncate(string? value, int maxChars) =>
-        value is null || value.Length <= maxChars ? value ?? string.Empty : value[..maxChars] + "…（已截断）";
+        TextTruncate.Truncate(value, maxChars, "…（已截断）") ?? string.Empty;
 }

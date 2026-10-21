@@ -210,21 +210,10 @@ public sealed class TaskDispatcher : ITaskDispatcher
 
     // ---------------- 二期：DAG 依赖 ----------------
 
-    /// <summary>依赖判定结果。</summary>
-    private enum DependencyVerdict
-    {
-        /// <summary>依赖已满足，可以执行。</summary>
-        Satisfied,
-
-        /// <summary>依赖未成功（失败/阻塞/悬空），本任务应被阻断或终止整批。</summary>
-        Blocked,
-
-        /// <summary>依赖尚未到达终态（串行拓扑序下不出现，保守按阻断处理）。</summary>
-        Wait
-    }
-
     /// <summary>
-    /// 判定任务依赖是否满足（二期 DAG）。策略=忽略依赖失败时恒返回 <see cref="DependencyVerdict.Satisfied"/>。
+    /// 判定任务依赖是否满足（二期 DAG）。策略=忽略依赖失败时恒返回 <see cref="DependencyVerdict.Satisfied"/>；
+    /// 其余经 <see cref="DagScheduler.EvaluateDependency"/> 单一实现判定（P2-3 偿还：原私有副本与本行所述
+    /// 逐字重复，已删除）。
     /// </summary>
     private DependencyVerdict EvaluateDependency(TaskItem task, out string? blockingDep)
     {
@@ -246,35 +235,7 @@ public sealed class TaskDispatcher : ITaskDispatcher
         }
 
         var blockOnNeedsAttention = _ctx.Options.DependencyFailurePolicy == DependencyFailurePolicy.BlockDependents;
-        var wait = false;
-        foreach (var dep in task.DependsOn)
-        {
-            if (!statusById.TryGetValue(dep, out var st))
-            {
-                blockingDep = dep; // 悬空依赖：保守阻断
-                return DependencyVerdict.Blocked;
-            }
-
-            if (st is TaskStatus.Failed or TaskStatus.Blocked)
-            {
-                blockingDep = dep;
-                return DependencyVerdict.Blocked;
-            }
-
-            if (st == TaskStatus.NeedsAttention && blockOnNeedsAttention)
-            {
-                blockingDep = dep;
-                return DependencyVerdict.Blocked;
-            }
-
-            if (st is not (TaskStatus.Done or TaskStatus.Failed or TaskStatus.Interrupted
-                or TaskStatus.NeedsAttention or TaskStatus.Blocked))
-            {
-                wait = true; // 依赖尚未到达终态
-            }
-        }
-
-        return wait ? DependencyVerdict.Wait : DependencyVerdict.Satisfied;
+        return DagScheduler.EvaluateDependency(task, statusById, blockOnNeedsAttention, out blockingDep);
     }
 
     /// <summary>

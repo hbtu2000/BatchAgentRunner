@@ -3,6 +3,7 @@ using System.Text;
 using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Serialization;
+using BatchAgentRunner.Core.Text;
 using BatchAgentRunner.Infrastructure.TaskFiles;
 using TaskStatus = BatchAgentRunner.Core.Domain.TaskStatus;
 
@@ -319,5 +320,5 @@ public sealed class ReportWriter : IReportWriter
     }
 
     private static string? Truncate(string? value, int max) =>
-        string.IsNullOrEmpty(value) || value.Length <= max ? value : value[..max] + "…";
+        TextTruncate.Truncate(value, max, "…");
 }

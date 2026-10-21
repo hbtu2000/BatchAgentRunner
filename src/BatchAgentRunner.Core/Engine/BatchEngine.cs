@@ -4,6 +4,7 @@ using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Events;
 using BatchAgentRunner.Core.Options;
 using BatchAgentRunner.Core.Scheduling;
+using BatchAgentRunner.Core.Text;
 using TaskStatus = BatchAgentRunner.Core.Domain.TaskStatus;
 
 namespace BatchAgentRunner.Core.Engine;
@@ -999,17 +1000,7 @@ public sealed class BatchEngine : IBatchEngine
         _logger.Write(ev);
     }
 
-    private static string? Truncate(string? value, int maxChars)
-    {
-        if (value is null || maxChars <= 0)
-        {
-            return value;
-        }
-
-        return value.Length <= maxChars
-            ? value
-            : value[..maxChars] + $"\n…（结果已截断，超过 {maxChars / 1024}KB，完整内容见运行日志）";
-    }
+    private static string? Truncate(string? value, int maxChars) => TextTruncate.Result(value, maxChars);
 
     /// <summary>兜底用量汇总（P1-1 拆分后由 <see cref="IFallbackBilling"/> 记账，此处供报告协作者读取）。</summary>
     private FallbackSummary BuildFallbackSummary() => _fallback.BuildSummary();

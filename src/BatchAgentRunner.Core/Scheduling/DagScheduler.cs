@@ -20,6 +20,19 @@ public sealed class DagCycleException : Exception
     public DagCycleException(string cyclePath) : base($"检测到循环依赖：{cyclePath}") { }
 }
 
+/// <summary>依赖判定结果。</summary>
+public enum DependencyVerdict
+{
+    /// <summary>依赖已满足，可以执行。</summary>
+    Satisfied,
+
+    /// <summary>依赖未成功（失败/阻塞/悬空），本任务应被阻断或终止整批。</summary>
+    Blocked,
+
+    /// <summary>依赖尚未到达终态（串行拓扑序下不出现，保守按阻断处理）。</summary>
+    Wait
+}
+
 /// <summary>
 /// DAG 调度辅助（二期：任务依赖 topo 排序）。
 /// 与一期串行/并发正交：环检测在加载期失败快速（不静默）；依赖失败按策略处理下游。
@@ -110,48 +123,61 @@ public static class DagScheduler
     }
 
     /// <summary>
-    /// 依赖是否满足（可入队执行）。默认成功谓词：依赖处于终态且非 Failed/Blocked；
-    /// 可选 <paramref name="blockOnNeedsAttention"/> 时，依赖为 NeedsAttention 也视为阻塞。
+    /// 判定任务依赖是否满足（P2-3 偿还：原 <see cref="DependenciesSatisfied"/> 与 <c>TaskDispatcher</c> 私有
+    /// <c>EvaluateDependency</c> 两份逐字重复的依赖失败分派状态机，收敛为本方法——全仓依赖判定的单一事实来源）。
+    /// 默认成功谓词：依赖处于终态且非 Failed/Blocked；可选 <paramref name="blockOnNeedsAttention"/> 时，
+    /// 依赖为 NeedsAttention 也视为阻塞。悬空依赖（不在 <paramref name="statusById"/>）保守判 <see cref="DependencyVerdict.Blocked"/>。
     /// </summary>
-    public static bool DependenciesSatisfied(
+    public static DependencyVerdict EvaluateDependency(
         TaskItem task,
         IReadOnlyDictionary<string, TaskStatus> statusById,
-        bool blockOnNeedsAttention = false)
+        bool blockOnNeedsAttention,
+        out string? blockingDep)
     {
-        if (task.DependsOn is null or { Count: 0 })
+        blockingDep = null;
+        if (task.DependsOn is not { Count: > 0 })
         {
-            return true;
+            return DependencyVerdict.Satisfied;
         }
 
+        var wait = false;
         foreach (var dep in task.DependsOn)
         {
             if (!statusById.TryGetValue(dep, out var st))
             {
-                return false; // 悬空依赖：保守阻塞
+                blockingDep = dep; // 悬空依赖：保守阻断
+                return DependencyVerdict.Blocked;
             }
 
             if (st is TaskStatus.Failed or TaskStatus.Blocked)
             {
-                return false;
+                blockingDep = dep;
+                return DependencyVerdict.Blocked;
             }
 
             if (st == TaskStatus.NeedsAttention && blockOnNeedsAttention)
             {
-                return false;
+                blockingDep = dep;
+                return DependencyVerdict.Blocked;
             }
 
-            if (!IsSettled(st))
+            if (!st.IsTerminal())
             {
-                return false; // 依赖尚未到达终态
+                wait = true; // 依赖尚未到达终态
             }
         }
 
-        return true;
+        return wait ? DependencyVerdict.Wait : DependencyVerdict.Satisfied;
     }
 
-    private static bool IsSettled(TaskStatus s) =>
-        s is TaskStatus.Done or TaskStatus.Failed or TaskStatus.Interrupted
-            or TaskStatus.NeedsAttention or TaskStatus.Blocked;
+    /// <summary>
+    /// 依赖是否满足（可入队执行）。<see cref="EvaluateDependency"/> 的布尔包装，保持既有调用面不变。
+    /// </summary>
+    public static bool DependenciesSatisfied(
+        TaskItem task,
+        IReadOnlyDictionary<string, TaskStatus> statusById,
+        bool blockOnNeedsAttention = false) =>
+        EvaluateDependency(task, statusById, blockOnNeedsAttention, out _) == DependencyVerdict.Satisfied;
 
     /// <summary>
     /// 依赖失败（Failed/Blocked）时，找出应被标记 Blocked 的下游任务（传递性闭包）。

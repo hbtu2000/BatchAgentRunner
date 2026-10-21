@@ -151,6 +151,76 @@ public class DagSchedulerTests
     }
 
     [Fact]
+    public void EvaluateDependency_无依赖_恒满足且无阻断依赖()
+    {
+        var verdict = DagScheduler.EvaluateDependency(T("a"),
+            new Dictionary<string, TaskStatus>(StringComparer.OrdinalIgnoreCase), false, out var dep);
+
+        Assert.Equal(DependencyVerdict.Satisfied, verdict);
+        Assert.Null(dep);
+    }
+
+    [Fact]
+    public void EvaluateDependency_依赖失败_判阻断并报出阻断依赖()
+    {
+        var status = new Dictionary<string, TaskStatus>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["a"] = TaskStatus.Failed,
+            ["b"] = TaskStatus.Done
+        };
+
+        var verdict = DagScheduler.EvaluateDependency(T("c", "a", "b"), status, false, out var dep);
+
+        Assert.Equal(DependencyVerdict.Blocked, verdict);
+        Assert.Equal("a", dep);
+    }
+
+    [Fact]
+    public void EvaluateDependency_悬空依赖_判阻断并报出悬空Id()
+    {
+        var verdict = DagScheduler.EvaluateDependency(T("b", "missing"),
+            new Dictionary<string, TaskStatus>(StringComparer.OrdinalIgnoreCase), false, out var dep);
+
+        Assert.Equal(DependencyVerdict.Blocked, verdict);
+        Assert.Equal("missing", dep);
+    }
+
+    [Fact]
+    public void EvaluateDependency_依赖未到终态_判等待且无阻断依赖()
+    {
+        var status = new Dictionary<string, TaskStatus>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["a"] = TaskStatus.Running,
+            ["b"] = TaskStatus.Done
+        };
+
+        var verdict = DagScheduler.EvaluateDependency(T("c", "a", "b"), status, false, out var dep);
+
+        Assert.Equal(DependencyVerdict.Wait, verdict);
+        Assert.Null(dep);
+    }
+
+    [Fact]
+    public void EvaluateDependency_与布尔包装_判定一致()
+    {
+        var status = new Dictionary<string, TaskStatus>(StringComparer.OrdinalIgnoreCase)
+        {
+            ["ok"] = TaskStatus.Done,
+            ["att"] = TaskStatus.NeedsAttention
+        };
+
+        foreach (var blockOnAttention in new[] { false, true })
+        {
+            Assert.Equal(
+                DagScheduler.DependenciesSatisfied(T("t", "ok"), status, blockOnAttention),
+                DagScheduler.EvaluateDependency(T("t", "ok"), status, blockOnAttention, out _) == DependencyVerdict.Satisfied);
+            Assert.Equal(
+                DagScheduler.DependenciesSatisfied(T("t", "att"), status, blockOnAttention),
+                DagScheduler.EvaluateDependency(T("t", "att"), status, blockOnAttention, out _) == DependencyVerdict.Satisfied);
+        }
+    }
+
+    [Fact]
     public void GetBlockedDependents_返回所有待命下游()
     {
         var all = new[] { T("a"), T("b", "a"), T("c", "b"), T("d") };

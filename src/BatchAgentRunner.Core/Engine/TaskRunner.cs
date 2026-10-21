@@ -4,6 +4,7 @@ using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Events;
 using BatchAgentRunner.Core.Options;
 using BatchAgentRunner.Core.Scheduling;
+using BatchAgentRunner.Core.Text;
 using TaskStatus = BatchAgentRunner.Core.Domain.TaskStatus;
 
 namespace BatchAgentRunner.Core.Engine;
@@ -889,15 +890,5 @@ public sealed class TaskRunner : ITaskRunner
         }
     }
 
-    private static string? Truncate(string? value, int maxChars)
-    {
-        if (value is null || maxChars <= 0)
-        {
-            return value;
-        }
-
-        return value.Length <= maxChars
-            ? value
-            : value[..maxChars] + $"\n…（结果已截断，超过 {maxChars / 1024}KB，完整内容见运行日志）";
-    }
+    private static string? Truncate(string? value, int maxChars) => TextTruncate.Result(value, maxChars);
 }

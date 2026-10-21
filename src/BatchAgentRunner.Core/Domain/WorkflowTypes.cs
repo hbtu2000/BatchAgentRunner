@@ -177,7 +177,7 @@ public sealed class StageResult
     public string? AccountUsed { get; set; }
 
     [JsonIgnore]
-    public bool IsTerminal => Status is TaskStatus.Done or TaskStatus.Failed or TaskStatus.Interrupted or TaskStatus.NeedsAttention or TaskStatus.Blocked;
+    public bool IsTerminal => Status.IsTerminal();
 }
 
 /// <summary>项目级任务关联（二期：任务关联代码仓库 / 分支 / PR）。</summary>

@@ -3,6 +3,7 @@ using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Events;
 using BatchAgentRunner.Core.Options;
 using BatchAgentRunner.Core.Scheduling;
+using BatchAgentRunner.Core.Text;
 using TaskStatus = BatchAgentRunner.Core.Domain.TaskStatus;
 
 namespace BatchAgentRunner.Core.Engine;
@@ -476,7 +477,7 @@ public sealed class WorkflowExecutor
     }
 
     private static string? Truncate(string? value, int max) =>
-        value is null || value.Length <= max ? value : value[..max] + "…（已截断）";
+        TextTruncate.Truncate(value, max, "…（已截断）");
 }
 
 /// <summary>单阶段执行结果（WorkflowExecutor 内部）。</summary>

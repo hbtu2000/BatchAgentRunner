@@ -175,9 +175,7 @@ public sealed class TaskItem : INotifyPropertyChanged
     public bool IsWorkflow => Workflow is { Stages.Count: > 0 };
 
     [JsonIgnore]
-    public bool IsTerminal =>
-        Status is TaskStatus.Done or TaskStatus.Failed or TaskStatus.Interrupted
-            or TaskStatus.NeedsAttention or TaskStatus.Blocked;
+    public bool IsTerminal => Status.IsTerminal();
 
     /// <summary>结果是否为「部分输出」（中断/超时保留的中间结果）。</summary>
     [JsonIgnore]

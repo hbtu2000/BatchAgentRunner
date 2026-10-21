@@ -6,6 +6,7 @@ using System.Text.Json;
 using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Options;
+using BatchAgentRunner.Core.Text;
 
 namespace BatchAgentRunner.Infrastructure.Http;
 
@@ -186,5 +187,5 @@ public sealed class CodeBuddyCreditsApiClient : ICreditsApiClient
     }
 
     private static string Truncate(string text) =>
-        text.Length <= 200 ? text : text[..200] + "…";
+        TextTruncate.Truncate(text, 200, "…")!;
 }
