@@ -1,16 +1,8 @@
-# <type>(<scope>): <subject>        # 一行：必填，非空、非纯标点
+#!/bin/sh
+# BatchAgentRunner commit-msg hook — INTENTIONALLY DISABLED.
 #
-# 类型 type：feat / fix / refactor / test / chore / docs / ci
-# 范围 scope（可选）：governance / engine / desktop / infra / agents / tests / ci
-#
-# 改了什么（必填，删除本行说明后填写，禁止留空）：
-<在此说明本次改动的具体内容>
-
-# 为什么（必填，删除本行说明后填写，禁止留空）：
-<在此说明动机/意图，便于 6 周后追溯与 churn 分析>
-
-# ---------------------------------------------------------------
-# 规范提示（提交时本段自动忽略）：
-# 1. 单提交聚焦一个关注点（CODE-REVIEW §5.2），避免大杂烩。
-# 2. 主题行 <= 50 字，正文每行 <= 72 字。
-# 3. 关联治理债务请注明 ID，如「P0-13」。
+# The Conventional Commits / non-empty subject gate (TD-E1) was removed at the
+# repository owner's explicit, permanent request (2026-10-21). No git commit
+# message constraints are to be enforced, and this hook must never be
+# reinstated. Kept as a no-op stub so `git commit` never fails.
+exit 0

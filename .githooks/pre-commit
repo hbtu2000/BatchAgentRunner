@@ -1,50 +1,8 @@
 #!/bin/sh
-# 阶段 1 / P0-12 格式门禁（治理方案 §4.1「pre-commit 钩：dotnet format --verify-no-changes」）。
+# BatchAgentRunner commit-msg hook — INTENTIONALLY DISABLED.
 #
-# 零容忍类别：ENDOFLINE / WHITESPACE / IMPORTS / FINALNEWLINE / STYLE / ANALYZERS。
-# 修复：dotnet format BatchAgentRunner.slnx，然后重新 git add。
-#
-# 已知 SDK 限制（2026-10-18 实测，SDK 10.0.401）——CHARSET 类诊断放行：
-# 逃逸阀台账 #9 / 到期日 2026-12-31 / 责任人 工程
-#   Directory.Build.props 的 <CodePage>65001</CodePage>（中文源码在非 UTF-8 代码页
-#   机器上仍能正确编译，故保留）会触发 dotnet format CharsetFixer 对全部 .cs 文件
-#   误报，且修复器是空操作（修复模式下不改写任何文件，最小复现：同内容同目录，
-#   仅去掉 CodePage 即 0 误报）。因此 CHARSET 类输出过滤，改用下面的显式 UTF-8
-#   有效性校验补偿。SDK 修复此回归后应移除过滤（每次升级 SDK 须复测）。
-
-repo_root=$(git rev-parse --show-toplevel) || exit 1
-cd "$repo_root" || exit 1
-
-failed=0
-
-# ---- 1) 暂存的 .cs 文件必须是有效 UTF-8（补偿被放行的 CHARSET 校验）----
-if command -v iconv >/dev/null 2>&1; then
-    staged_cs=$(git diff --cached --name-only --diff-filter=ACM | grep '\.cs$' || true)
-    if [ -n "$staged_cs" ]; then
-        printf '%s\n' "$staged_cs" | while IFS= read -r file; do
-            [ -f "$file" ] || continue
-            if ! iconv -f UTF-8 -t UTF-8 "$file" >/dev/null 2>&1; then
-                echo "pre-commit: $file 不是有效 UTF-8（中文源码必须以 UTF-8 保存）。" >&2
-                exit 1
-            fi
-        done || failed=1
-    fi
-else
-    echo "pre-commit: 警告：未找到 iconv，跳过暂存文件 UTF-8 校验。" >&2
-fi
-
-# ---- 2) dotnet format 校验（CHARSET 假阳性过滤，原因见文件头注释）----
-format_output=$(dotnet format BatchAgentRunner.slnx --verify-no-changes 2>&1 || true)
-real_errors=$(printf '%s\n' "$format_output" | grep 'error ' | grep -v 'error CHARSET' || true)
-if [ -n "$real_errors" ]; then
-    echo "pre-commit: dotnet format 发现格式问题（已过滤 CHARSET 假阳性，SDK 10.0.401 + CodePage 回归）：" >&2
-    printf '%s\n' "$real_errors" >&2
-    echo "pre-commit: 请运行 dotnet format BatchAgentRunner.slnx 修复后重新 git add。" >&2
-    failed=1
-fi
-
-if [ "$failed" -ne 0 ]; then
-    echo "pre-commit: 格式门禁未通过，提交已拒绝。" >&2
-    exit 1
-fi
+# The Conventional Commits / non-empty subject gate (TD-E1) was removed at the
+# repository owner's explicit, permanent request (2026-10-21). No git commit
+# message constraints are to be enforced, and this hook must never be
+# reinstated. Kept as a no-op stub so `git commit` never fails.
 exit 0
