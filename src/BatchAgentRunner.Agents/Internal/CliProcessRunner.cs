@@ -92,6 +92,11 @@ public sealed class CliProcessRunner
         }
 
         var buffer = new StringBuilder();
+        // P2-24：空闲判定原每次 Tail(buffer.ToString(), 400)——对完整输出缓冲做全量拷贝，
+        // 长输出（MB 级）下每 500ms 一次 O(n) 拷贝即 O(n²)。改 rolling tail：只保留尾部
+        // 固定窗口（>= Tail 宽度 400），空闲判定与危险拦截只读该窗口，语义不变。
+        var tailWindow = new StringBuilder();
+        const int TailWindowChars = 1200;
         var lockObj = new object();
         var lastOutputAt = DateTimeOffset.Now;
         var autoAnswered = new List<string>();
@@ -110,6 +115,12 @@ public sealed class CliProcessRunner
             lock (lockObj)
             {
                 buffer.AppendLine(clean);
+                tailWindow.AppendLine(clean);
+                if (tailWindow.Length > TailWindowChars)
+                {
+                    tailWindow.Remove(0, tailWindow.Length - TailWindowChars);
+                }
+
                 lastOutputAt = DateTimeOffset.Now;
             }
 
@@ -184,7 +195,7 @@ public sealed class CliProcessRunner
                     string tail;
                     lock (lockObj)
                     {
-                        tail = Tail(buffer.ToString(), 400);
+                        tail = Tail(tailWindow.ToString(), 400);
                     }
 
                     // 缓冲为空 = 长时间零输出。2026-10-16 实测：CodeBuddy CLI 的 print 模式（-p）

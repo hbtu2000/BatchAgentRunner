@@ -40,7 +40,6 @@ public sealed class WorkflowEngineContext
     /// </summary>
     public Func<string?, string?>? ResolveWorkspacePath { get; init; }
 
-    public SessionResumePolicy SessionPolicy { get; init; } = new(false);
     public int DefaultMaxGateLoops { get; init; } = 3;
 }
 

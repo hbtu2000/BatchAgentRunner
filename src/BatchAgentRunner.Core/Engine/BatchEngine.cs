@@ -92,9 +92,8 @@ public sealed class BatchEngine : IBatchEngine
     private readonly Dictionary<string, double> _taskWaitSeconds = new(StringComparer.OrdinalIgnoreCase);
     private HashSet<string>? _idSnapshot;
 
-    // ---------------- 工作流 / 通知 / 会话恢复 / Git 协作等增强协作者 ----------------
+    // ---------------- 工作流 / 通知 / Git 协作等增强协作者 ----------------
     private readonly List<NotificationRule> _notifications;
-    private readonly SessionResumePolicy _sessionPolicy;
     private readonly INotificationDispatcher? _notificationDispatcher;
     private readonly GateEvaluator _gateEvaluator;
     /// <summary>文件系统探测端口（P1-10）：引擎零直接 IO，任务文件/工作空间存在性均经此抽象。</summary>
@@ -184,7 +183,6 @@ public sealed class BatchEngine : IBatchEngine
             InitialBackoff = TimeSpan.FromSeconds(Math.Max(1, options.RateLimitInitialBackoffSeconds))
         };
         _matrix = new DegradationMatrix(options.Accounts, options.ModelCandidates, options.DegradationStrategy);
-        _sessionPolicy = new SessionResumePolicy(options.EnableSessionResume);
         _fileSystem = deps.FileSystem ?? new SystemFileSystem();
         _fallback = new FallbackBilling(_options, () => _matrix, _clock, Raise);
         _gitWorkflow = new GitWorkflow(_options, deps.DiffCollector, deps.Git, deps.MarkdownWriter, _logger);
@@ -619,7 +617,6 @@ public sealed class BatchEngine : IBatchEngine
         EnsureCredential = _vault is not null ? EnsureLiveCredentialAsync : null,
         WaitForRestore = WaitForRestoreAsync,
         ResolveWorkspacePath = ResolveWorkspacePath,
-        SessionPolicy = _sessionPolicy,
         DefaultMaxGateLoops = _options.DefaultMaxGateLoops
     };
 

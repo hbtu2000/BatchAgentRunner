@@ -226,12 +226,6 @@ public sealed class RunOptions
     /// <summary>默认冷却时长（派生自 <see cref="DefaultCooldownMinutes"/>，不单独持久化）。</summary>
     [JsonIgnore]
     public TimeSpan DefaultCooldown => TimeSpan.FromMinutes(Math.Max(1, DefaultCooldownMinutes));
-
-    public RunOptions Clone()
-    {
-        var json = System.Text.Json.JsonSerializer.Serialize(this, JsonDefaults.Options);
-        return System.Text.Json.JsonSerializer.Deserialize<RunOptions>(json, JsonDefaults.Options)!;
-    }
 }
 
 /// <summary>

@@ -7,6 +7,13 @@
 # text=auto 对二进制（*.xlsx/*.png/*.ico 等）自动识别、不做转换。
 * text=auto eol=lf
 
+# P2-23（2026-10-21）：Excel 工作簿显式标 binary——text=auto 的自动识别对
+# 内容含长 ASCII 串的 xlsx 可能误判为文本，换行符规范化会损坏文件；
+# samples/tasks.xlsx 为 tracked 的只读示例，必须字节级保真。
+*.xlsx binary
+*.xlsm binary
+*.xls binary
+
 ###############################################################################
 # Set default behavior for command prompt diff.
 #

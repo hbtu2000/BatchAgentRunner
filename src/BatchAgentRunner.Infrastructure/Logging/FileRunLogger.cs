@@ -13,8 +13,13 @@ namespace BatchAgentRunner.Infrastructure.Logging;
 /// </summary>
 public sealed class FileRunLogger : IRunLogger
 {
+    /// <summary>P2-24：INFO 级批量落盘阈值——原每条事件 AutoFlush 同步刷盘，
+    /// CLI 高频输出（TaskOutput 分片）下syscall 风暴；现按批落盘，重要级别仍即时刷盘。</summary>
+    private const int FlushBatchLines = 64;
+
     private readonly object _sync = new();
     private readonly StreamWriter _writer;
+    private int _pendingLines;
     private bool _disposed;
 
     public FileRunLogger(string? taskFilePath = null, string? logDirectory = null)
@@ -26,8 +31,7 @@ public sealed class FileRunLogger : IRunLogger
         Directory.CreateDirectory(dir);
         LogFilePath = Path.Combine(dir, $"run-{DateTime.Now:yyyyMMddHHmmss}.log");
         _writer = new StreamWriter(new FileStream(LogFilePath, FileMode.Create, FileAccess.Write, FileShare.Read),
-            new UTF8Encoding(false))
-        { AutoFlush = true };
+            new UTF8Encoding(false));
 
         Write("INFO", $"运行日志开始：{DateTime.Now:yyyy-MM-dd HH:mm:ss}");
     }
@@ -35,7 +39,7 @@ public sealed class FileRunLogger : IRunLogger
     public string LogFilePath { get; }
 
     public void Write(string level, string message) =>
-        WriteLine($"[{DateTime.Now:HH:mm:ss}] {level,-5} {message}");
+        WriteLine($"[{DateTime.Now:HH:mm:ss}] {level,-5} {message}", IsImportantLevel(level));
 
     public void Write(BatchEvent ev)
     {
@@ -46,7 +50,8 @@ public sealed class FileRunLogger : IRunLogger
 
         // 危险操作点醒目标记（REQ-010b）
         var prefix = ev.IsDangerous ? "*** 高危 *** " : string.Empty;
-        Write(MapLevel(ev.Kind), $"{prefix}[{ev.Kind}] {ev.Message}");
+        var level = MapLevel(ev.Kind);
+        WriteLine($"[{DateTime.Now:HH:mm:ss}] {level,-5} {prefix}[{ev.Kind}] {ev.Message}", IsImportantLevel(level));
     }
 
     public void WriteTaskStarted(string taskId, string? account, string? model, string? expert, string? workspace) =>
@@ -100,7 +105,11 @@ public sealed class FileRunLogger : IRunLogger
         _ => "INFO"
     };
 
-    private void WriteLine(string line)
+    /// <summary>P2-24：重要级别（WARN/ERROR/DANGER）即时刷盘；INFO 按批（见 <see cref="FlushBatchLines"/>）。</summary>
+    private static bool IsImportantLevel(string level) =>
+        level is "WARN" or "ERROR" or "DANGER";
+
+    private void WriteLine(string line, bool important = false)
     {
         StreamWriter writer;
         lock (_sync)
@@ -123,6 +132,13 @@ public sealed class FileRunLogger : IRunLogger
         try
         {
             writer.WriteLine(line);
+            // P2-24：重要级别即时刷盘（配额重置/兜底/阻塞/高危不因批量滞后丢失）；
+            // INFO 累积到阈值才刷盘，削平 CLI 高频输出分片的 syscall 风暴。
+            if (important || ++_pendingLines >= FlushBatchLines)
+            {
+                writer.Flush();
+                _pendingLines = 0;
+            }
         }
         catch (ObjectDisposedException)
         {

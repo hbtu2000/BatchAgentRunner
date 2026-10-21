@@ -42,14 +42,6 @@ public sealed class AccountConfig
     [JsonIgnore]
     public string Label => string.IsNullOrWhiteSpace(DisplayName) ? Id : DisplayName;
 
-    /// <summary>
-    /// 该账号自有的候选模型池（不含全局回退——「未配置自有池时回退全局列表」由
-    /// <see cref="Scheduling.DegradationMatrix"/> 在展开矩阵时统一处理）。
-    /// </summary>
-    [JsonIgnore]
-    public IReadOnlyList<ModelCandidate> EffectiveModelPool =>
-        ModelCandidates is { Count: > 0 } own ? own : Array.Empty<ModelCandidate>();
-
     /// <summary>该账号是否具备兜底能力（配置了至少一个兜底模型）。</summary>
     [JsonIgnore]
     public bool HasFallbackModels => FallbackModels is { Count: > 0 };
