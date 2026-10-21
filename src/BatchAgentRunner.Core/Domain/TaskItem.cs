@@ -222,7 +222,7 @@ public sealed class TaskItem : INotifyPropertyChanged
         TemplateVars = TemplateVars is { } tv ? tv.Clone() : null,
         MaxLoops = MaxLoops,
         BatchSize = BatchSize,
-        StageResults = StageResults is null ? null : new List<StageResult>(StageResults),
+        StageResults = StageResults is null ? null : StageResults.Select(s => s.Clone()).ToList(),
         Session = Session is { } s ? s.Clone() : null
     };
 

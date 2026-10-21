@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using BatchAgentRunner.Core.Text;
 
 namespace BatchAgentRunner.Agents.Internal;
 
@@ -297,13 +298,11 @@ public sealed class StreamJsonRenderer
         {
             if (input.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String)
             {
-                var s = v.GetString()!;
-                return s.Length <= 120 ? s : s[..120] + "…";
+                return TextTruncate.Truncate(v.GetString()!, 120, "…")!;
             }
         }
 
-        var json = input.GetRawText();
-        return json.Length <= 120 ? json : json[..120] + "…";
+        return TextTruncate.Truncate(input.GetRawText(), 120, "…")!;
     }
 
     /// <summary>

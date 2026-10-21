@@ -147,8 +147,12 @@ public enum StageOnGateFail
     MarkNeedsAttention
 }
 
-/// <summary>阶段执行结果（仅工作流任务落盘到 TaskItem.StageResults）。</summary>
-public sealed class StageResult
+/// <summary>
+/// 阶段执行结果（仅工作流任务落盘到 <c>TaskItem.StageResults</c>）。
+/// ARCH P-08：改为记录类型以复用 <c>with</c> 表达式深拷贝（<see cref="WorkflowTypeClones.Clone(StageResult)"/>），
+/// 使 <c>TaskItem.Clone()</c> 的阶段结果逐层拷贝——快照与原型不得共享可变节点。
+/// </summary>
+public sealed record StageResult
 {
     [JsonPropertyName("stage_id")]
     public string StageId { get; set; } = string.Empty;
@@ -450,4 +454,7 @@ public static class WorkflowTypeClones
 
     /// <summary>叶子节点深拷贝。</summary>
     public static SessionHandle Clone(this SessionHandle handle) => handle with { };
+
+    /// <summary>阶段结果深拷贝（ARCH P-08：<c>TaskItem.Clone()</c> 的阶段结果列表逐元素拷贝）。</summary>
+    public static StageResult Clone(this StageResult result) => result with { };
 }
