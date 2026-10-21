@@ -236,6 +236,52 @@ public class BatchEngineTests
     }
 
     [Fact]
+    public async Task 等待中调用取消_转入阻塞()
+    {
+        // REQ-003b：取消 waiting 后应转入 blocked，而非跑完。冻结时钟使等待循环挂起，
+        // 期间调用 CancelWaiting 唤醒并令等待循环以「已取消」提前退出。
+        var start = At.Local(2026, 10, 15, 8, 0); // 下一时段 22:00，远超最长可等待
+        var window = new FreeTimeWindow(new TimeOnly(22, 0), new TimeOnly(6, 0));
+        var adapter = new MockAdapter(stepDuration: TimeSpan.Zero);
+        var (engine, _, clock, events) = Build(Options(M("m1", window)), adapter, new[] { "task-001" }, start);
+        clock.AutoAdvance = false; // 冻结时间：等待循环停在首个 2 秒切片，不向前推进
+
+        var task = engine.StartAsync(waitIfUnavailable: true);
+        engine.CancelWaiting();
+        var report = await task;
+
+        Assert.Equal(BatchStatus.Blocked, report.BatchStatus);
+        Assert.Contains(events, e => e.Kind == BatchEventKind.BatchBlocked);
+        Assert.Equal("启动前等待被取消", events.First(e => e.Kind == BatchEventKind.BatchBlocked).Message);
+        Assert.Contains(events, e => e.Kind == BatchEventKind.BatchWaiting);
+    }
+
+    [Fact]
+    public async Task 等待中配置变更补充可用组合_提前退出等待并继续()
+    {
+        // REQ-004c：waiting 期间补充额度/新增模型使某组合可用，应即时重评并提前退出等待继续执行。
+        var start = At.Local(2026, 10, 15, 8, 0); // 下一时段 22:00
+        var window = new FreeTimeWindow(new TimeOnly(22, 0), new TimeOnly(6, 0));
+        var adapter = new MockAdapter(stepDuration: TimeSpan.Zero);
+        var options = Options(M("m1", window));
+        var (engine, store, clock, events) = Build(options, adapter, new[] { "task-001" }, start);
+        clock.AutoAdvance = false; // 冻结时间：等待循环挂起于首个切片
+
+        var task = engine.StartAsync(waitIfUnavailable: true);
+        // 等待循环挂起中：补充一个无窗口模型，使矩阵重建后出现可用组合
+        options.ModelCandidates.Add(new ModelCandidate { Name = "m2" });
+        engine.NotifyConfigurationChanged();
+        clock.AutoAdvance = true; // 放行重评后的派发（MockAdapter stepDuration=零本身不依赖时钟）
+        var report = await task;
+
+        Assert.Equal(BatchStatus.Completed, report.BatchStatus);
+        Assert.Equal(TaskStatus.Done, store.Tasks[0].Status);
+        Assert.Equal("m2", store.Tasks[0].ModelUsed);
+        Assert.Contains(events, e => e.Kind == BatchEventKind.BatchResumed);
+        Assert.Contains(events, e => e.Kind == BatchEventKind.BatchWaiting);
+    }
+
+    [Fact]
     public async Task 预检_发现全部组合不可用并给出最早恢复时间()
     {
         var start = At.Local(2026, 10, 15, 8, 0);

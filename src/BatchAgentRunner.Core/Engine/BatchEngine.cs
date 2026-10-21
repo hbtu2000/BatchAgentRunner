@@ -58,12 +58,17 @@ public sealed class BatchEngine : IBatchEngine
     private readonly object _statsLock = new();
     /// <summary>持久化单写者门（P0-4）：同一时刻只允许一个写者落盘任务文件。</summary>
     private readonly SemaphoreSlim _persistGate = new(1, 1);
-    private readonly SemaphoreSlim _waitGate = new(1, 1);
+
+    /// <summary>
+    /// 等待协调者（P-01 / ARCH §3.3 WaitCoordinator）：独占等待门/唤醒源/取消标记，
+    /// 承载「等待循环 + 唤醒 + 可用性轮询编排」。引擎 facade 仅委托其
+    /// <see cref="WaitCoordinator.WaitForRestoreAsync"/> / <see cref="WaitCoordinator.CancelWaiting"/> /
+    /// <see cref="WaitCoordinator.SignalWake"/>，自身不再保有待循环状态。
+    /// </summary>
+    private readonly WaitCoordinator _waitCoordinator;
 
     private DegradationMatrix _matrix;
     private CancellationTokenSource? _runCts;
-    private TaskCompletionSource? _wake;
-    private bool _waitingCancelled;
     private bool _terminateRequested;
     private bool _stopAfterCurrentTask;
     private string? _currentTaskId;
@@ -195,7 +200,23 @@ public sealed class BatchEngine : IBatchEngine
         _coordinator = new DispatchCoordinator();
         _runner = new TaskRunner(BuildTaskRunnerContext());
         _dispatcher = new TaskDispatcher(BuildTaskDispatcherContext());
+        _waitCoordinator = new WaitCoordinator(BuildWaitCoordinatorContext());
     }
+
+    /// <summary>构造等待协调上下文（把引擎的等待能力注入 <see cref="WaitCoordinator"/>，避免反向耦合）。</summary>
+    private WaitCoordinatorContext BuildWaitCoordinatorContext() => new()
+    {
+        Clock = _clock,
+        Evaluator = _evaluator,
+        MatrixProvider = () => _matrix,
+        Report = _report,
+        Logger = _logger,
+        TaskWaitSeconds = _taskWaitSeconds,
+        StatsLock = _statsLock,
+        Raise = Raise,
+        SetStatus = SetStatus,
+        CurrentTaskIdProvider = () => _currentTaskId
+    };
 
     /// <summary>构造派发上下文（把引擎的批处理级协调能力注入 <see cref="ITaskDispatcher"/>，避免反向耦合）。</summary>
     private TaskDispatcherContext BuildTaskDispatcherContext() => new()
@@ -361,7 +382,6 @@ public sealed class BatchEngine : IBatchEngine
         var startedAt = _clock.Now;
         _terminateRequested = false;
         _stopAfterCurrentTask = false;
-        _waitingCancelled = false;
 
         await LoadTasksAsync(token).ConfigureAwait(false);
         await _taskStore.BackupAsync(_options.TaskFilePath, Math.Max(0, _options.BackupRetention), token)
@@ -497,8 +517,7 @@ public sealed class BatchEngine : IBatchEngine
         }
 
         _terminateRequested = true;
-        _waitingCancelled = true;
-        _wake?.TrySetResult();
+        _waitCoordinator.CancelWaiting();
 
         if (waitCurrentTask && _currentTaskId is not null)
         {
@@ -521,8 +540,7 @@ public sealed class BatchEngine : IBatchEngine
             return;
         }
 
-        _waitingCancelled = true;
-        _wake?.TrySetResult();
+        _waitCoordinator.CancelWaiting();
     }
 
     /// <summary>
@@ -532,7 +550,7 @@ public sealed class BatchEngine : IBatchEngine
     public void NotifyConfigurationChanged()
     {
         RebuildMatrix();
-        _wake?.TrySetResult();
+        _waitCoordinator.SignalWake();
     }
 
     /// <summary>手动重置某组合的冷却标记（REQ-004c）。</summary>
@@ -622,100 +640,17 @@ public sealed class BatchEngine : IBatchEngine
 
     // ---------------- waiting（REQ-003b / REQ-004c） ----------------
 
-    private async Task<bool> WaitForRestoreAsync(RestoreCandidate candidate, string? taskId, CancellationToken ct)
-    {
-        await _waitGate.WaitAsync(ct).ConfigureAwait(false);
-        try
-        {
-            // 先清取消标记再置 Waiting 状态：避免取消请求落在「已置状态、未清标记」的窗口内被误清
-            // （界面轮询到 Waiting 后立刻点取消，若此时标记尚未清零，取消会丢失导致批处理跑完而非转阻塞）
-            _waitingCancelled = false;
-            SetStatus(BatchStatus.Waiting);
-            var waitStart = _clock.Now;
-
-            Raise(new BatchEvent(BatchEventKind.BatchWaiting, _clock.Now,
-                DescribeWaiting(candidate), CurrentTaskId)
-            {
-                BatchStatus = BatchStatus.Waiting,
-                ResumeAt = candidate.RestoreAt,
-                WaitKind = candidate.WaitKind
-            });
-            _logger.WriteBatchWaiting(candidate.RestoreAt, candidate.Combo.Model.Name, candidate.WaitKind);
-
-            while (true)
-            {
-                if (ct.IsCancellationRequested)
-                {
-                    return false;
-                }
-
-                if (_waitingCancelled)
-                {
-                    return false;
-                }
-
-                var now = _clock.Now;
-                if (now >= candidate.RestoreAt)
-                {
-                    break;
-                }
-
-                // 配置变更 / 补充额度后即时重评，已可用则提前退出
-                if (_matrix.SelectFirst(now, _evaluator).Found)
-                {
-                    Raise(new BatchEvent(BatchEventKind.BatchResumed, now, "检测到可用组合，提前结束等待继续执行"));
-                    _logger.WriteBatchResumed("配置变更或额度补充，提前退出等待");
-                    break;
-                }
-
-                var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-                _wake = tcs;
-                var remaining = candidate.RestoreAt - now;
-                var slice = remaining > TimeSpan.FromSeconds(2) ? TimeSpan.FromSeconds(2) : remaining;
-                var delay = _clock.DelayAsync(slice, ct);
-                await Task.WhenAny(delay, tcs.Task).ConfigureAwait(false);
-            }
-
-            var elapsed = (_clock.Now - waitStart).TotalSeconds;
-            _report.AddWaitSeconds(candidate.WaitKind, elapsed);
-
-            // 单任务级暂停累计（用于从任务时长中剔除，DESIGN-额度耗尽暂停续跑）
-            if (!string.IsNullOrEmpty(taskId))
-            {
-                lock (_statsLock)
-                {
-                    _taskWaitSeconds.TryGetValue(taskId!, out var prior);
-                    _taskWaitSeconds[taskId!] = prior + elapsed;
-                }
-            }
-
-            SetStatus(BatchStatus.Running);
-            Raise(new BatchEvent(BatchEventKind.BatchResumed, _clock.Now,
-                $"已恢复执行（暂停 {elapsed / 60:0.0} 分钟，不计入任务时长）")
-            { BatchStatus = BatchStatus.Running });
-            _logger.WriteBatchResumed("到达恢复时间点");
-            return true;
-        }
-        finally
-        {
-            _waitGate.Release();
-        }
-    }
+    /// <summary>
+    /// 等待可用性恢复：委托 <see cref="WaitCoordinator"/>（P-01 抽取）。公开签名保持不变，
+    /// 既供 <see cref="StartAsync"/> 启动前不可用分支调用，也经 <see cref="TaskRunnerContext"/>
+    /// / <see cref="WorkflowEngineContext"/> 注入给单任务执行器与工作流执行器复用同一等待语义。
+    /// </summary>
+    private Task<bool> WaitForRestoreAsync(RestoreCandidate candidate, string? taskId, CancellationToken ct) =>
+        _waitCoordinator.WaitForRestoreAsync(candidate, taskId, ct);
 
     /// <summary>是否对「额度耗尽」场景放开等待上限（无限等待直到重置）。判定收敛于 <see cref="QuotaWaitPolicy"/>（P2-1 偿还：原三处重复谓词）。</summary>
     private bool IsQuotaUnboundedWait(RestoreCandidate? candidate, DateTimeOffset now) =>
         QuotaWaitPolicy.IsUnboundedQuotaWait(_options, _matrix, _evaluator, candidate, now);
-
-    private static string DescribeWaiting(RestoreCandidate candidate) => candidate.WaitKind switch
-    {
-        WaitKind.FreeWindow =>
-            $"当前无可用模型，将于 {candidate.RestoreAt:HH:mm} 进入下一免费时段（{candidate.Combo.Model.Name}），等待中，可取消",
-        WaitKind.QuotaReset =>
-            $"当前所有组合额度均已耗尽，将于 {candidate.RestoreAt:HH:mm} 重置恢复（{candidate.Combo.Model.Name}）；已暂停等待重置（暂停不计入时长），可取消",
-        WaitKind.Mixed =>
-            $"当前无可用组合（时段外 + 冷却中），将于 {candidate.RestoreAt:HH:mm} 恢复（{candidate.Combo.Model.Name}），等待中，可取消",
-        _ => $"等待至 {candidate.RestoreAt:HH:mm} 后继续"
-    };
 
     // ---------------- 辅助 ----------------
 
@@ -1010,7 +945,7 @@ public sealed class BatchEngine : IBatchEngine
     {
         _writeGate.Dispose();
         _persistGate.Dispose();
-        _waitGate.Dispose();
+        _waitCoordinator.Dispose();
         _runCts?.Dispose();
         _runCts = null;
         GC.SuppressFinalize(this);

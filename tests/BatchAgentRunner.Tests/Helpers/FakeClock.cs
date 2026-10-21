@@ -24,7 +24,7 @@ public sealed class FakeClock : IClock
     /// 置 false 时延迟任务永不完成（除非取消）——「冻结时间」模式：
     /// 等待循环会一直挂起，测试可确定性地观察/取消等待态，再手动 <see cref="Advance"/> 放行。
     /// </summary>
-    public bool AutoAdvance { get; init; } = true;
+    public bool AutoAdvance { get; set; } = true;
 
     public Task DelayAsync(TimeSpan delay, CancellationToken cancellationToken = default)
     {
