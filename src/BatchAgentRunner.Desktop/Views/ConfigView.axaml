@@ -206,14 +206,21 @@
                                             <StackPanel Orientation="Horizontal" Spacing="8">
                                                 <TextBlock Text="预估单价(元/次)" VerticalAlignment="Center" FontSize="12"
                                                            ToolTip.Tip="仅当 CLI 不返回用量/费用数据时，用于「调用次数 × 预估单价」的估算口径。&#10;留空 = 不统计花费。" />
-                                                <TextBox Text="{Binding UnitPriceText}" Width="90" />
+                                                <TextBox Text="{Binding UnitPrice.Text}" Width="90" ToolTip.Tip="{Binding UnitPrice.Error}" />
                                                 <TextBlock Text="折扣" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
                                                            ToolTip.Tip="折扣倍率：0.65 = 原价的 65%（界面显示 0.65x）。&#10;仅用于展示与人工对照，不参与调度判定。留空 = 不显示。" />
-                                                <TextBox Text="{Binding DiscountText}" Width="60" />
+                                                <TextBox Text="{Binding Discount.Text}" Width="60" />
                                                 <Border CornerRadius="4" Padding="6,2" Background="{DynamicResource PrimaryBrush}" VerticalAlignment="Center"
                                                         IsVisible="{Binding DiscountDisplay, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                                                     <TextBlock Text="{Binding DiscountDisplay}" FontSize="12" FontWeight="SemiBold" Foreground="White" />
                                                 </Border>
+                                            </StackPanel>
+                                            <!-- P2-15：解析类字段的校验反馈（格式无效时可见；Apply 保留原值不静默覆盖） -->
+                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                <TextBlock Text="{Binding UnitPrice.Error}" FontSize="11" Foreground="{DynamicResource ErrorBrush}"
+                                                           IsVisible="{Binding UnitPrice.HasError}" />
+                                                <TextBlock Text="{Binding Discount.Error}" FontSize="11" Foreground="{DynamicResource ErrorBrush}"
+                                                           IsVisible="{Binding Discount.HasError}" />
                                             </StackPanel>
                                         </StackPanel>
                                     </Border>
@@ -282,12 +289,12 @@
                                                                 <TextBox Grid.Column="2" Text="{Binding StartText}" Width="60" IsVisible="{Binding WindowEnabled}" />
                                                                 <TextBlock Grid.Column="3" Text="→" Margin="4,0" VerticalAlignment="Center" IsVisible="{Binding WindowEnabled}" />
                                                                 <TextBox Grid.Column="4" Text="{Binding EndText}" Width="60" IsVisible="{Binding WindowEnabled}" />
-                                                                <TextBox Grid.Column="5" Text="{Binding UnitPriceText}" Width="70" Margin="8,0,0,0"
+                                                                <TextBox Grid.Column="5" Text="{Binding UnitPrice.Text}" Width="70" Margin="8,0,0,0"
                                                                          ToolTip.Tip="预估单价（元/次），CLI 不返回费用时用于估算口径。留空 = 不统计。" />
                                                                 <StackPanel Grid.Column="6" Orientation="Horizontal" Margin="8,0,0,0" Spacing="4">
                                                                     <TextBlock Text="折扣" VerticalAlignment="Center" FontSize="11" FontWeight="SemiBold"
                                                                                ToolTip.Tip="折扣倍率：0.65 = 原价的 65%（界面显示 0.65x）。&#10;仅用于展示与人工对照（对齐模型选择器的折扣列），不参与调度判定。留空 = 不显示。" />
-                                                                    <TextBox Text="{Binding DiscountText}" Width="46"
+                                                                    <TextBox Text="{Binding Discount.Text}" Width="46"
                                                                              ToolTip.Tip="折扣倍率：0.65 = 原价的 65%（界面显示 0.65x）。&#10;仅用于展示与人工对照（对齐模型选择器的折扣列），不参与调度判定。留空 = 不显示。" />
                                                                     <Border CornerRadius="4" Padding="6,1" Background="{DynamicResource PrimaryBrush}" VerticalAlignment="Center"
                                                                             IsVisible="{Binding DiscountDisplay, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
@@ -337,7 +344,7 @@
                                                             </ComboBox>
                                                             <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0">
                                                                 <TextBlock Text="预估单价(元/次)" VerticalAlignment="Center" FontSize="12" />
-                                                                <TextBox Text="{Binding UnitPriceText}" Width="70" Margin="6,0" />
+                                                                <TextBox Text="{Binding UnitPrice.Text}" Width="70" Margin="6,0" />
                                                                 <Button Content="删除" Command="{Binding $parent[ItemsControl].DataContext.RemoveFallbackModelCommand}" CommandParameter="{Binding}" />
                                                             </StackPanel>
                                                         </Grid>
@@ -712,7 +719,8 @@
                                                 <TextBlock Text="SMTP（密码走凭据引用，不明文落地）" />
                                                 <StackPanel Orientation="Horizontal" Spacing="10">
                                                     <TextBox Text="{Binding SmtpHost}" Width="180" PlaceholderText="smtp.example.com" />
-                                                    <TextBox Text="{Binding SmtpPortText}" Width="60" PlaceholderText="587" />
+                                                    <TextBox Text="{Binding SmtpPort.Text}" Width="60" PlaceholderText="587"
+                                                             ToolTip.Tip="{Binding SmtpPort.Error}" />
                                                     <TextBox Text="{Binding SmtpFrom}" Width="200" PlaceholderText="from@example.com" />
                                                 </StackPanel>
                                                 <StackPanel Orientation="Horizontal" Spacing="10">

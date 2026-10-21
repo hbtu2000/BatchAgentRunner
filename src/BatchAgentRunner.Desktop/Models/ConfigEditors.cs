@@ -19,8 +19,6 @@ public sealed class ModelEditor : ObservableObject
     private bool _fri = true;
     private bool _sat = true;
     private bool _sun = true;
-    private string _unitPriceText = string.Empty;
-    private string _discountText = string.Empty;
 
     public ModelEditor(ModelCandidate model)
     {
@@ -41,11 +39,20 @@ public sealed class ModelEditor : ObservableObject
             _sun = days?.Contains(DayOfWeek.Sunday) ?? true;
         }
 
-        _unitPriceText = model.EstimatedUnitPrice?.ToString() ?? string.Empty;
-        _discountText = model.Discount?.ToString() ?? string.Empty;
+        // P2-15：解析类字段一律走 FieldEditor<T>（解析失败显式报错，不再静默置 null）
+        UnitPrice = new FieldEditor<decimal?>("预估单价",
+            model.EstimatedUnitPrice?.ToString() ?? string.Empty, FieldParsers.DecimalOrNull);
+        Discount = new FieldEditor<decimal?>("折扣",
+            model.Discount?.ToString() ?? string.Empty, FieldParsers.DecimalOrNull);
     }
 
     public ModelCandidate Model { get; }
+
+    /// <summary>预估单价（元/次）编辑字段（P2-15）。</summary>
+    public FieldEditor<decimal?> UnitPrice { get; }
+
+    /// <summary>折扣倍率编辑字段（P2-15）。</summary>
+    public FieldEditor<decimal?> Discount { get; }
 
     public string Name
     {
@@ -97,28 +104,9 @@ public sealed class ModelEditor : ObservableObject
     public bool Sat { get => _sat; set => SetProperty(ref _sat, value); }
     public bool Sun { get => _sun; set => SetProperty(ref _sun, value); }
 
-    public string UnitPriceText
-    {
-        get => _unitPriceText;
-        set => SetProperty(ref _unitPriceText, value);
-    }
-
-    /// <summary>折扣倍率（如 0.65 = 6.5 折），留空 = 不显示折扣。</summary>
-    public string DiscountText
-    {
-        get => _discountText;
-        set
-        {
-            if (SetProperty(ref _discountText, value))
-            {
-                OnPropertyChanged(nameof(DiscountDisplay));
-            }
-        }
-    }
-
     /// <summary>折扣的展示形态（如「0.65x」），未配置折扣时为空串（对齐模型选择器的折扣列样式）。</summary>
     public string DiscountDisplay =>
-        decimal.TryParse(DiscountText, out var d) ? $"{d:0.00}x" : string.Empty;
+        Discount.Value is { } d ? $"{d:0.00}x" : string.Empty;
 
     /// <summary>时段预览（跨零点以「周日 22:00 → 周一 06:00」形式展示，REQ-003b）。</summary>
     public string Preview
@@ -164,8 +152,16 @@ public sealed class ModelEditor : ObservableObject
     {
         Model.Name = Name;
         Model.FreeTimeWindow = BuildWindow();
-        Model.EstimatedUnitPrice = decimal.TryParse(UnitPriceText, out var price) ? price : null;
-        Model.Discount = decimal.TryParse(DiscountText, out var discount) ? discount : null;
+        // P2-15：解析失败时保留原值（不再静默置 null），错误态经 FieldEditor.Error 对用户可见
+        if (!UnitPrice.HasError)
+        {
+            Model.EstimatedUnitPrice = UnitPrice.Value;
+        }
+
+        if (!Discount.HasError)
+        {
+            Model.Discount = Discount.Value;
+        }
     }
 }
 
@@ -194,16 +190,20 @@ public sealed class ModelOption
 public sealed class FallbackModelEditor : ObservableObject
 {
     private string _name;
-    private string _unitPriceText = string.Empty;
 
     public FallbackModelEditor(FallbackModel model)
     {
         Model = model;
         _name = model.Name;
-        _unitPriceText = model.EstimatedUnitPrice?.ToString() ?? string.Empty;
+        // P2-15：解析类字段一律走 FieldEditor<T>（解析失败显式报错，不再静默置 null）
+        UnitPrice = new FieldEditor<decimal?>("预估单价",
+            model.EstimatedUnitPrice?.ToString() ?? string.Empty, FieldParsers.DecimalOrNull);
     }
 
     public FallbackModel Model { get; }
+
+    /// <summary>预估单价（元/次）编辑字段（P2-15）。</summary>
+    public FieldEditor<decimal?> UnitPrice { get; }
 
     public string Name
     {
@@ -211,16 +211,14 @@ public sealed class FallbackModelEditor : ObservableObject
         set => SetProperty(ref _name, value);
     }
 
-    public string UnitPriceText
-    {
-        get => _unitPriceText;
-        set => SetProperty(ref _unitPriceText, value);
-    }
-
     public void Apply()
     {
         Model.Name = Name;
-        Model.EstimatedUnitPrice = decimal.TryParse(UnitPriceText, out var price) ? price : null;
+        // P2-15：解析失败时保留原值（不再静默置 null），错误态经 FieldEditor.Error 对用户可见
+        if (!UnitPrice.HasError)
+        {
+            Model.EstimatedUnitPrice = UnitPrice.Value;
+        }
     }
 }
 
@@ -382,7 +380,6 @@ public sealed class NotificationRuleEditor : ObservableObject
     private bool _needsAttention;
     private string _webhookUrl = string.Empty;
     private string _smtpHost = string.Empty;
-    private string _smtpPortText = "587";
     private string _smtpFrom = string.Empty;
     private string _smtpToText = string.Empty;
     private string _smtpCredentialRef = string.Empty;
@@ -398,10 +395,12 @@ public sealed class NotificationRuleEditor : ObservableObject
         _needsAttention = rule.Triggers.Contains(NotifyTrigger.NeedsAttention);
         _webhookUrl = rule.WebhookUrl ?? string.Empty;
         _quietHours = rule.QuietHours ?? string.Empty;
+        // P2-15：解析类字段一律走 FieldEditor<T>（解析失败显式报错，不再静默回落 587）
+        SmtpPort = new FieldEditor<int?>("SMTP 端口",
+            rule.Smtp?.Port.ToString() ?? string.Empty, FieldParsers.IntOrNull);
         if (rule.Smtp is { } smtp)
         {
             _smtpHost = smtp.Host ?? string.Empty;
-            _smtpPortText = smtp.Port.ToString();
             _smtpFrom = smtp.From ?? string.Empty;
             _smtpToText = string.Join(", ", smtp.To);
             _smtpCredentialRef = smtp.CredentialRef ?? string.Empty;
@@ -442,7 +441,8 @@ public sealed class NotificationRuleEditor : ObservableObject
 
     public string SmtpHost { get => _smtpHost; set => SetProperty(ref _smtpHost, value); }
 
-    public string SmtpPortText { get => _smtpPortText; set => SetProperty(ref _smtpPortText, value); }
+    /// <summary>SMTP 端口编辑字段（P2-15；留空回落 587，非空且无法解析则显式报错）。</summary>
+    public FieldEditor<int?> SmtpPort { get; }
 
     public string SmtpFrom { get => _smtpFrom; set => SetProperty(ref _smtpFrom, value); }
 
@@ -486,7 +486,8 @@ public sealed class NotificationRuleEditor : ObservableObject
             smtp = new SmtpConfig
             {
                 Host = _smtpHost.Trim(),
-                Port = int.TryParse(_smtpPortText, out var p) ? p : 587,
+                // P2-15：留空回落 587；无法解析时同样回落但 HasError 已对用户显式呈现（不再静默）
+                Port = SmtpPort.Value ?? 587,
                 From = string.IsNullOrWhiteSpace(_smtpFrom) ? null : _smtpFrom.Trim(),
                 To = _smtpToText
                     .Split(RecipientSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
