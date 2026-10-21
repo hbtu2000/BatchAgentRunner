@@ -209,14 +209,14 @@ public sealed class TaskItem : INotifyPropertyChanged
         StartedAt = StartedAt,
         FinishedAt = FinishedAt,
         DurationSeconds = DurationSeconds,
-        Workflow = Workflow?.Clone(),
+        Workflow = Workflow is { } wf ? wf.Clone() : null,
         DependsOn = DependsOn is null ? null : new List<string>(DependsOn),
-        ProjectRef = ProjectRef?.Clone(),
-        TemplateVars = TemplateVars?.Clone(),
+        ProjectRef = ProjectRef is { } pr ? pr.Clone() : null,
+        TemplateVars = TemplateVars is { } tv ? tv.Clone() : null,
         MaxLoops = MaxLoops,
         BatchSize = BatchSize,
         StageResults = StageResults is null ? null : new List<StageResult>(StageResults),
-        Session = Session?.Clone()
+        Session = Session is { } s ? s.Clone() : null
     };
 
     private void SetField<T>(ref T field, T value, [CallerMemberName] string? name = null)

@@ -5,8 +5,10 @@ namespace BatchAgentRunner.Core.Domain;
 /// <summary>
 /// 工作流定义（二期：把「单条指令」升级为「多阶段流程」）。
 /// 一个任务可携带 Workflow 取代单条 Instruction；两个阶段之间通过阶段产出变量 `{output:stageId}` 传递。
+/// P2-6 偿还：class + 手写 Clone 改 record + <c>with</c> 表达式——新增字段自动进入拷贝，
+/// 消除「改字段必漏改 Clone」。
 /// </summary>
-public partial class WorkflowSpec
+public partial record WorkflowSpec
 {
     [JsonPropertyName("name")]
     public string Name { get; set; } = "未命名工作流";
@@ -39,7 +41,7 @@ public enum WorkflowOnFailure
 }
 
 /// <summary>工作流单个阶段。</summary>
-public partial class WorkflowStage
+public partial record WorkflowStage
 {
     [JsonPropertyName("id")]
     public string Id { get; set; } = string.Empty;
@@ -73,7 +75,7 @@ public partial class WorkflowStage
 }
 
 /// <summary>阶段执行器覆盖项（可选字段，缺省继承任务/全局配置）。</summary>
-public partial class StageExecutorOverride
+public partial record StageExecutorOverride
 {
     [JsonPropertyName("account_id")]
     public string? AccountId { get; set; }
@@ -89,7 +91,7 @@ public partial class StageExecutorOverride
 }
 
 /// <summary>质量门禁（二期：阶段间卡点）。</summary>
-public partial class QualityGate
+public partial record QualityGate
 {
     [JsonPropertyName("kind")]
     public GateKind Kind { get; set; } = GateKind.Command;
@@ -181,7 +183,7 @@ public sealed class StageResult
 }
 
 /// <summary>项目级任务关联（二期：任务关联代码仓库 / 分支 / PR）。</summary>
-public partial class ProjectRef
+public partial record ProjectRef
 {
     [JsonPropertyName("repo_path")]
     public string RepoPath { get; set; } = string.Empty;
@@ -230,7 +232,7 @@ public sealed class GitConfig
 }
 
 /// <summary>模板变量实例（溯源用，不参与执行逻辑）。</summary>
-public partial class TemplateVars
+public partial record TemplateVars
 {
     [JsonPropertyName("template_id")]
     public string? TemplateId { get; set; }
@@ -240,7 +242,7 @@ public partial class TemplateVars
 }
 
 /// <summary>任务生成模板（REQ-016：变量批量生成任务清单）。</summary>
-public sealed partial class TemplateSpec
+public sealed partial record TemplateSpec
 {
     [JsonPropertyName("id")]
     public string Id { get; set; } = string.Empty;
@@ -271,7 +273,7 @@ public sealed partial class TemplateSpec
 }
 
 /// <summary>模板变量定义。</summary>
-public sealed class TemplateVarDef
+public sealed record TemplateVarDef
 {
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
@@ -390,7 +392,7 @@ public sealed class SmtpConfig
 }
 
 /// <summary>断点会话恢复句柄（方案 b；默认关，回退方案 a）。</summary>
-public sealed class SessionHandle
+public sealed record SessionHandle
 {
     [JsonPropertyName("adapter_kind")]
     public string AdapterKind { get; set; } = string.Empty;
@@ -403,110 +405,49 @@ public sealed class SessionHandle
 
     [JsonPropertyName("last_touched_at")]
     public DateTimeOffset? LastTouchedAt { get; set; }
-
-    public SessionHandle Clone() => new()
-    {
-        AdapterKind = AdapterKind,
-        SessionId = SessionId,
-        AccountId = AccountId,
-        LastTouchedAt = LastTouchedAt
-    };
 }
 
-// ---------------- Clone 辅助（TaskItem.Clone 使用） ----------------
+// ---------------- Clone 辅助（TaskItem.Clone 使用；P2-6：record + with 表达式，新增字段自动进入拷贝） ----------------
+// 记录类型保留编译器生成的 Clone 成员名（CS8859 禁止在记录内再声明 Clone），故以扩展方法承载深拷贝。
 
-public partial class WorkflowSpec
+/// <summary>工作流域模型的深拷贝（P2-6 偿还：原 8 份手写 <c>new() { 逐字段赋值 }</c> 收敛为 with 表达式——新增字段自动进入拷贝）。</summary>
+public static class WorkflowTypeClones
 {
-    public WorkflowSpec Clone() => new()
-    {
-        Name = Name,
-        Stages = Stages.Select(s => s.Clone()).ToList(),
-        OnFailure = OnFailure,
-        FreshSessionPerStage = FreshSessionPerStage,
-        DefaultMaxLoops = DefaultMaxLoops
-    };
-}
+    /// <summary>工作流深拷贝：阶段列表逐层深拷（编辑副本不得与原模板共享可变节点）。</summary>
+    public static WorkflowSpec Clone(this WorkflowSpec spec) =>
+        spec with { Stages = spec.Stages.Select(s => s.Clone()).ToList() };
 
-public partial class TemplateSpec
-{
-    public TemplateSpec Clone() => new()
+    /// <summary>模板深拷贝：变量列表 / 文件清单 / 内嵌工作流逐层深拷。</summary>
+    public static TemplateSpec Clone(this TemplateSpec spec) => spec with
     {
-        Id = Id,
-        Name = Name,
-        InstructionTemplate = InstructionTemplate,
-        Vars = Vars.Select(v => new TemplateVarDef
+        Vars = spec.Vars.Select(v => v with
         {
-            Name = v.Name,
-            Default = v.Default,
-            Source = v.Source,
             Values = v.Values is null ? null : new List<string>(v.Values)
         }).ToList(),
-        FileGlob = FileGlob is null ? null : new List<string>(FileGlob),
-        Workflow = Workflow?.Clone(),
-        DefaultBatchSize = DefaultBatchSize,
-        ChainDependency = ChainDependency
+        FileGlob = spec.FileGlob is null ? null : new List<string>(spec.FileGlob),
+        Workflow = spec.Workflow is { } wf ? wf.Clone() : null
     };
-}
 
-public partial class WorkflowStage
-{
-    public WorkflowStage Clone() => new()
+    /// <summary>阶段深拷贝：执行器覆盖与质量门禁逐层深拷。</summary>
+    public static WorkflowStage Clone(this WorkflowStage stage) => stage with
     {
-        Id = Id,
-        Name = Name,
-        InstructionTemplate = InstructionTemplate,
-        Executor = Executor?.Clone(),
-        Gate = Gate?.Clone(),
-        MaxLoops = MaxLoops,
-        OnGateFail = OnGateFail,
-        DependsOnStage = DependsOnStage
+        Executor = stage.Executor is { } ex ? ex.Clone() : null,
+        Gate = stage.Gate is { } g ? g.Clone() : null
     };
-}
 
-public partial class StageExecutorOverride
-{
-    public StageExecutorOverride Clone() => new()
-    {
-        AccountId = AccountId,
-        Model = Model,
-        ExpertId = ExpertId,
-        Workspace = Workspace
-    };
-}
+    /// <summary>叶子节点深拷贝（字段均为值 / 不可变字符串，with 空修改即完整拷贝）。</summary>
+    public static StageExecutorOverride Clone(this StageExecutorOverride executor) => executor with { };
 
-public partial class QualityGate
-{
-    public QualityGate Clone() => new()
-    {
-        Kind = Kind,
-        Command = Command,
-        ExpectedExitCode = ExpectedExitCode,
-        OutputMatchRegex = OutputMatchRegex,
-        ReviewChecklist = ReviewChecklist,
-        ReviewExpertId = ReviewExpertId,
-        ManualApproval = ManualApproval,
-        FailMessageTemplate = FailMessageTemplate
-    };
-}
+    /// <summary>叶子节点深拷贝。</summary>
+    public static QualityGate Clone(this QualityGate gate) => gate with { };
 
-public partial class ProjectRef
-{
-    public ProjectRef Clone() => new()
-    {
-        RepoPath = RepoPath,
-        BaseBranch = BaseBranch,
-        TaskBranch = TaskBranch,
-        PrTargetBranch = PrTargetBranch,
-        AutoCreateBranch = AutoCreateBranch,
-        AutoOpenPr = AutoOpenPr
-    };
-}
+    /// <summary>叶子节点深拷贝。</summary>
+    public static ProjectRef Clone(this ProjectRef projectRef) => projectRef with { };
 
-public partial class TemplateVars
-{
-    public TemplateVars Clone() => new()
-    {
-        TemplateId = TemplateId,
-        Values = new Dictionary<string, string>(Values)
-    };
+    /// <summary>变量实例深拷贝：字典另行拷贝，避免与原实例共享。</summary>
+    public static TemplateVars Clone(this TemplateVars vars) =>
+        vars with { Values = new Dictionary<string, string>(vars.Values) };
+
+    /// <summary>叶子节点深拷贝。</summary>
+    public static SessionHandle Clone(this SessionHandle handle) => handle with { };
 }
