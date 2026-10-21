@@ -617,6 +617,8 @@ public sealed class BatchEngine : IBatchEngine
             return Task.CompletedTask;
         },
         EnsureCredential = _vault is not null ? EnsureLiveCredentialAsync : null,
+        WaitForRestore = WaitForRestoreAsync,
+        ResolveWorkspacePath = ResolveWorkspacePath,
         SessionPolicy = _sessionPolicy,
         DefaultMaxGateLoops = _options.DefaultMaxGateLoops
     };
@@ -703,11 +705,9 @@ public sealed class BatchEngine : IBatchEngine
         }
     }
 
-    /// <summary>是否对「额度耗尽」场景放开等待上限（无限等待直到重置）。</summary>
+    /// <summary>是否对「额度耗尽」场景放开等待上限（无限等待直到重置）。判定收敛于 <see cref="QuotaWaitPolicy"/>（P2-1 偿还：原三处重复谓词）。</summary>
     private bool IsQuotaUnboundedWait(RestoreCandidate? candidate, DateTimeOffset now) =>
-        _options.WaitForQuotaReset
-        && candidate is { WaitKind: WaitKind.QuotaReset }
-        && _matrix.AllUnavailablePurelyByQuota(now, _evaluator);
+        QuotaWaitPolicy.IsUnboundedQuotaWait(_options, _matrix, _evaluator, candidate, now);
 
     private static string DescribeWaiting(RestoreCandidate candidate) => candidate.WaitKind switch
     {

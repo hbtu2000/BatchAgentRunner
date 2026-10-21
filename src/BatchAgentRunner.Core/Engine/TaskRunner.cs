@@ -537,11 +537,9 @@ public sealed class TaskRunner : ITaskRunner
         }
     }
 
-    /// <summary>是否对「额度耗尽」场景放开等待上限（无限等待直到重置）。</summary>
+    /// <summary>是否对「额度耗尽」场景放开等待上限（无限等待直到重置）。判定收敛于 <see cref="QuotaWaitPolicy"/>（P2-1 偿还：原三处重复谓词）。</summary>
     private bool IsQuotaUnboundedWait(RestoreCandidate? candidate, DateTimeOffset now) =>
-        _ctx.Options.WaitForQuotaReset
-        && candidate is { WaitKind: WaitKind.QuotaReset }
-        && _ctx.MatrixProvider().AllUnavailablePurelyByQuota(now, _ctx.Evaluator);
+        QuotaWaitPolicy.IsUnboundedQuotaWait(_ctx.Options, _ctx.MatrixProvider(), _ctx.Evaluator, candidate, now);
 
     // ---------------- 兜底（REQ-004b） ----------------
 

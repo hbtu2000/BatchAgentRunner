@@ -31,7 +31,9 @@ public class WorkflowExecutorTests
     };
 
     private static WorkflowExecutor Build(RunOptions options, IAgentCliAdapter adapter, FakeClock clock,
-        GateEvaluator? gateEvaluator = null) =>
+        GateEvaluator? gateEvaluator = null,
+        Func<RestoreCandidate, string?, CancellationToken, Task<bool>>? waitForRestore = null,
+        Func<string?, string?>? resolveWorkspacePath = null) =>
         new(new WorkflowEngineContext
         {
             Options = options,
@@ -43,6 +45,8 @@ public class WorkflowExecutorTests
             Clock = clock,
             Logger = new NullRunLogger(),
             GateEvaluator = gateEvaluator ?? new GateEvaluator(new NullProcessRunner()),
+            WaitForRestore = waitForRestore,
+            ResolveWorkspacePath = resolveWorkspacePath,
             DefaultMaxGateLoops = options.DefaultMaxGateLoops
         });
 
@@ -54,9 +58,15 @@ public class WorkflowExecutorTests
     {
         public int ExitCode { get; init; }
 
+        /// <summary>最近一次运行的工作目录（P2-2：验证门禁运行目录走引擎工作空间解析结果）。</summary>
+        public string? LastWorkingDirectory { get; private set; }
+
         public Task<(int ExitCode, string Stdout, string Stderr)> RunAsync(
-            string fileName, string arguments, string? workingDirectory, CancellationToken cancellationToken) =>
-            Task.FromResult((ExitCode, string.Empty, string.Empty));
+            string fileName, string arguments, string? workingDirectory, CancellationToken cancellationToken)
+        {
+            LastWorkingDirectory = workingDirectory;
+            return Task.FromResult((ExitCode, string.Empty, string.Empty));
+        }
     }
 
     [Fact]
@@ -319,5 +329,100 @@ public class WorkflowExecutorTests
         await executor.RunAsync(task, default);
 
         Assert.Contains("m2", used);
+    }
+
+    [Fact]
+    public async Task 无可用组合_等待恢复经引擎注入实现_恢复后续跑完成()
+    {
+        // P2-1：工作流路径的「等待恢复」与单任务路径共用引擎实现（取消唤醒/暂停统计随引擎），
+        // 此处以注入桩验证「等待返回 true 后续跑」契约——原私有时钟轮询副本已删除。
+        var options = Options();
+        options.ModelCandidates = new List<ModelCandidate>
+        {
+            new() { Name = "m1", FreeTimeWindow = new FreeTimeWindow(new TimeOnly(13, 0), new TimeOnly(14, 0)) }
+        };
+        var clock = new FakeClock(Noon);
+        var adapter = new MockAdapter((_, _) => MockStep.Ok("完成"), TimeSpan.Zero, clock);
+        var waited = false;
+        var executor = Build(options, adapter, clock,
+            waitForRestore: (_, _, _) =>
+            {
+                waited = true;
+                clock.Advance(TimeSpan.FromHours(1)); // 推进到 13:00 免费时段内
+                return Task.FromResult(true);
+            });
+        var task = new TaskItem
+        {
+            Id = "wf-wait",
+            Instruction = "x",
+            Workflow = new WorkflowSpec
+            {
+                Name = "等待恢复",
+                Stages = new List<WorkflowStage> { Stage("s1", "做事") }
+            }
+        };
+
+        var outcome = await executor.RunAsync(task, default);
+
+        Assert.True(waited);
+        Assert.Equal(TaskStatus.Done, outcome.FinalStatus);
+    }
+
+    [Fact]
+    public async Task 无可用组合_未注入等待能力_判中断而非静默挂起()
+    {
+        var options = Options();
+        options.ModelCandidates = new List<ModelCandidate>
+        {
+            new() { Name = "m1", FreeTimeWindow = new FreeTimeWindow(new TimeOnly(13, 0), new TimeOnly(14, 0)) }
+        };
+        var adapter = new MockAdapter((_, _) => MockStep.Ok(), TimeSpan.Zero, new FakeClock(Noon));
+        var executor = Build(options, adapter, new FakeClock(Noon));
+        var task = new TaskItem
+        {
+            Id = "wf-nowait",
+            Instruction = "x",
+            Workflow = new WorkflowSpec
+            {
+                Name = "无等待能力",
+                Stages = new List<WorkflowStage> { Stage("s1", "做事") }
+            }
+        };
+
+        var outcome = await executor.RunAsync(task, default);
+
+        Assert.Equal(TaskStatus.Interrupted, outcome.FinalStatus);
+    }
+
+    [Fact]
+    public async Task 工作空间解析经引擎注入_门禁运行目录用解析结果而非当前目录()
+    {
+        // P2-2：工作流路径的「工作空间解析」与单任务路径共用引擎实现（同名不同义的双实现已删除）。
+        var options = Options();
+        options.Workspaces = new List<WorkspaceConfig> { new() { Name = "ws1", Path = @"C:\ws1" } };
+        var clock = new FakeClock(Noon);
+        var gateRunner = new FakeProcessRunner { ExitCode = 0 };
+        var executor = Build(options, new MockAdapter((_, _) => MockStep.Ok(), TimeSpan.Zero, clock), clock,
+            new GateEvaluator(gateRunner),
+            resolveWorkspacePath: ws => ws == "ws1" ? @"C:\ws1" : null);
+        var task = new TaskItem
+        {
+            Id = "wf-ws",
+            Instruction = "x",
+            Workspace = "ws1",
+            Workflow = new WorkflowSpec
+            {
+                Name = "工作空间",
+                Stages = new List<WorkflowStage>
+                {
+                    Stage("s1", "做事", new QualityGate { Kind = GateKind.Command, Command = "exit 0" })
+                }
+            }
+        };
+
+        var outcome = await executor.RunAsync(task, default);
+
+        Assert.Equal(TaskStatus.Done, outcome.FinalStatus);
+        Assert.Equal(@"C:\ws1", gateRunner.LastWorkingDirectory);
     }
 }

@@ -25,6 +25,21 @@ public sealed class WorkflowEngineContext
     public Func<Task>? Persist { get; init; }
     public Func<string, string, AgentUsage?, Task>? TrackUsage { get; init; }
     public Func<TaskItem, AgentCombo, CancellationToken, Task<bool>>? EnsureCredential { get; init; }
+
+    /// <summary>
+    /// 等待恢复能力（P2-1 偿还：原 <c>WorkflowExecutor</c> 自带一份时钟轮询等待，与引擎的
+    /// <c>WaitForRestoreAsync</c> 语义分叉——工作流路径无取消唤醒、无暂停时长统计。
+    /// 现由引擎注入同一实现（单任务路径同款），等待语义全仓单一；未注入（测试直构）时判定为「无法等待」。
+    /// </summary>
+    public Func<RestoreCandidate, string?, CancellationToken, Task<bool>>? WaitForRestore { get; init; }
+
+    /// <summary>
+    /// 工作空间解析（P2-1/P2-2 偿还：原 <c>WorkflowExecutor</c> 自带一份解析，无法解析时回落 CWD，
+    /// 与引擎 <c>ResolveWorkspacePath</c>「回落 null 由调用方决定」同名不同义）。现由引擎注入同一实现；
+    /// 未注入时回落 <see cref="Directory.GetCurrentDirectory"/>（与原语义一致）。
+    /// </summary>
+    public Func<string?, string?>? ResolveWorkspacePath { get; init; }
+
     public SessionResumePolicy SessionPolicy { get; init; } = new(false);
     public int DefaultMaxGateLoops { get; init; } = 3;
 }
@@ -381,53 +396,20 @@ public sealed class WorkflowExecutor
     }
 
     private bool IsQuotaUnboundedWait(RestoreCandidate? candidate, DateTimeOffset now) =>
-        _ctx.Options.WaitForQuotaReset
-        && candidate is { WaitKind: WaitKind.QuotaReset }
-        && _ctx.Matrix.AllUnavailablePurelyByQuota(now, _ctx.Evaluator);
+        QuotaWaitPolicy.IsUnboundedQuotaWait(_ctx.Options, _ctx.Matrix, _ctx.Evaluator, candidate, now);
 
-    private async Task<bool> WaitForRestoreAsync(RestoreCandidate candidate, string? taskId, CancellationToken ct)
-    {
-        while (true)
-        {
-            if (ct.IsCancellationRequested)
-            {
-                return false;
-            }
+    /// <summary>
+    /// 等待恢复（P2-1 偿还）：委托引擎注入的等待逻辑（含取消唤醒 / 暂停时长统计 / 批量事件），
+    /// 与原私有时钟轮询副本的行为分叉随本删除消除；未注入时判定无法等待（按中断处理）。
+    /// </summary>
+    private Task<bool> WaitForRestoreAsync(RestoreCandidate candidate, string? taskId, CancellationToken ct) =>
+        _ctx.WaitForRestore is { } wait
+            ? wait(candidate, taskId, ct)
+            : Task.FromResult(false);
 
-            var now = _ctx.Clock.Now;
-            if (now >= candidate.RestoreAt)
-            {
-                return true;
-            }
-
-            if (_ctx.Matrix.SelectFirst(now, _ctx.Evaluator).Found)
-            {
-                return true;
-            }
-
-            var remaining = candidate.RestoreAt - now;
-            var slice = remaining > TimeSpan.FromSeconds(2) ? TimeSpan.FromSeconds(2) : remaining;
-            await _ctx.Clock.DelayAsync(slice, ct).ConfigureAwait(false);
-        }
-    }
-
-    private string ResolveWorkspace(TaskItem task)
-    {
-        var ws = task.Workspace ?? _ctx.Options.DefaultWorkspace;
-        if (string.IsNullOrWhiteSpace(ws))
-        {
-            return Directory.GetCurrentDirectory();
-        }
-
-        var named = _ctx.Options.Workspaces.FirstOrDefault(w =>
-            string.Equals(w.Name, ws, StringComparison.OrdinalIgnoreCase));
-        if (named is not null)
-        {
-            return named.Path;
-        }
-
-        return Path.IsPathRooted(ws) ? ws : Directory.GetCurrentDirectory();
-    }
+    private string ResolveWorkspace(TaskItem task) =>
+        _ctx.ResolveWorkspacePath?.Invoke(task.Workspace ?? _ctx.Options.DefaultWorkspace)
+        ?? Directory.GetCurrentDirectory();
 
     private static void SeedTaskFields(WorkflowRenderContext ctx, TaskItem task)
     {
