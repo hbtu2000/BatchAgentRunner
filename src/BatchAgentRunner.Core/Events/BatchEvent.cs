@@ -49,6 +49,12 @@ public sealed record BatchEvent(
     string? Account = null,
     string? Model = null)
 {
+    /// <summary>
+    /// 批次关联标识（ARCH P-10 / A-8）：由 <see cref="Engine.BatchEngine"/> 在广播时统一填充，
+    /// 同一次运行的事件共享同一个 RunId，日志与指标据此聚合。
+    /// </summary>
+    public string? RunId { get; init; }
+
     public TaskItem? Task { get; init; }
 
     public BatchStatus? BatchStatus { get; init; }

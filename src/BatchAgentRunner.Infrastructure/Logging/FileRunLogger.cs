@@ -1,117 +1,320 @@
 using System.Globalization;
 using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Events;
+using BatchAgentRunner.Core.Observability;
 using TaskStatus = BatchAgentRunner.Core.Domain.TaskStatus;
 
 namespace BatchAgentRunner.Infrastructure.Logging;
 
 /// <summary>
 /// 运行日志实现（REQ-014 + PRD 第 11 章「本地工具以运行日志替代埋点」）。
-/// 安全约定：不写入凭据明文。
+/// ARCH P-10 收口：结构化接线 + RunId 关联 + 统一脱敏。
 /// </summary>
+/// <remarks>
+/// 治理前十余个 <c>Write*</c> 方法各自拼一行文本直接刷盘：事件名、任务、账号、明细全挤在字符串里，
+/// 日志只能 <c>tail</c> 看，既不能按批次关联、也不能按字段采集，脱敏更无从统一施加。
+/// 收口后所有写入一律先落成 <see cref="RunLogEntry"/>，再由
+/// <see cref="Write(RunLogEntry)"/> 这一<b>唯一落盘点</b>渲染出两路输出：
+/// <list type="bullet">
+///   <item><b>文本</b>（<c>run-*.log</c>）：人读 tail，正文与收口前逐字一致；</item>
+///   <item><b>结构化</b>（<c>run-*.jsonl</c>）：机器采集，带 <c>run_id / task_id / account / model / fields</c>。</item>
+/// </list>
+/// 安全约定：正文字段在渲染入口经 <see cref="SecretMasker"/> 统一脱敏，写入点无法绕过。
+/// </remarks>
 public sealed class FileRunLogger : IRunLogger
 {
     /// <summary>P2-24：INFO 级批量落盘阈值——原每条事件 AutoFlush 同步刷盘，
     /// CLI 高频输出（TaskOutput 分片）下syscall 风暴；现按批落盘，重要级别仍即时刷盘。</summary>
     private const int FlushBatchLines = 64;
 
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+    };
+
     private readonly object _sync = new();
     private readonly StreamWriter _writer;
+    private readonly StreamWriter _structuredWriter;
     private int _pendingLines;
     private bool _disposed;
 
-    public FileRunLogger(string? taskFilePath = null, string? logDirectory = null)
+    public FileRunLogger(string? taskFilePath = null, string? logDirectory = null, string? runId = null)
     {
         var dir = logDirectory ?? (!string.IsNullOrWhiteSpace(taskFilePath)
             ? Path.Combine(Path.GetDirectoryName(Path.GetFullPath(taskFilePath)) ?? ".", "runs")
             : AppPaths.RunsDirectory);
 
         Directory.CreateDirectory(dir);
-        LogFilePath = Path.Combine(dir, $"run-{DateTime.Now:yyyyMMddHHmmss}.log");
+        RunId = string.IsNullOrWhiteSpace(runId) ? RunLogEntry.NewRunId() : runId.Trim();
+
+        var stamp = DateTime.Now.ToString("yyyyMMddHHmmss", CultureInfo.InvariantCulture);
+        LogFilePath = Path.Combine(dir, $"run-{stamp}.log");
+        StructuredLogFilePath = Path.Combine(dir, $"run-{stamp}.jsonl");
         _writer = new StreamWriter(new FileStream(LogFilePath, FileMode.Create, FileAccess.Write, FileShare.Read),
             new UTF8Encoding(false));
+        _structuredWriter = new StreamWriter(
+            new FileStream(StructuredLogFilePath, FileMode.Create, FileAccess.Write, FileShare.Read),
+            new UTF8Encoding(false));
 
-        Write("INFO", $"运行日志开始：{DateTime.Now:yyyy-MM-dd HH:mm:ss}");
+        Write(new RunLogEntry(RunLogLevels.Info, LogEventNames.RunStarted,
+            $"运行日志开始：{DateTime.Now:yyyy-MM-dd HH:mm:ss}")
+        { RunId = RunId, Flush = true });
     }
 
     public string LogFilePath { get; }
 
+    public string StructuredLogFilePath { get; }
+
+    public string RunId { get; }
+
     public void Write(string level, string message) =>
-        WriteLine($"[{DateTime.Now:HH:mm:ss}] {level,-5} {message}", IsImportantLevel(level));
+        Write(new RunLogEntry(RunLogLevels.Normalize(level), string.Empty, message));
 
     public void Write(BatchEvent ev)
     {
+        // 任务输出（TaskOutput）改由适配器在 CliAdapterBase.ExecuteAsync 的 onOut 回调里
+        // 经 WriteTaskOutput 实时落盘（即时刷盘、带时间戳），此处跳过以免与适配器直写重复。
+        if (ev.Kind == BatchEventKind.TaskOutput)
+        {
+            return;
+        }
+
         if (string.IsNullOrEmpty(ev.Message))
         {
             return;
         }
 
-        // 危险操作点醒目标记（REQ-010b）
-        var prefix = ev.IsDangerous ? "*** 高危 *** " : string.Empty;
-        var level = MapLevel(ev.Kind);
-        WriteLine($"[{DateTime.Now:HH:mm:ss}] {level,-5} {prefix}[{ev.Kind}] {ev.Message}", IsImportantLevel(level));
+        Write(new RunLogEntry(RunLogLevels.Normalize(MapLevel(ev.Kind)), LogEventNames.FromKind(ev.Kind), ev.Message)
+        {
+            At = ev.At,
+            TaskId = ev.TaskId,
+            Account = ev.Account,
+            Model = ev.Model,
+            // 危险操作点醒目标记（REQ-010b）
+            IsDangerous = ev.IsDangerous,
+            Fields = BuildFields(ev)
+        });
+    }
+
+    /// <summary>
+    /// 任务执行期间逐行实时落盘（REQ：实时可观测）。即时刷盘，使 runs/run-*.log 可作为「实时 tail」
+    /// 观测 CLI stream-json 输出，不再依赖批次结束才批量刷盘（修复 18:44 批次「看似无实时输出」问题）。
+    /// 仅由 CliAdapterBase.ExecuteAsync 任务执行路径调用；预检/列模型路径不触发。
+    /// </summary>
+    public void WriteTaskOutput(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        Write(new RunLogEntry(RunLogLevels.Info, LogEventNames.TaskOutput, message) { Flush = true });
     }
 
     public void WriteTaskStarted(string taskId, string? account, string? model, string? expert, string? workspace) =>
-        Write("INFO", $"task_started 任务 {taskId} | 账号 {account ?? "-"} | 模型 {model ?? "-"} | 专家 {expert ?? "-"} | 空间 {workspace ?? "-"}");
+        Write(new RunLogEntry(RunLogLevels.Info, LogEventNames.TaskStarted,
+            $"任务 {taskId} | 账号 {account ?? "-"} | 模型 {model ?? "-"} | 专家 {expert ?? "-"} | 空间 {workspace ?? "-"}")
+        { TaskId = taskId, Account = account, Model = model });
 
     public void WriteTaskFinished(string taskId, TaskStatus status, double durationSeconds, int retryCount) =>
-        Write("INFO", $"task_finished 任务 {taskId} | 状态 {status} | 耗时 {durationSeconds.ToString("0.###", CultureInfo.InvariantCulture)}s | 重试 {retryCount}");
+        Write(new RunLogEntry(RunLogLevels.Info, LogEventNames.TaskFinished,
+            $"任务 {taskId} | 状态 {status} | 耗时 {durationSeconds.ToString("0.###", CultureInfo.InvariantCulture)}s | 重试 {retryCount}")
+        {
+            TaskId = taskId,
+            Fields = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["status"] = status.ToString(),
+                ["duration_seconds"] = RunLogEntry.Num(durationSeconds),
+                ["retry_count"] = retryCount.ToString(CultureInfo.InvariantCulture)
+            }
+        });
 
     public void WriteModelSwitched(string? fromAccount, string? fromModel, string? toAccount, string? toModel,
         string reason, string? taskId) =>
-        Write("WARN", $"model_switched 任务 {taskId ?? "-"} | {fromAccount}+{fromModel} → {toAccount}+{toModel} | 原因 {reason}");
+        Write(new RunLogEntry(RunLogLevels.Warn, LogEventNames.ModelSwitched,
+            $"任务 {taskId ?? "-"} | {fromAccount}+{fromModel} → {toAccount}+{toModel} | 原因 {reason}")
+        { TaskId = taskId, Account = toAccount, Model = toModel });
 
     public void WriteWindowSkipped(string model, DateTimeOffset? nextWindowStart) =>
-        Write("INFO", $"model_window_skipped 模型 {model} | 下一可用时段 {nextWindowStart?.ToString("yyyy-MM-dd HH:mm") ?? "-"}");
+        Write(new RunLogEntry(RunLogLevels.Info, LogEventNames.WindowSkipped,
+            $"模型 {model} | 下一可用时段 {nextWindowStart?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? "-"}")
+        { Model = model });
 
     public void WriteCooldownSkipped(string account, string model, DateTimeOffset resetAt) =>
-        Write("INFO", $"model_cooldown_skipped {account} × {model} | 预计恢复 {resetAt:yyyy-MM-dd HH:mm}");
+        Write(new RunLogEntry(RunLogLevels.Info, LogEventNames.CooldownSkipped,
+            $"{account} × {model} | 预计恢复 {resetAt.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)}")
+        { Account = account, Model = model });
 
     public void WriteQuotaResetRecorded(string account, string model, DateTimeOffset resetAt, CooldownSource source) =>
-        Write("WARN", $"quota_reset_recorded {account} × {model} | 重置时间 {resetAt:yyyy-MM-dd HH:mm} | 来源 {(source == CooldownSource.CliParsed ? "CLI 解析" : "默认冷却")}");
+        Write(new RunLogEntry(RunLogLevels.Warn, LogEventNames.QuotaResetRecorded,
+            $"{account} × {model} | 重置时间 {resetAt.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)} | 来源 {(source == CooldownSource.CliParsed ? "CLI 解析" : "默认冷却")}")
+        { Account = account, Model = model });
 
     public void WriteFallbackUsed(string taskId, string model, decimal cost, CostBasis basis) =>
-        Write("WARN", $"fallback_used 任务 {taskId} | 兜底模型 {model} | 花费 ¥{cost.ToString("0.####", CultureInfo.InvariantCulture)}（{(basis == CostBasis.Measured ? "实测" : "估算")}）");
+        Write(new RunLogEntry(RunLogLevels.Warn, LogEventNames.FallbackUsed,
+            $"任务 {taskId} | 兜底模型 {model} | 花费 ¥{cost.ToString("0.####", CultureInfo.InvariantCulture)}（{(basis == CostBasis.Measured ? "实测" : "估算")}）")
+        {
+            TaskId = taskId,
+            Model = model,
+            Fields = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["cost"] = RunLogEntry.Num(cost),
+                ["cost_basis"] = basis.ToString()
+            }
+        });
 
     public void WriteBatchWaiting(DateTimeOffset resumeAt, string? target, WaitKind kind) =>
-        Write("WARN", $"batch_waiting_window 等待至 {resumeAt:yyyy-MM-dd HH:mm} | 目标 {target ?? "-"} | 类型 {kind}");
+        Write(new RunLogEntry(RunLogLevels.Warn, LogEventNames.BatchWaiting,
+            $"等待至 {resumeAt.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)} | 目标 {target ?? "-"} | 类型 {kind}")
+        { Fields = new Dictionary<string, string>(StringComparer.Ordinal) { ["wait_kind"] = kind.ToString() } });
 
     public void WriteBatchBlocked(string reason, int pendingCount) =>
-        Write("ERROR", $"batch_blocked 原因：{reason} | 待续跑 {pendingCount} 条");
+        Write(new RunLogEntry(RunLogLevels.Error, LogEventNames.BatchBlocked,
+            $"原因：{reason} | 待续跑 {pendingCount} 条"));
 
-    public void WriteBatchResumed(string reason) => Write("INFO", $"batch_resumed {reason}");
+    public void WriteBatchResumed(string reason) =>
+        Write(new RunLogEntry(RunLogLevels.Info, LogEventNames.BatchResumed, reason));
 
     public void WriteBatchTerminated(int doneCount, int unfinishedCount) =>
-        Write("WARN", $"batch_terminated 已完成 {doneCount} 条 | 未完成 {unfinishedCount} 条");
+        Write(new RunLogEntry(RunLogLevels.Warn, LogEventNames.BatchTerminated,
+            $"已完成 {doneCount} 条 | 未完成 {unfinishedCount} 条"));
 
     public void WriteDangerousOperation(string taskId, string interactionPoint) =>
-        Write("DANGER", $"*** 高危确认点 *** 任务 {taskId} | 交互点：{interactionPoint} | 已拒绝自动批准");
+        Write(new RunLogEntry(RunLogLevels.Danger, LogEventNames.DangerousOperation,
+            $"*** 高危确认点 *** 任务 {taskId} | 交互点：{interactionPoint} | 已拒绝自动批准")
+        { TaskId = taskId });
 
     public void WriteAutoAnswered(string taskId, string interactionPoint, string answer) =>
-        Write("INFO", $"auto_answered 任务 {taskId} | 交互点：{interactionPoint} | 默认选项：{answer}");
+        Write(new RunLogEntry(RunLogLevels.Info, LogEventNames.AutoAnswered,
+            $"任务 {taskId} | 交互点：{interactionPoint} | 默认选项：{answer}")
+        { TaskId = taskId });
+
+    /// <summary>
+    /// 唯一落盘点：脱敏 → 渲染文本 → 渲染结构化 JSON → 按策略刷盘。
+    /// 任何新增写入方法都必须转条目后经此进入，否则会绕过脱敏与结构化（由 <c>ObservabilityHygieneTests</c> 拦截）。
+    /// </summary>
+    public void Write(RunLogEntry entry)
+    {
+        var at = entry.At == default ? DateTimeOffset.Now : entry.At;
+        var level = RunLogLevels.Normalize(entry.Level);
+        var rendered = entry with
+        {
+            At = at,
+            Level = level,
+            RunId = string.IsNullOrEmpty(entry.RunId) ? RunId : entry.RunId,
+            Message = SecretMasker.Mask(entry.Message),
+            Fields = MaskFields(entry.Fields)
+        };
+
+        // 文本行沿用收口前格式：[HH:mm:ss] LEVEL {正文}
+        var line = $"[{at.ToLocalTime():HH:mm:ss}] {level,-5} {rendered.RenderBody()}";
+        WriteLine(line, ToJson(rendered), RunLogLevels.IsImportant(level) || entry.Flush);
+    }
+
+    /// <summary>引擎事件的附加结构化字段（成本 / 批状态 / 等待类型 / 明细）。</summary>
+    private static Dictionary<string, string>? BuildFields(BatchEvent ev)
+    {
+        Dictionary<string, string>? fields = null;
+
+        void Add(string key, string value)
+        {
+            fields ??= new Dictionary<string, string>(StringComparer.Ordinal);
+            fields[key] = value;
+        }
+
+        if (ev.Cost.HasValue)
+        {
+            Add("cost", RunLogEntry.Num(ev.Cost.Value));
+        }
+
+        if (ev.BatchStatus.HasValue)
+        {
+            Add("batch_status", ev.BatchStatus.Value.ToString());
+        }
+
+        if (ev.WaitKind != WaitKind.None)
+        {
+            Add("wait_kind", ev.WaitKind.ToString());
+        }
+
+        if (!string.IsNullOrEmpty(ev.Detail))
+        {
+            Add("detail", ev.Detail!);
+        }
+
+        if (ev.DeferredSwitch)
+        {
+            Add("deferred_switch", "true");
+        }
+
+        return fields;
+    }
+
+    private static Dictionary<string, string>? MaskFields(IReadOnlyDictionary<string, string>? fields)
+    {
+        if (fields is not { Count: > 0 })
+        {
+            return null;
+        }
+
+        var masked = new Dictionary<string, string>(fields.Count, StringComparer.Ordinal);
+        foreach (var pair in fields)
+        {
+            masked[pair.Key] = SecretMasker.Mask(pair.Value);
+        }
+
+        return masked;
+    }
+
+    /// <summary>结构化行（JSON Lines）：一行一条，含关联字段，供采集端直接解析。</summary>
+    private static string ToJson(RunLogEntry entry)
+    {
+        var payload = new Dictionary<string, object?>(StringComparer.Ordinal)
+        {
+            ["ts"] = entry.At.ToString("o", CultureInfo.InvariantCulture),
+            ["level"] = entry.Level,
+            ["event"] = entry.Event,
+            ["run_id"] = entry.RunId,
+            ["task_id"] = entry.TaskId,
+            ["account"] = entry.Account,
+            ["model"] = entry.Model,
+            ["message"] = entry.Message
+        };
+
+        if (entry.IsDangerous)
+        {
+            payload["dangerous"] = true;
+        }
+
+        if (entry.Fields is { Count: > 0 })
+        {
+            payload["fields"] = entry.Fields;
+        }
+
+        return JsonSerializer.Serialize(payload, JsonOptions);
+    }
 
     private static string MapLevel(BatchEventKind kind) => kind switch
     {
-        BatchEventKind.DangerousOperationBlocked => "DANGER",
-        BatchEventKind.BatchBlocked or BatchEventKind.PreflightFailed => "ERROR",
+        BatchEventKind.DangerousOperationBlocked => RunLogLevels.Danger,
+        BatchEventKind.BatchBlocked or BatchEventKind.PreflightFailed => RunLogLevels.Error,
         BatchEventKind.TaskFinished or BatchEventKind.BatchCompleted or BatchEventKind.StatusChanged
-            or BatchEventKind.TaskStarted or BatchEventKind.TaskOutput => "INFO",
+            or BatchEventKind.TaskStarted or BatchEventKind.TaskOutput => RunLogLevels.Info,
         BatchEventKind.Warning or BatchEventKind.ModelSwitched or BatchEventKind.AccountSwitched
             or BatchEventKind.BatchWaiting or BatchEventKind.BatchTerminated or BatchEventKind.QuotaResetRecorded
-            or BatchEventKind.FallbackUsed => "WARN",
-        _ => "INFO"
+            or BatchEventKind.FallbackUsed => RunLogLevels.Warn,
+        _ => RunLogLevels.Info
     };
 
-    /// <summary>P2-24：重要级别（WARN/ERROR/DANGER）即时刷盘；INFO 按批（见 <see cref="FlushBatchLines"/>）。</summary>
-    private static bool IsImportantLevel(string level) =>
-        level is "WARN" or "ERROR" or "DANGER";
-
-    private void WriteLine(string line, bool important = false)
+    private void WriteLine(string line, string structuredLine, bool important)
     {
         StreamWriter writer;
+        StreamWriter structuredWriter;
         lock (_sync)
         {
             // 释放后到达的延迟写入（CLI 子进程 AsyncStreamReader 在线程池排队）直接丢弃，
@@ -123,6 +326,7 @@ public sealed class FileRunLogger : IRunLogger
             }
 
             writer = _writer;
+            structuredWriter = _structuredWriter;
         }
 
         // 双重保护：即便在 lock 释放后、Dispose 抢先关闭 writer 的极小窗口内拿到引用，
@@ -132,11 +336,13 @@ public sealed class FileRunLogger : IRunLogger
         try
         {
             writer.WriteLine(line);
+            structuredWriter.WriteLine(structuredLine);
             // P2-24：重要级别即时刷盘（配额重置/兜底/阻塞/高危不因批量滞后丢失）；
             // INFO 累积到阈值才刷盘，削平 CLI 高频输出分片的 syscall 风暴。
             if (important || ++_pendingLines >= FlushBatchLines)
             {
                 writer.Flush();
+                structuredWriter.Flush();
                 _pendingLines = 0;
             }
         }
@@ -166,6 +372,7 @@ public sealed class FileRunLogger : IRunLogger
             try
             {
                 _writer.Flush();
+                _structuredWriter.Flush();
             }
             catch (ObjectDisposedException)
             {
@@ -175,77 +382,7 @@ public sealed class FileRunLogger : IRunLogger
             }
 
             _writer.Dispose();
+            _structuredWriter.Dispose();
         }
-    }
-}
-
-/// <summary>空实现（未指定任务文件时使用）。</summary>
-public sealed class NullRunLogger : IRunLogger
-{
-    public string LogFilePath => string.Empty;
-
-    public void Write(BatchEvent ev)
-    {
-    }
-
-    public void Write(string level, string message)
-    {
-    }
-
-    public void WriteTaskStarted(string taskId, string? account, string? model, string? expert, string? workspace)
-    {
-    }
-
-    public void WriteTaskFinished(string taskId, TaskStatus status, double durationSeconds, int retryCount)
-    {
-    }
-
-    public void WriteModelSwitched(string? fromAccount, string? fromModel, string? toAccount, string? toModel,
-        string reason, string? taskId)
-    {
-    }
-
-    public void WriteWindowSkipped(string model, DateTimeOffset? nextWindowStart)
-    {
-    }
-
-    public void WriteCooldownSkipped(string account, string model, DateTimeOffset resetAt)
-    {
-    }
-
-    public void WriteQuotaResetRecorded(string account, string model, DateTimeOffset resetAt, CooldownSource source)
-    {
-    }
-
-    public void WriteFallbackUsed(string taskId, string model, decimal cost, CostBasis basis)
-    {
-    }
-
-    public void WriteBatchWaiting(DateTimeOffset resumeAt, string? target, WaitKind kind)
-    {
-    }
-
-    public void WriteBatchBlocked(string reason, int pendingCount)
-    {
-    }
-
-    public void WriteBatchResumed(string reason)
-    {
-    }
-
-    public void WriteBatchTerminated(int doneCount, int unfinishedCount)
-    {
-    }
-
-    public void WriteDangerousOperation(string taskId, string interactionPoint)
-    {
-    }
-
-    public void WriteAutoAnswered(string taskId, string interactionPoint, string answer)
-    {
-    }
-
-    public void Dispose()
-    {
     }
 }

@@ -31,9 +31,12 @@
   // （npm install -g @tencent-ai/codebuddy-code），装好后无需配置此项。
   "cli_path": null,
 
-  // CLI 参数模板。留空（null）= 用适配器内置模板，2026-10-15 实测校准后内置值为：
-  //   WorkBuddy：--print "{prompt}" --model {model} {extra}（--expert 为非法参数，专家走 prompt 注入）
-  //   CodeBuddy：-p "{prompt}" --model {model} --output-format text {extra}
+  // CLI 参数模板。留空（null）= 用适配器内置模板，2026-10-16 实测校准后内置值为：
+  //   WorkBuddy：--print "{prompt}" --model {model} --output-format stream-json --include-partial-messages {extra}
+  //   CodeBuddy：-p "{prompt}" --model {model} --output-format stream-json --include-partial-messages {extra}
+  //   （--expert 为非法参数，专家诉求按 PRD 降级走 prompt 注入；两模板均已切 stream-json 以便应用内实时流捕获）
+  // ⚠️ 切勿手写为 --output-format text / 纯 --print：该模式下 CLI 全程不写 stdout，
+  //    会表现为「应用内实时输出流空白」（见 CliCommandBuilder.cs 注释）。需要实时流必须用 stream-json。
   // 可用占位符：{prompt} 任务指令、{model} 模型标识、{expert} 专家 ID、
   //             {workspace} 工作目录、{extra} 附加参数
   "cli_arguments_template": null,

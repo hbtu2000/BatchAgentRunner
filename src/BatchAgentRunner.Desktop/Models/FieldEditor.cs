@@ -12,17 +12,29 @@ namespace BatchAgentRunner.Desktop.Models;
 /// <remarks>
 /// 语义约定：空文本 = 「未配置」（合法，<see cref="Value"/> 为 <c>default</c>）；
 /// 非空但无法解析 = 错误态（<see cref="HasError"/>，界面显示 <see cref="Error"/>）。
+/// <para><b>P-09</b>：宿主编辑器一律直接把本字段暴露给视图（<c>{Binding Xxx.Text}</c>），
+/// 不再包一层同名裸字符串桥接属性——桥接层曾让「改了文本却不刷新派生态」与「校验反馈漏绑」同时隐身。</para>
 /// </remarks>
 public sealed class FieldEditor<TValue> : ObservableObject
 {
     private readonly Func<string, (bool Ok, TValue? Value)> _tryParse;
+    private readonly Action? _onTextChanged;
     private string _text;
 
-    public FieldEditor(string displayName, string text, Func<string, (bool Ok, TValue? Value)> tryParse)
+    /// <param name="displayName">字段人话名（校验反馈文案用）。</param>
+    /// <param name="text">初始编辑文本。</param>
+    /// <param name="tryParse">字段解析器（见 <see cref="FieldParsers"/>）。</param>
+    /// <param name="onTextChanged">文本变更回调（宿主据此刷新时段预览等派生态；可空）。</param>
+    public FieldEditor(
+        string displayName,
+        string text,
+        Func<string, (bool Ok, TValue? Value)> tryParse,
+        Action? onTextChanged = null)
     {
         DisplayName = displayName;
         _text = text;
         _tryParse = tryParse;
+        _onTextChanged = onTextChanged;
     }
 
     /// <summary>字段人话名（校验反馈文案用）。</summary>
@@ -38,6 +50,7 @@ public sealed class FieldEditor<TValue> : ObservableObject
             {
                 OnPropertyChanged(nameof(HasError));
                 OnPropertyChanged(nameof(Error));
+                _onTextChanged?.Invoke();
             }
         }
     }
@@ -62,4 +75,8 @@ public static class FieldParsers
     /// <summary>可空整数解析（留空 = 未配置；「abc」= 错误态）。</summary>
     public static (bool Ok, int? Value) IntOrNull(string text) =>
         int.TryParse(text, out var value) ? (true, value) : (false, (int?)null);
+
+    /// <summary>可空时刻解析（留空 = 未配置；「25:99」= 错误态）。接受 <c>HH:mm</c> 与 <c>HH:mm:ss</c>。</summary>
+    public static (bool Ok, TimeOnly? Value) TimeOnlyOrNull(string text) =>
+        TimeOnly.TryParse(text, out var value) ? (true, value) : (false, (TimeOnly?)null);
 }

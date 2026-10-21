@@ -57,7 +57,7 @@ Mock 用来验证调度逻辑（降级、时段跳过、冷却等待、兜底、
 | `task_file_path` | `""`（必填） | 任务清单。`.json` 原地原子回写状态与结果；`.md` 只读输入、状态写 sidecar `<name>.md.result.json`。运行日志与报告都写在它同目录。 |
 | `agent_kind` | `WorkBuddy` | `WorkBuddy` / `CodeBuddy` / `Mock`。`Mock` 不调 CLI，用于自测与回归。 |
 | `cli_path` | `null` | CLI 可执行文件路径。`null` = 在系统 PATH 里按默认名找（`workbuddy` / `codebuddy`）。装了多版本时写绝对路径最稳。 |
-| `cli_arguments_template` | `null` | 参数模板。`null` = 用适配器内置模板。占位符：`{prompt}` `{model}` `{expert}` `{workspace}` `{extra}`。**未经真实 CLI 实测**（M0 V-1/V-2 待做），实测后再改。 |
+| `cli_arguments_template` | `null` | 参数模板。`null` = 用适配器内置模板。**2026-10-16 已实测校准**：内置 `WorkBuddy`/`CodeBuddy` 模板均为 `--output-format stream-json --include-partial-messages`（便于应用内实时输出流捕获逐行事件）。占位符：`{prompt}` `{model}` `{expert}` `{workspace}` `{extra}`。**切勿手写为 `--output-format text` 或纯 `--print`**——该模式下 CLI 全程不写 stdout，应用内实时流会空白（见 `CliCommandBuilder.cs` 注释）。 |
 
 ### ② 工作空间（决定 Agent 在哪个目录干活）
 

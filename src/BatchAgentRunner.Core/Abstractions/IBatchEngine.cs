@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Engine;
 using BatchAgentRunner.Core.Events;
+using BatchAgentRunner.Core.Observability;
 using BatchAgentRunner.Core.Options;
 using BatchAgentRunner.Core.Scheduling;
 
@@ -40,6 +41,14 @@ public interface IBatchEngine : IDisposable
 
     /// <summary>完成时的最终批次报告（完成时设置）。</summary>
     BatchReport? Report { get; }
+
+    /// <summary>
+    /// 本批关联标识（ARCH P-10 / A-8）：与运行日志、运行级指标共用，用于把日志/指标/事件串到同一次运行。
+    /// </summary>
+    string RunId { get; }
+
+    /// <summary>本批运行级指标采集器（降级次数/兜底触发/冷却跳过/误切换率/吞吐/平均耗时）。</summary>
+    RunMetrics Metrics { get; }
 
     /// <summary>当前执行任务 id。</summary>
     string? CurrentTaskId { get; }

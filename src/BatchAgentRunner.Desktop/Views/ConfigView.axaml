@@ -27,13 +27,14 @@
         <Style Selector="Ellipse.rd-pending">
             <Setter Property="Fill" Value="{DynamicResource TextMutedBrush}" />
         </Style>
+        <!-- P-09：解析类字段校验反馈的唯一样式来源（字体 / 颜色只在此定义，各字段只绑文本与可见性） -->
+        <Style Selector="TextBlock.field-error">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Foreground" Value="{DynamicResource ErrorBrush}" />
+        </Style>
     </UserControl.Styles>
 
-    <Design.DataContext>
-        <vm:ConfigViewModel />
-    </Design.DataContext>
-
-    <ScrollViewer>
+<ScrollViewer>
         <StackPanel Spacing="16" Margin="20,16,24,32">
 
             <!-- ===================== 区段 1：快速开始（原「配置向导」入口，现为引导而非独立页） ===================== -->
@@ -191,9 +192,9 @@
                                             </Grid>
                                             <StackPanel Orientation="Horizontal" Spacing="8" IsVisible="{Binding WindowEnabled}">
                                                 <TextBlock Text="起" VerticalAlignment="Center" ToolTip.Tip="时段开始，HH:mm。结束时间早于开始时间视为跨零点。" />
-                                                <TextBox Text="{Binding StartText}" Width="70" />
+                                                <TextBox Text="{Binding StartTime.Text}" Width="70" ToolTip.Tip="{Binding StartTime.Error}" />
                                                 <TextBlock Text="止" VerticalAlignment="Center" ToolTip.Tip="时段结束，HH:mm。跨零点示例：22:00 → 06:00。" />
-                                                <TextBox Text="{Binding EndText}" Width="70" />
+                                                <TextBox Text="{Binding EndTime.Text}" Width="70" ToolTip.Tip="{Binding EndTime.Error}" />
                                                 <CheckBox Content="一" IsChecked="{Binding Mon}" ToolTip.Tip="星期过滤的语义是「时段覆盖日」：跨零点时段会同时看开始日与结束日。七天全勾 = 不过滤。" />
                                                 <CheckBox Content="二" IsChecked="{Binding Tue}" />
                                                 <CheckBox Content="三" IsChecked="{Binding Wed}" />
@@ -209,18 +210,22 @@
                                                 <TextBox Text="{Binding UnitPrice.Text}" Width="90" ToolTip.Tip="{Binding UnitPrice.Error}" />
                                                 <TextBlock Text="折扣" VerticalAlignment="Center" FontSize="12" FontWeight="SemiBold"
                                                            ToolTip.Tip="折扣倍率：0.65 = 原价的 65%（界面显示 0.65x）。&#10;仅用于展示与人工对照，不参与调度判定。留空 = 不显示。" />
-                                                <TextBox Text="{Binding Discount.Text}" Width="60" />
+                                                <TextBox Text="{Binding Discount.Text}" Width="60" ToolTip.Tip="{Binding Discount.Error}" />
                                                 <Border CornerRadius="4" Padding="6,2" Background="{DynamicResource PrimaryBrush}" VerticalAlignment="Center"
                                                         IsVisible="{Binding DiscountDisplay, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
                                                     <TextBlock Text="{Binding DiscountDisplay}" FontSize="12" FontWeight="SemiBold" Foreground="White" />
                                                 </Border>
                                             </StackPanel>
-                                            <!-- P2-15：解析类字段的校验反馈（格式无效时可见；Apply 保留原值不静默覆盖） -->
+                                            <!-- P-09：解析类字段的校验反馈（格式无效时可见；Apply 保留原值不静默覆盖） -->
                                             <StackPanel Orientation="Horizontal" Spacing="8">
-                                                <TextBlock Text="{Binding UnitPrice.Error}" FontSize="11" Foreground="{DynamicResource ErrorBrush}"
+                                                <TextBlock Classes="field-error" Text="{Binding UnitPrice.Error}"
                                                            IsVisible="{Binding UnitPrice.HasError}" />
-                                                <TextBlock Text="{Binding Discount.Error}" FontSize="11" Foreground="{DynamicResource ErrorBrush}"
+                                                <TextBlock Classes="field-error" Text="{Binding Discount.Error}"
                                                            IsVisible="{Binding Discount.HasError}" />
+                                                <TextBlock Classes="field-error" Text="{Binding StartTime.Error}"
+                                                           IsVisible="{Binding StartTime.HasError}" />
+                                                <TextBlock Classes="field-error" Text="{Binding EndTime.Error}"
+                                                           IsVisible="{Binding EndTime.HasError}" />
                                             </StackPanel>
                                         </StackPanel>
                                     </Border>
@@ -286,9 +291,11 @@
                                                                 </ComboBox>
                                                                 <CheckBox Grid.Column="1" Content="免费时段" Margin="8,0" IsChecked="{Binding WindowEnabled}"
                                                                           ToolTip.Tip="不勾 = 全天可用。时段按「账号 × 模型」组合生效。" />
-                                                                <TextBox Grid.Column="2" Text="{Binding StartText}" Width="60" IsVisible="{Binding WindowEnabled}" />
+                                                                <TextBox Grid.Column="2" Text="{Binding StartTime.Text}" Width="60" IsVisible="{Binding WindowEnabled}"
+                                                                         ToolTip.Tip="{Binding StartTime.Error}" />
                                                                 <TextBlock Grid.Column="3" Text="→" Margin="4,0" VerticalAlignment="Center" IsVisible="{Binding WindowEnabled}" />
-                                                                <TextBox Grid.Column="4" Text="{Binding EndText}" Width="60" IsVisible="{Binding WindowEnabled}" />
+                                                                <TextBox Grid.Column="4" Text="{Binding EndTime.Text}" Width="60" IsVisible="{Binding WindowEnabled}"
+                                                                         ToolTip.Tip="{Binding EndTime.Error}" />
                                                                 <TextBox Grid.Column="5" Text="{Binding UnitPrice.Text}" Width="70" Margin="8,0,0,0"
                                                                          ToolTip.Tip="预估单价（元/次），CLI 不返回费用时用于估算口径。留空 = 不统计。" />
                                                                 <StackPanel Grid.Column="6" Orientation="Horizontal" Margin="8,0,0,0" Spacing="4">
@@ -314,6 +321,17 @@
                                                                 <CheckBox Content="六" IsChecked="{Binding Sat}" />
                                                                 <CheckBox Content="日" IsChecked="{Binding Sun}" />
                                                                 <TextBlock Text="{Binding Preview}" FontSize="12" Foreground="{DynamicResource PrimaryBrush}" VerticalAlignment="Center" />
+                                                            </StackPanel>
+                                                            <!-- P-09：解析类字段的校验反馈（格式无效时可见；Apply 保留原值不静默覆盖） -->
+                                                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                                                <TextBlock Classes="field-error" Text="{Binding UnitPrice.Error}"
+                                                                           IsVisible="{Binding UnitPrice.HasError}" />
+                                                                <TextBlock Classes="field-error" Text="{Binding Discount.Error}"
+                                                                           IsVisible="{Binding Discount.HasError}" />
+                                                                <TextBlock Classes="field-error" Text="{Binding StartTime.Error}"
+                                                                           IsVisible="{Binding StartTime.HasError}" />
+                                                                <TextBlock Classes="field-error" Text="{Binding EndTime.Error}"
+                                                                           IsVisible="{Binding EndTime.HasError}" />
                                                             </StackPanel>
                                                         </StackPanel>
                                                     </DataTemplate>
@@ -344,7 +362,10 @@
                                                             </ComboBox>
                                                             <StackPanel Grid.Column="1" Orientation="Horizontal" Margin="8,0,0,0">
                                                                 <TextBlock Text="预估单价(元/次)" VerticalAlignment="Center" FontSize="12" />
-                                                                <TextBox Text="{Binding UnitPrice.Text}" Width="70" Margin="6,0" />
+                                                                <TextBox Text="{Binding UnitPrice.Text}" Width="70" Margin="6,0" ToolTip.Tip="{Binding UnitPrice.Error}" />
+                                                                <!-- P-09：解析类字段的校验反馈（格式无效时可见；Apply 保留原值不静默覆盖） -->
+                                                                <TextBlock Classes="field-error" Text="{Binding UnitPrice.Error}"
+                                                                           IsVisible="{Binding UnitPrice.HasError}" />
                                                                 <Button Content="删除" Command="{Binding $parent[ItemsControl].DataContext.RemoveFallbackModelCommand}" CommandParameter="{Binding}" />
                                                             </StackPanel>
                                                         </Grid>
@@ -727,6 +748,9 @@
                                                     <TextBox Text="{Binding SmtpToText}" Width="300" PlaceholderText="收件人（逗号分隔多个）" />
                                                     <TextBox Text="{Binding SmtpCredentialRef}" Width="200" PlaceholderText="凭据引用 key" />
                                                 </StackPanel>
+                                                <!-- P-09：解析类字段的校验反馈（格式无效时可见；Apply 回落 587 但对用户显式呈现） -->
+                                                <TextBlock Classes="field-error" Text="{Binding SmtpPort.Error}"
+                                                           IsVisible="{Binding SmtpPort.HasError}" />
                                             </StackPanel>
                                         </StackPanel>
                                     </Border>

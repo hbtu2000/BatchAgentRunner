@@ -1,5 +1,6 @@
 using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
+using BatchAgentRunner.Core.Observability;
 
 namespace BatchAgentRunner.Infrastructure.CredentialVault;
 
@@ -151,7 +152,7 @@ public sealed class CreditsClaimOrchestrator
                 record.DeltaCredits = after.Value - before.Value;
             }
 
-            _logger?.Write("INFO",
+            _logger?.Write(RunLogLevels.Info,
                 $"[积分领取] {account.Label}：领取前 {FormatCredits(before)} → 领取后 {FormatCredits(after)}" +
                 $"（变化 {(record.DeltaCredits.HasValue ? (record.DeltaCredits.Value >= 0 ? "+" : "") + record.DeltaCredits.Value : "未知")}），" +
                 $"状态：{record.Status}");
@@ -168,7 +169,7 @@ public sealed class CreditsClaimOrchestrator
         {
             record.Status = CreditsClaimStatus.Failed;
             record.Error = ex.Message;
-            _logger?.Write("WARN", $"[积分领取] {account.Label}：失败（{ex.Message}）");
+            _logger?.Write(RunLogLevels.Warn, $"[积分领取] {account.Label}：失败（{ex.Message}）");
             Report(CreditsClaimPhase.Failed, account.Id, $"账号 {account.Label} 领取失败：{ex.Message}");
             return record;
         }

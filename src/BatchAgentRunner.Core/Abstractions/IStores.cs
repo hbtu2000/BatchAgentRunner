@@ -1,4 +1,5 @@
 using BatchAgentRunner.Core.Domain;
+using BatchAgentRunner.Core.Observability;
 using BatchAgentRunner.Core.Options;
 
 namespace BatchAgentRunner.Core.Abstractions;
@@ -72,6 +73,16 @@ public interface IConfigStore
 public interface IReportWriter
 {
     Task<string> WriteAsync(BatchReport report, string taskFilePath, CancellationToken cancellationToken = default);
+}
+
+/// <summary>
+/// 运行级指标写出（ARCH P-10 / A-8）：报告给用户看，指标给运维看，二者互补但分离落盘。
+/// </summary>
+public interface IMetricsWriter
+{
+    /// <summary>落盘 <c>metrics-&lt;run_id&gt;.json</c>（与报告同目录），返回文件路径。</summary>
+    Task<string> WriteAsync(RunMetricsSnapshot snapshot, string taskFilePath,
+        CancellationToken cancellationToken = default);
 }
 
 /// <summary>自动关机（REQ-015，P1）：可撤销倒计时 + 权限不足降级。</summary>

@@ -30,14 +30,27 @@ public sealed class MainViewModel : ViewModelBase
     {
         try
         {
+            Program.Log("INFO", "[启动] 开始宿主初始化…");
             await Host.InitializeAsync().ConfigureAwait(false);
+            Program.Log("INFO", "[启动] 宿主初始化完成");
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[MainViewModel] 宿主初始化失败：{ex}");
+            // WinExe 无控制台，Console.Error 等于丢弃；必须落应用日志，否则启动失败无迹可查。
+            Program.Log("ERROR", $"[启动] 宿主初始化失败（继续装配页面以便窗口可显示）：{ex}");
         }
 
-        BuildPages();
+        // 页面 VM 含 UI 线程亲和对象（如 MonitorViewModel 的 DispatcherTimer）。
+        // 本方法在 Host.InitializeAsync().ConfigureAwait(false) 之后已运行在线程池线程上，
+        // 若直接 BuildPages() 会在后台线程 new DispatcherTimer().Start() → 抛 InvalidOperationException，
+        // 异常再经 App 的 fire-and-forget 被吞掉，表现为「启动后连界面都看不到」。
+        // 因此显式切回 UI 线程装配并等待其完成，保证窗口创建前 VM 已就绪。
+        await UiThread.InvokeAsync(() =>
+        {
+            BuildPages();
+            return Task.FromResult(true);
+        }).ConfigureAwait(false);
+        Program.Log("INFO", "[启动] 页面装配完成");
     }
 
     /// <summary>装配各页面 VM、接线导航/主题命令、订阅宿主状态广播（原构造器体，沉入初始化门）。</summary>
@@ -54,7 +67,8 @@ public sealed class MainViewModel : ViewModelBase
         // 把「账号登录 / 配置向导 / 高级配置」三个配置入口合并为一个配置中心
         ConfigHub = new ConfigHubViewModel(Login, Wizard, Config);
 
-        _currentPage = Monitor;
+        // 本方法可能晚于主窗口显示（窗口先出现、后台初始化后填充）：
+        // 因此所有「窗口已绑定」的属性都必须主动通知一次，否则已显示的窗口不会刷新。
         _isDark = Application.Current?.RequestedThemeVariant == ThemeVariant.Dark;
 
         NavigateCommand = new RelayCommand<string>(Navigate);
@@ -71,6 +85,12 @@ public sealed class MainViewModel : ViewModelBase
                 });
             }
         };
+
+        // 先刷新命令/主题，再设置 CurrentPage（SetProperty 自身会发通知），保证内容区与导航同步生效。
+        OnPropertyChanged(nameof(NavigateCommand));
+        OnPropertyChanged(nameof(ToggleThemeCommand));
+        OnPropertyChanged(nameof(Theme));
+        CurrentPage = Monitor;
     }
 
     public IEngineHost Host { get; }

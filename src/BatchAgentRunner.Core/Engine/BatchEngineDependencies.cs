@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
+using BatchAgentRunner.Core.Observability;
 using BatchAgentRunner.Core.Options;
 using BatchAgentRunner.Core.Scheduling;
 
@@ -52,4 +53,10 @@ public sealed class BatchEngineDependencies
 
     /// <summary>文件系统端口（P1-10）；null = <see cref="SystemFileSystem"/>。</summary>
     public IFileSystem? FileSystem { get; init; }
+
+    /// <summary>
+    /// 运行级指标采集器（ARCH P-10 / A-8）；null = 引擎按自身 RunId 新建。
+    /// 注入口存在的意义是让测试能直接断言埋点结果，而无需解析日志文本。
+    /// </summary>
+    public RunMetrics? Metrics { get; init; }
 }

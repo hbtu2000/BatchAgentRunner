@@ -7,15 +7,11 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         x:Class="BatchAgentRunner.Desktop.Views.MainWindow"
         Icon="/Assets/app-icon.ico"
-        Title="AI 批处理任务调度工具 · Batch Agent Runner"
+        Title="NexYawNav · 纽曜·领航（Batch Agent Runner）"
         Width="1280" Height="880"
         Background="{DynamicResource BgAppBrush}">
 
-    <Design.DataContext>
-        <vm:MainViewModel />
-    </Design.DataContext>
-
-    <!-- 单列布局：顶部状态条 + 顶部导航条 + 内容区（移除左侧 220 导航列，页面更宽） -->
+<!-- 单列布局：顶部状态条 + 顶部导航条 + 内容区（移除左侧 220 导航列，页面更宽） -->
     <Grid RowDefinitions="Auto,Auto,*">
 
         <!-- 顶部状态条 -->

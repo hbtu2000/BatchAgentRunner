@@ -2,6 +2,8 @@ using System.Diagnostics;
 using System.Text;
 using System.Threading;
 using BatchAgentRunner.Agents.Internal;
+using BatchAgentRunner.Core.Abstractions;
+using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Options;
 
 namespace BatchAgentRunner.Tests.Agents;
@@ -106,6 +108,50 @@ public class CliProcessRunnerTests
         Assert.False(result.TimedOut);
         Assert.False(result.Cancelled);
         Assert.Equal(0, result.ExitCode);
+    }
+
+    /// <summary>
+    /// 2026-10-22 事故回归：指令含换行 → .cmd shim 经 cmd.exe 转交时命令行被截断，
+    /// 换行后的参数（--model / --output-format / --port）整体丢失，CLI 退回交互模式、实时输出流空白。
+    /// 本用例用「回显参数的 shim」直接验证：压平后尾部参数必须仍然送达子进程。
+    /// </summary>
+    [Fact]
+    public async Task RunAsync_参数含换行_压平后尾部参数不丢失()
+    {
+        if (!OperatingSystem.IsWindows())
+        {
+            return; // .cmd shim + cmd.exe 截断行为仅 Windows 验证
+        }
+
+        var script = Path.Combine(Path.GetTempPath(), $"bar-arg-echo-{Guid.NewGuid():N}.cmd");
+        File.WriteAllText(script, "@echo off\r\necho ARGS %*\r\n", Encoding.Default);
+
+        try
+        {
+            var request = new AgentRequest(
+                "t1", "line1\r\n  line2", new AccountConfig { Id = "acc-1" },
+                new ModelCandidate { Name = "m1" }, ExpertRef.Default(),
+                Environment.CurrentDirectory, TimeSpan.FromMinutes(5), new AutoAnswerPolicy());
+            var arguments = CliCommandBuilder.Build(
+                CliCommandBuilder.CodeBuddyTemplate, request, extra: "--flag-tail");
+
+            var runner = CreateRunner(stdinIdleSeconds: 5);
+            var spec = new CliLaunchSpec(script, arguments, Path.GetTempPath());
+
+            var result = await runner.RunAsync(spec, null, TimeSpan.FromSeconds(30),
+                CancellationToken.None);
+
+            Assert.Equal(0, result.ExitCode);
+            // 截断时尾部参数与模型参数都会消失，只剩被截断的 -p
+            Assert.Contains("--flag-tail", result.Output);
+            Assert.Contains("--model m1", result.Output);
+            Assert.Contains("--output-format stream-json", result.Output);
+            Assert.Contains("line1 line2", result.Output);
+        }
+        finally
+        {
+            File.Delete(script);
+        }
     }
 
     [Fact]

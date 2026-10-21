@@ -1,5 +1,6 @@
 using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
+using BatchAgentRunner.Core.Observability;
 using BatchAgentRunner.Core.Options;
 using TaskStatus = BatchAgentRunner.Core.Domain.TaskStatus;
 
@@ -79,7 +80,7 @@ public sealed class BatchNotifier : IBatchNotifier
         }
         catch (Exception ex)
         {
-            _logger.Write("WARN", $"通知推送失败（已忽略）：{ex.Message}");
+            _logger.Write(RunLogLevels.Warn, $"通知推送失败（已忽略）：{ex.Message}");
         }
     }
 }

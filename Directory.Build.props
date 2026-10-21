@@ -28,4 +28,27 @@
     <CodePage>65001</CodePage>
   </PropertyGroup>
 
+  <!-- ==================================================================
+       快速迭代模式（AI / 本地开发用，CI 与正式构建零影响）：
+       仅当环境变量 NEXYAW_FAST_BUILD=1 或 WORKAGENT_FAST_BUILD=1 时生效，
+       用于「AI 改代码 → 快速确认能否编译」的迭代循环，不参与提交 / CI 门禁。
+         · 跳过 Roslyn 分析器通道（csc 硬错误仍保留，只省分析器开销；
+           含 EnforceCodeStyleInBuild 的代码样式强制一并关闭）
+         · 退化为「警告不当错误」，避开全局 TreatWarningsAsErrors 把迭代打成红色
+           （可空 / 样式等告警仍应在最终严格构建、提交前清除；本模式只加速定位真实错误）
+         · 引用相关文件只带 .xml，不把 .pdb/.config 复制进 bin，削减巨石依赖闭包的拷贝 IO
+       不设该变量时整块不生效，行为与治理基线完全一致（TreatWarningsAsErrors=true 等保留）。
+       机制同源：NexYaw3D/Directory.Build.props 的 NEXYAW_FAST_BUILD；此处一并识别
+       WORKAGENT_FAST_BUILD 以便跨仓库统一 SOP：
+         会话开局 export <var>=1 → 迭代验证走 fast（只查真实错误）；
+         提交 / 门禁前 unset → 跑严格 dotnet build 清可空与样式告警。
+     ================================================================== -->
+  <PropertyGroup Condition="'$(NEXYAW_FAST_BUILD)' == '1' or '$(WORKAGENT_FAST_BUILD)' == '1'">
+    <RunAnalyzersDuringBuild>false</RunAnalyzersDuringBuild>
+    <EnforceCodeStyleInBuild>false</EnforceCodeStyleInBuild>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <WarningsAsErrors></WarningsAsErrors>
+    <AllowedReferenceRelatedFileExtensions>.xml</AllowedReferenceRelatedFileExtensions>
+  </PropertyGroup>
+
 </Project>

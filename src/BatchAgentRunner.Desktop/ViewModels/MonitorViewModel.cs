@@ -1,9 +1,7 @@
 using System.Collections.ObjectModel;
-using Avalonia.Media;
 using Avalonia.Threading;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Events;
-using BatchAgentRunner.Desktop.Helpers;
 using BatchAgentRunner.Desktop.Models;
 using BatchAgentRunner.Desktop.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -12,86 +10,68 @@ using CommunityToolkit.Mvvm.Input;
 namespace BatchAgentRunner.Desktop.ViewModels;
 
 /// <summary>
-/// 实时输出流的跟随模式：
-/// <see cref="Selected"/> = 随任务联动（默认，仅显示联动任务的输出，避免并发任务混在一起）；
-/// <see cref="All"/> = 显示全部并发任务的混合输出（旧行为，按需开启）。
-/// </summary>
-internal enum OutputFollowMode
-{
-    /// <summary>仅显示当前联动任务（选中任务优先；未选中时自动跟随运行中任务）的输出。</summary>
-    Selected,
-
-    /// <summary>显示全部并发任务的混合输出（旧行为，按需开启）。</summary>
-    All
-}
-
-/// <summary>
-/// 执行监控页（主页面）：总进度 + 状态统计卡 + 任务列表 + 实时输出流 + 提示区。
-/// 引擎事件驱动刷新（≤2 秒），非轮询。
+/// 执行监控页 façade（P-06 分解收口产物）。
+/// <para>
+/// 原 <c>MonitorViewModel</c> 是 983 行的上帝类，承载「状态统计 + 批次状态 + 实时输出流 + 事件提示板 +
+/// 任务列表同步 + DAG 看板 + 选中任务阶段树 + 操作编排」。P-06 按「状态持有 + 绑定转发 + 事件编排」
+/// 将其下沉为若干协作者（<see cref="Monitor"/> 命名空间下）：<see cref="OutputStreamCoordinator"/>（输出流）、
+/// <see cref="BatchStatsState"/>（统计快照状态）、<see cref="BatchStatusState"/>（批次状态）、
+/// <see cref="EventToastBoard"/>（提示板）、<see cref="TaskListCoordinator"/>（任务列表 / DAG / 阶段树）、
+/// <see cref="BatchStatistics"/>（纯统计计算）、<see cref="OutputTagClassifier"/>（输出分类）、
+/// <see cref="MonitorOperationsCoordinator"/>（加载 / 预检 / 开始 / 续跑操作编排）。
+/// 本类退化为 façade：持有协作者、转发可绑定属性、订阅其 <c>PropertyChanged</c> 透传到本 façade 以保住
+/// Avalonia 反射绑定契约，并把引擎事件路由到对应协作者。对外公开 API（属性名 / 命令名 / 语义）逐字节等价于
+/// 分解前，故既有 headless 契约测试无需改动。
+/// </para>
 /// </summary>
 public sealed class MonitorViewModel : ViewModelBase
 {
     private readonly IEngineHost _host;
     private readonly DispatcherTimer _timer;
 
+    private readonly BatchStatusState _statusState;
+    private readonly BatchStatsState _statsState;
+    private readonly TaskListCoordinator _taskList;
+    private readonly OutputStreamCoordinator _output;
+    private readonly EventToastBoard _toasts;
+    private readonly MonitorOperationsCoordinator _operations;
+    private readonly Func<IReadOnlyList<TaskItem>> _taskItems;
+
     private TaskRowViewModel? _selectedTask;
-
-    /// <summary>实时输出流跟随目标任务 Id（随任务联动模式下的有效过滤键）。</summary>
-    private string? _followTaskId;
-
-    /// <summary>跟随目标是否被用户手动固定（点选任务=固定；取消选中/自动跟随=非固定）。</summary>
-    private bool _followPinned;
-
-    /// <summary>实时输出流跟随模式（默认随任务联动）。</summary>
-    private OutputFollowMode _followMode = OutputFollowMode.Selected;
-
-    /// <summary>实际展示在输出流 ListBox 中的行（按联动任务过滤后的视图）。</summary>
-    private readonly ObservableCollection<OutputLineItem> _displayedOutput = new();
-
-    private string _outputFollowTitle = "实时输出流";
-    private bool _hasDisplayedOutput;
-    private string _outputEmptyHint = "选择左侧任务可查看其输出；运行中将自动跟随当前执行任务";
-    private BatchStatus _status = BatchStatus.Idle;
-    private int _total;
-    private int _done;
-    private int _failed;
-    private int _running;
-    private int _interrupted;
-    private int _pending;
-    private int _skipped;
-    private int _needsAttention;
-    private int _blocked;
-    private string _currentTaskText = "无";
-    private string _currentComboText = "-";
-    private string _currentWorkspaceText = "-";
     private DateTimeOffset? _resumeAt;
-    private string _waitingText = string.Empty;
     private bool _forceRerun;
     private bool _waitIfUnavailable = true;
     private string _statusMessage = string.Empty;
-    private bool _dispatchPaused;
+    private string _waitingText = string.Empty;
     private string _activeFilter = "全部";
-    private string _etaText = "—";
 
     public MonitorViewModel(IEngineHost host)
     {
         _host = host;
-        Tasks = new ObservableCollection<TaskRowViewModel>();
-        Toasts = new ObservableCollection<ToastItem>();
-        OutputLines = new ObservableCollection<OutputLineItem>();
-        SelectedStages = new ObservableCollection<StageRowViewModel>();
-        DagRows = new ObservableCollection<DagRowViewModel>();
+        _statusState = new BatchStatusState(host);
+        _statsState = new BatchStatsState();
+        _taskList = new TaskListCoordinator();
+        _taskItems = () => _taskList.Tasks.Select(t => t.Item).ToList();
+        _output = new OutputStreamCoordinator(_taskItems);
+        _toasts = new EventToastBoard();
+        _operations = new MonitorOperationsCoordinator(new MonitorOperationsContext
+        {
+            Host = host,
+            Toasts = _toasts,
+            WriteStatusMessage = text => StatusMessage = text,
+            NotifyLastReportPathChanged = () => OnPropertyChanged(nameof(LastReportPath))
+        });
 
         _host.EventRaised += OnEngineEvent;
         _host.TasksChanged += (_, _) => Dispatcher.UIThread.Post(SyncTasks);
 
-        StartCommand = new AsyncRelayCommand(StartAsync, () => !_host.IsRunning && !string.IsNullOrWhiteSpace(_host.Options.TaskFilePath));
+        StartCommand = new AsyncRelayCommand(() => _operations.StartAsync(_waitIfUnavailable), () => !_host.IsRunning && !string.IsNullOrWhiteSpace(_host.Options.TaskFilePath));
         TerminateCommand = new AsyncRelayCommand(() => _host.TerminateAsync(false), () => _host.IsRunning);
         TerminateAfterCurrentCommand = new AsyncRelayCommand(() => _host.TerminateAsync(true), () => _host.IsRunning);
-        ResumeCommand = new AsyncRelayCommand(ResumeAsync, () => !_host.IsRunning);
-        CancelWaitingCommand = new RelayCommand(() => _host.CancelWaiting(), () => _status == BatchStatus.Waiting);
-        LoadCommand = new AsyncRelayCommand(LoadAsync);
-        PreflightCommand = new AsyncRelayCommand(PreflightAsync);
+        ResumeCommand = new AsyncRelayCommand(() => _operations.ResumeAsync(_waitIfUnavailable), () => !_host.IsRunning);
+        CancelWaitingCommand = new RelayCommand(() => _host.CancelWaiting(), () => _statusState.Status == BatchStatus.Waiting);
+        LoadCommand = new AsyncRelayCommand(() => _operations.LoadAsync());
+        PreflightCommand = new AsyncRelayCommand(() => _operations.PreflightAsync());
         ResetCooldownCommand = new RelayCommand(() => _host.ResetAllCooldowns());
         SetFilterCommand = new RelayCommand<string>(filter => ActiveFilter = filter ?? "全部");
 
@@ -100,66 +80,84 @@ public sealed class MonitorViewModel : ViewModelBase
 
         _forceRerun = host.Options.ForceRerun;
 
-        UpdateOutputFollowTitle();
+        _statusState.PropertyChanged += _ForwardStatus;
+        _statsState.PropertyChanged += _Forward;
+        _output.PropertyChanged += _Forward;
+
+        _output.RefreshFollowTitle();
     }
 
-    public ObservableCollection<TaskRowViewModel> Tasks { get; }
+    // ---------------- 集合（直接透传协作者的同一实例，集合自身通知） ----------------
 
-    public ObservableCollection<ToastItem> Toasts { get; }
+    public ObservableCollection<TaskRowViewModel> Tasks => _taskList.Tasks;
 
-    public ObservableCollection<OutputLineItem> OutputLines { get; }
+    public ObservableCollection<ToastItem> Toasts => _toasts.Items;
 
-    /// <summary>
-    /// 实时输出流 ListBox 的实际数据源：按「联动任务」过滤后的行（随任务联动模式），
-    /// 或「全部任务」混合行（全部模式）。解决并发任务输出混在一起的问题。
-    /// </summary>
-    public ObservableCollection<OutputLineItem> DisplayedOutputLines => _displayedOutput;
+    public ObservableCollection<OutputLineItem> OutputLines => _output.OutputLines;
 
-    /// <summary>是否显示全部任务的混合输出（false = 随任务联动，仅显示联动任务，默认）。</summary>
+    public ObservableCollection<OutputLineItem> DisplayedOutputLines => _output.DisplayedOutputLines;
+
+    public ObservableCollection<StageRowViewModel> SelectedStages => _taskList.SelectedStages;
+
+    public ObservableCollection<DagRowViewModel> DagRows => _taskList.DagRows;
+
+    // ---------------- 输出流（转发 OutputStreamCoordinator） ----------------
+
     public bool ShowAllOutput
     {
-        get => _followMode == OutputFollowMode.All;
-        set
-        {
-            var next = value ? OutputFollowMode.All : OutputFollowMode.Selected;
-            if (_followMode == next)
-            {
-                return;
-            }
-
-            _followMode = next;
-            RebuildDisplayedOutput();
-            UpdateOutputFollowTitle();
-            OnPropertyChanged();
-        }
+        get => _output.ShowAllOutput;
+        set => _output.ShowAllOutput = value;
     }
 
-    /// <summary>输出流标题：展示当前联动目标任务（如「实时输出流 · T3」）。</summary>
-    public string OutputFollowTitle
+    public string OutputFollowTitle => _output.OutputFollowTitle;
+
+    public bool HasDisplayedOutput => _output.HasDisplayedOutput;
+
+    public string OutputEmptyHint => _output.OutputEmptyHint;
+
+    // ---------------- 统计（转发 BatchStatsState） ----------------
+
+    public int Total => _statsState.Total;
+    public int Done => _statsState.Done;
+    public int Failed => _statsState.Failed;
+    public int Running => _statsState.Running;
+    public int Interrupted => _statsState.Interrupted;
+    public int Pending => _statsState.Pending;
+    public int Skipped => _statsState.Skipped;
+    public int NeedsAttention => _statsState.NeedsAttention;
+    public int Blocked => _statsState.Blocked;
+    public string EtaText => _statsState.EtaText;
+    public string CurrentTaskText => _statsState.CurrentTaskText;
+    public string CurrentComboText => _statsState.CurrentComboText;
+    public string CurrentWorkspaceText => _statsState.CurrentWorkspaceText;
+
+    public double ProgressPercent => _statsState.Total == 0 ? 0 : (_statsState.Done + _statsState.Failed + _statsState.Interrupted) * 100.0 / _statsState.Total;
+
+    public string ProgressText => $"{_statsState.Done + _statsState.Failed + _statsState.Interrupted} / {_statsState.Total}";
+
+    // ---------------- 批次状态（转发 BatchStatusState） ----------------
+
+    public BatchStatus Status
     {
-        get => _outputFollowTitle;
-        private set => SetProperty(ref _outputFollowTitle, value);
+        get => _statusState.Status;
+        private set => _statusState.Status = value;
     }
 
-    /// <summary>当前是否有可展示的输出行（用于切换空状态提示）。</summary>
-    public bool HasDisplayedOutput
+    public string StatusText => _statusState.StatusText;
+    public Avalonia.Media.IBrush StatusBrush => _statusState.StatusBrush;
+    public bool IsWaiting => _statusState.IsWaiting;
+    public bool DispatchPaused
     {
-        get => _hasDisplayedOutput;
-        private set => SetProperty(ref _hasDisplayedOutput, value);
+        get => _statusState.DispatchPaused;
+        private set => _statusState.DispatchPaused = value;
     }
 
-    /// <summary>无输出时的提示文案（随选择/跟随状态变化）。</summary>
-    public string OutputEmptyHint
-    {
-        get => _outputEmptyHint;
-        private set => SetProperty(ref _outputEmptyHint, value);
-    }
+    public bool CanStart => _statusState.CanStart;
+    public bool CanTerminate => _statusState.CanTerminate;
+    public bool CanResume => _statusState.CanResume;
+    public bool CanCancelWaiting => _statusState.CanCancelWaiting;
 
-    /// <summary>选中任务的工作流阶段树（WorkflowView / GateResultView 数据源；非工作流任务为空）。</summary>
-    public ObservableCollection<StageRowViewModel> SelectedStages { get; }
-
-    /// <summary>依赖看板行（DagBoardView 数据源；仅当批次含 DAG 依赖时有内容）。</summary>
-    public ObservableCollection<DagRowViewModel> DagRows { get; }
+    // ---------------- 选中任务（派生自 _selectedTask） ----------------
 
     public TaskRowViewModel? SelectedTask
     {
@@ -177,158 +175,24 @@ public sealed class MonitorViewModel : ViewModelBase
                 OnPropertyChanged(nameof(HasSelectedTemplate));
                 OnPropertyChanged(nameof(HasSelectedTask));
                 OnPropertyChanged(nameof(SelectedHasError));
-                RefreshSelectedStages();
-
-                // 随任务联动：选中任务即固定为输出流跟随目标；取消选中则解除固定（回归自动跟随运行中任务）。
-                if (value is not null)
-                {
-                    _followTaskId = value.Id;
-                    _followPinned = true;
-                }
-                else
-                {
-                    _followPinned = false;
-                    _followTaskId = null;
-                }
-
-                if (_followMode == OutputFollowMode.Selected)
-                {
-                    RebuildDisplayedOutput();
-                    UpdateOutputFollowTitle();
-                }
+                _taskList.RefreshStages(_selectedTask?.Item);
+                _output.SetSelectedTask(_selectedTask?.Id);
             }
         }
     }
 
-    /// <summary>选中任务是否工作流任务（控制阶段树区域可见性）。</summary>
     public bool SelectedIsWorkflow => _selectedTask?.Item.IsWorkflow == true;
-
-    /// <summary>兼容绑定名。</summary>
     public bool HasSelectedWorkflow => SelectedIsWorkflow;
-
-    /// <summary>选中任务的模板来源（模板展开产物溯源展示）。</summary>
     public string SelectedTemplateId => _selectedTask?.Item.TemplateVars?.TemplateId ?? string.Empty;
-
     public bool HasSelectedTemplate => !string.IsNullOrEmpty(SelectedTemplateId);
-
-    /// <summary>是否已选中某个任务（控制右侧详情区块显隐）。</summary>
     public bool HasSelectedTask => _selectedTask is not null;
-
-    /// <summary>选中任务是否带错误信息。</summary>
     public bool SelectedHasError => _selectedTask?.HasError == true;
-
-    /// <summary>看板是否可见（批次含依赖任务才显示 DAG 区域）。</summary>
-    public bool HasDag => Tasks.Any(t => t.Item.DependsOn is { Count: > 0 });
-
+    public bool HasDag => _taskList.Tasks.Any(t => t.Item.DependsOn is { Count: > 0 });
     public string SelectedInstruction => _selectedTask?.Item.Instruction ?? string.Empty;
-
     public string SelectedResult => _selectedTask?.Item.Result ?? string.Empty;
-
     public string SelectedError => _selectedTask?.Item.Error ?? string.Empty;
 
-    // ---------------- 统计 ----------------
-
-    public int Total { get => _total; private set => SetProperty(ref _total, value); }
-
-    public int Done { get => _done; private set => SetProperty(ref _done, value); }
-
-    public int Failed { get => _failed; private set => SetProperty(ref _failed, value); }
-
-    public int Running { get => _running; private set => SetProperty(ref _running, value); }
-
-    public int Interrupted { get => _interrupted; private set => SetProperty(ref _interrupted, value); }
-
-    public int Pending { get => _pending; private set => SetProperty(ref _pending, value); }
-
-    public int Skipped { get => _skipped; private set => SetProperty(ref _skipped, value); }
-
-    /// <summary>待人工介入任务数（二期：门禁超限等，不计入失败率）。</summary>
-    public int NeedsAttention { get => _needsAttention; private set => SetProperty(ref _needsAttention, value); }
-
-    /// <summary>依赖阻塞任务数（二期：DAG 上游失败导致）。</summary>
-    public int Blocked { get => _blocked; private set => SetProperty(ref _blocked, value); }
-
-    public double ProgressPercent => Total == 0 ? 0 : (Done + Failed + Interrupted) * 100.0 / Total;
-
-    public string ProgressText => $"{Done + Failed + Interrupted} / {Total}";
-
-    public BatchStatus Status
-    {
-        get => _status;
-        private set
-        {
-            if (SetProperty(ref _status, value))
-            {
-                OnPropertyChanged(nameof(StatusText));
-                OnPropertyChanged(nameof(StatusBrush));
-                OnPropertyChanged(nameof(IsWaiting));
-                OnPropertyChanged(nameof(CanStart));
-                OnPropertyChanged(nameof(CanTerminate));
-                OnPropertyChanged(nameof(CanResume));
-                OnPropertyChanged(nameof(CanCancelWaiting));
-                CancelWaitingCommand.NotifyCanExecuteChanged();
-                StartCommand.NotifyCanExecuteChanged();
-                TerminateCommand.NotifyCanExecuteChanged();
-            }
-        }
-    }
-
-    public string StatusText => Status switch
-    {
-        BatchStatus.Idle => "空闲",
-        BatchStatus.Running => "运行中",
-        BatchStatus.Waiting => "等待恢复",
-        BatchStatus.Blocked => "已阻塞",
-        BatchStatus.Terminated => "已终止",
-        BatchStatus.Completed => "已完成",
-        _ => Status.ToString()
-    };
-
-    public IBrush StatusBrush => AppBrushes.ForBatchStatus(Status);
-
-    public bool IsWaiting => Status == BatchStatus.Waiting;
-
-    /// <summary>
-    /// 派发暂停提示（REQ-021）：任一在飞槽位冻结后进入全局派发暂停（不再向任何槽位派发新任务），
-    /// 直到在飞全部结束后统一切换账号并解除。监控页据此展示「派发已暂停」横幅。
-    /// </summary>
-    public bool DispatchPaused
-    {
-        get => _dispatchPaused;
-        private set => SetProperty(ref _dispatchPaused, value);
-    }
-
-    public bool CanStart => !_host.IsRunning && !string.IsNullOrWhiteSpace(_host.Options.TaskFilePath);
-
-    public bool CanTerminate => _host.IsRunning;
-
-    public bool CanResume => !_host.IsRunning && !string.IsNullOrWhiteSpace(_host.Options.TaskFilePath);
-
-    public bool CanCancelWaiting => Status == BatchStatus.Waiting;
-
-    public string CurrentTaskText
-    {
-        get => _currentTaskText;
-        private set => SetProperty(ref _currentTaskText, value);
-    }
-
-    public string CurrentComboText
-    {
-        get => _currentComboText;
-        private set => SetProperty(ref _currentComboText, value);
-    }
-
-    public string CurrentWorkspaceText
-    {
-        get => _currentWorkspaceText;
-        private set => SetProperty(ref _currentWorkspaceText, value);
-    }
-
-    public string WaitingText
-    {
-        get => _waitingText;
-        private set => SetProperty(ref _waitingText, value);
-    }
+    // ---------------- 运行参数 / 状态栏 ----------------
 
     public bool ForceRerun
     {
@@ -354,7 +218,17 @@ public sealed class MonitorViewModel : ViewModelBase
         private set => SetProperty(ref _statusMessage, value);
     }
 
-    /// <summary>任务列表当前筛选条件（全部 / 执行中 / 待处理 / 完成 / 失败）。</summary>
+    public string WaitingText
+    {
+        get => _waitingText;
+        private set => SetProperty(ref _waitingText, value);
+    }
+
+    public string TaskFilePath => _host.Options.TaskFilePath;
+    public string LastReportPath => _host.LastReportPath ?? "（尚未生成）";
+
+    // ---------------- 筛选 ----------------
+
     public string ActiveFilter
     {
         get => _activeFilter;
@@ -367,292 +241,109 @@ public sealed class MonitorViewModel : ViewModelBase
         }
     }
 
-    /// <summary>按 ActiveFilter 过滤后的任务行（筛选 chip 数据源）。</summary>
     public IEnumerable<TaskRowViewModel> VisibleTasks => _activeFilter switch
     {
-        "执行中" => Tasks.Where(t => t.Status == TaskStatus.Running),
-        "待处理" => Tasks.Where(t => t.Status == TaskStatus.Pending),
-        "完成" => Tasks.Where(t => t.Status == TaskStatus.Done),
-        "失败" => Tasks.Where(t => t.Status == TaskStatus.Failed),
-        _ => Tasks
+        "执行中" => _taskList.Tasks.Where(t => t.Status == TaskStatus.Running),
+        "待处理" => _taskList.Tasks.Where(t => t.Status == TaskStatus.Pending),
+        "完成" => _taskList.Tasks.Where(t => t.Status == TaskStatus.Done),
+        "失败" => _taskList.Tasks.Where(t => t.Status == TaskStatus.Failed),
+        _ => _taskList.Tasks
     };
-
-    /// <summary>预计剩余时间（基于已完成的均值 × 待处理数粗略估算，无数据时为「—」）。</summary>
-    public string EtaText
-    {
-        get => _etaText;
-        private set => SetProperty(ref _etaText, value);
-    }
-
-    public string TaskFilePath => _host.Options.TaskFilePath;
-
-    public string LastReportPath => _host.LastReportPath ?? "（尚未生成）";
 
     // ---------------- 命令 ----------------
 
     public IAsyncRelayCommand StartCommand { get; }
-
     public IAsyncRelayCommand TerminateCommand { get; }
-
     public IAsyncRelayCommand TerminateAfterCurrentCommand { get; }
-
     public IAsyncRelayCommand ResumeCommand { get; }
-
     public IRelayCommand CancelWaitingCommand { get; }
-
     public IAsyncRelayCommand LoadCommand { get; }
-
     public IAsyncRelayCommand PreflightCommand { get; }
-
     public IRelayCommand ResetCooldownCommand { get; }
-
-    /// <summary>任务列表筛选：设置 ActiveFilter（chip 点击）。</summary>
     public IRelayCommand SetFilterCommand { get; }
 
-    // ---------------- 引擎事件 ----------------
+    // ---------------- 引擎事件编排 ----------------
 
     private void OnEngineEvent(object? sender, BatchEvent ev)
     {
-        Dispatcher.UIThread.Post(() =>
+        switch (ev.Kind)
         {
-            switch (ev.Kind)
-            {
-                case BatchEventKind.StatusChanged:
-                    if (ev.BatchStatus.HasValue)
-                    {
-                        Status = ev.BatchStatus.Value;
-                        // 批处理结束（完成/终止/阻塞）时清除派发暂停提示（REQ-021 监控态）
-                        if (ev.BatchStatus.Value is BatchStatus.Completed or BatchStatus.Terminated or BatchStatus.Blocked)
-                        {
-                            DispatchPaused = false;
-                        }
-                    }
-
-                    break;
-                case BatchEventKind.SlotFrozen:
-                    // REQ-021：在飞槽位冻结 → 进入全局派发暂停，监控页明确展示「派发已暂停」
-                    DispatchPaused = true;
-                    break;
-                case BatchEventKind.AccountSwitched:
-                    // REQ-021：延迟至在飞全部结束后的统一切换（DeferredSwitch=true）→ 解除派发暂停
-                    if (ev.DeferredSwitch)
+            case BatchEventKind.StatusChanged:
+                if (ev.BatchStatus.HasValue)
+                {
+                    Status = ev.BatchStatus.Value;
+                    if (ev.BatchStatus.Value is BatchStatus.Completed or BatchStatus.Terminated or BatchStatus.Blocked)
                     {
                         DispatchPaused = false;
                     }
+                }
 
-                    break;
-                case BatchEventKind.TaskOutput:
-                    AppendOutputChunk(ev.At, ev.Message, ev.TaskId);
-                    break;
-                case BatchEventKind.TaskStarted:
-                    // 随任务联动：未手动固定跟随目标时，自动跟随新启动的运行中任务（避免并发任务输出混在一起）。
-                    if (!_followPinned && _followMode == OutputFollowMode.Selected && !string.IsNullOrEmpty(ev.TaskId))
-                    {
-                        _followTaskId = ev.TaskId;
-                        RebuildDisplayedOutput();
-                        UpdateOutputFollowTitle();
-                    }
+                break;
+            case BatchEventKind.SlotFrozen:
+                DispatchPaused = true;
+                break;
+            case BatchEventKind.AccountSwitched:
+                if (ev.DeferredSwitch)
+                {
+                    DispatchPaused = false;
+                }
 
-                    break;
-                case BatchEventKind.BatchWaiting:
-                    _resumeAt = ev.ResumeAt;
-                    UpdateWaitingText();
-                    break;
-                case BatchEventKind.BatchResumed:
-                    _resumeAt = null;
-                    WaitingText = string.Empty;
-                    break;
-            }
+                break;
+            case BatchEventKind.TaskOutput:
+                _output.AppendChunk(ev.At, ev.Message, ev.TaskId);
+                break;
+            case BatchEventKind.TaskStarted:
+                _output.OnTaskStarted(ev.TaskId);
+                break;
+            case BatchEventKind.BatchWaiting:
+                _resumeAt = ev.ResumeAt;
+                UpdateWaitingText();
+                break;
+            case BatchEventKind.BatchResumed:
+                _resumeAt = null;
+                WaitingText = string.Empty;
+                break;
+        }
 
-            if (!string.IsNullOrEmpty(ev.Message) && ev.Kind is not (BatchEventKind.TaskOutput or BatchEventKind.StatusChanged))
-            {
-                AddToast(ev);
-                AppendEventToStream(ev, ev.TaskId ?? ev.Task?.Id);
-            }
+        if (!string.IsNullOrEmpty(ev.Message) && ev.Kind is not (BatchEventKind.TaskOutput or BatchEventKind.StatusChanged))
+        {
+            _toasts.Add(ev);
+            _output.AppendEvent(ev, ev.TaskId ?? ev.Task?.Id);
+        }
 
-            if (ev.Task is not null)
-            {
-                SyncTaskRow(ev.Task);
-            }
+        if (ev.Task is not null)
+        {
+            SyncTaskRow(ev.Task);
+        }
 
-            Recalculate();
-        });
+        Recalculate();
     }
 
-    private void AddToast(BatchEvent ev)
+    private void SyncTaskRow(TaskItem item)
     {
-        var level = ev.Kind switch
-        {
-            BatchEventKind.DangerousOperationBlocked => "danger",
-            BatchEventKind.BatchBlocked or BatchEventKind.ModelSwitched or BatchEventKind.AccountSwitched
-                or BatchEventKind.FallbackUsed or BatchEventKind.BatchWaiting or BatchEventKind.QuotaResetRecorded
-                or BatchEventKind.Warning or BatchEventKind.BatchTerminated => "warning",
-            _ => "info"
-        };
-
-        // 二期事件走 Info/Warning 通道，按消息关键词升级告警级别（门禁/依赖/会话/通知/模板）。
-        if (level == "info" && IsPhase2Attention(ev.Message))
-        {
-            level = "warning";
-        }
-
-        Toasts.Insert(0, new ToastItem(level, ev.Message, ev.At));
-        while (Toasts.Count > 100)
-        {
-            Toasts.RemoveAt(Toasts.Count - 1);
-        }
+        _taskList.Upsert(item);
+        _taskList.RefreshStages(_selectedTask?.Item);
+        OnPropertyChanged(nameof(HasDag));
+        OnPropertyChanged(nameof(VisibleTasks));
     }
 
-    /// <summary>二期关注类消息关键词：模板展开 / 门禁修订 / 依赖阻塞 / 会话恢复 / 通知发送失败。</summary>
-    private static bool IsPhase2Attention(string? message) => message is not null && (
-        message.Contains("门禁", StringComparison.Ordinal) ||
-        message.Contains("依赖", StringComparison.Ordinal) ||
-        message.Contains("模板", StringComparison.Ordinal) ||
-        message.Contains("会话恢复", StringComparison.Ordinal) ||
-        message.Contains("通知", StringComparison.Ordinal) ||
-        message.Contains("待人工", StringComparison.Ordinal));
-
-    // ---------------- 实时输出流（带标签胶囊，对齐 mockup） ----------------
-
-    /// <summary>把一段原始 stdout 按行拆分并逐行分类写入输出流（taskId 用于按任务联动过滤）。</summary>
-    private void AppendOutputChunk(DateTimeOffset at, string? chunk, string? taskId)
+    private void SyncTasks()
     {
-        if (string.IsNullOrEmpty(chunk))
-        {
-            return;
-        }
-
-        foreach (var raw in chunk.Split('\n'))
-        {
-            var line = raw.TrimEnd('\r').Trim();
-            if (line.Length == 0)
-            {
-                continue;
-            }
-
-            var (kind, tag, dim) = ClassifyOutput(line);
-            AppendOutputLine(at, kind, tag, line, dim, taskId);
-        }
+        var tasks = _host.Engine?.Tasks;
+        var prevId = _selectedTask?.Id;
+        _selectedTask = _taskList.RebuildAll(tasks, prevId);
+        OnPropertyChanged(nameof(SelectedTask));
+        OnPropertyChanged(nameof(HasDag));
+        OnPropertyChanged(nameof(VisibleTasks));
+        Recalculate();
     }
 
-    /// <summary>把引擎调度类事件（切换 / 额度 / 错误 / 提示）也并入输出流，使流内可见降级轨迹（对齐 mockup）。</summary>
-    private void AppendEventToStream(BatchEvent ev, string? taskId)
+    private void Recalculate()
     {
-        var (kind, tag) = ev.Kind switch
-        {
-            BatchEventKind.ModelSwitched or BatchEventKind.AccountSwitched or BatchEventKind.FallbackUsed
-                => (OutputTagKind.Switch, "切换"),
-            BatchEventKind.ModelWindowSkipped or BatchEventKind.ModelCooldownSkipped or BatchEventKind.QuotaResetRecorded
-                => (OutputTagKind.Quota, "额度"),
-            BatchEventKind.Warning or BatchEventKind.BatchBlocked or BatchEventKind.BatchWaiting
-                => (OutputTagKind.Warn, "提示"),
-            BatchEventKind.DangerousOperationBlocked or BatchEventKind.AutoAnswered
-                => (OutputTagKind.Err, "拦截"),
-            _ => (OutputTagKind.Plain, "输出")
-        };
-
-        if (ev.Kind is BatchEventKind.AutoAnswered)
-        {
-            // 自动应答算成功类，去强调
-            AppendOutputLine(ev.At, OutputTagKind.Ok, "应答", ev.Message, dim: true, taskId: taskId);
-            return;
-        }
-
-        AppendOutputLine(ev.At, kind, tag, ev.Message, dim: false, taskId: taskId);
-    }
-
-    /// <summary>对单行原始输出做轻量分类（关键字启发式，无需改动引擎输出格式）。</summary>
-    private static (OutputTagKind Kind, string Tag, bool Dim) ClassifyOutput(string line)
-    {
-        if (line.Contains("切换") || line.Contains("降级") || line.Contains("switched", StringComparison.OrdinalIgnoreCase))
-            return (OutputTagKind.Switch, "切换", false);
-        if (line.Contains("额度") || line.Contains("冷却") || line.Contains("免费时段") || line.Contains("时段外") ||
-            line.Contains("quota", StringComparison.OrdinalIgnoreCase))
-            return (OutputTagKind.Quota, "额度", false);
-        if (line.Contains("Bash:") || line.Contains("Read:") || line.Contains("Write:") || line.Contains("Edit:") ||
-            line.Contains("Grep:") || line.Contains("工具调用") || line.Contains("Tool:"))
-            return (OutputTagKind.Tool, "工具调用", false);
-        if (line.Contains("错误") || line.Contains("error", StringComparison.OrdinalIgnoreCase) ||
-            line.Contains("Exception") || line.Contains("失败"))
-            return (OutputTagKind.Err, "错误", false);
-        if (line.Contains("完成") || line.Contains("成功") || line.Contains("通过") ||
-            line.Contains("ok", StringComparison.OrdinalIgnoreCase))
-            return (OutputTagKind.Ok, "完成", true);
-        return (OutputTagKind.Plain, "输出", false);
-    }
-
-    /// <summary>
-    /// 写入一行实时输出：始终进入全局缓冲 <see cref="OutputLines"/>（保留全部任务历史），
-    /// 并依据跟随模式追加到 <see cref="DisplayedOutputLines"/>（仅联动任务或全部）。
-    /// </summary>
-    private void AppendOutputLine(DateTimeOffset at, OutputTagKind kind, string tag, string message, bool dim, string? taskId = null)
-    {
-        var item = new OutputLineItem(at, kind, tag, message, dim, taskId);
-        OutputLines.Add(item);
-        if (OutputLines.Count > 500)
-        {
-            OutputLines.RemoveAt(0);
-        }
-
-        if (ShouldDisplay(taskId))
-        {
-            _displayedOutput.Add(item);
-            if (_displayedOutput.Count > 500)
-            {
-                _displayedOutput.RemoveAt(0);
-            }
-
-            HasDisplayedOutput = true;
-        }
-    }
-
-    /// <summary>判断某行是否应出现在当前输出流视图中（随任务联动 → 仅联动任务；全部 → 任意）。</summary>
-    private bool ShouldDisplay(string? taskId) =>
-        _followMode == OutputFollowMode.All ||
-        (!string.IsNullOrEmpty(taskId) && taskId == _followTaskId);
-
-    /// <summary>按当前跟随规则重建输出流视图（切换选中任务 / 切换跟随模式 / 自动跟随变更时调用）。</summary>
-    private void RebuildDisplayedOutput()
-    {
-        _displayedOutput.Clear();
-        foreach (var item in OutputLines)
-        {
-            if (ShouldDisplay(item.TaskId))
-            {
-                _displayedOutput.Add(item);
-            }
-        }
-
-        HasDisplayedOutput = _displayedOutput.Count > 0;
-    }
-
-    /// <summary>刷新输出流标题与空状态提示（反映当前联动目标任务）。</summary>
-    private void UpdateOutputFollowTitle()
-    {
-        if (_followMode == OutputFollowMode.All)
-        {
-            OutputFollowTitle = "实时输出流 · 全部任务";
-            OutputEmptyHint = "（暂无输出）";
-            return;
-        }
-
-        if (_followTaskId is null)
-        {
-            OutputFollowTitle = "实时输出流 · 未选择任务";
-            OutputEmptyHint = "选择左侧任务可查看其输出；运行中将自动跟随当前执行任务";
-            return;
-        }
-
-        var target = Tasks.FirstOrDefault(t => t.Id == _followTaskId)?.Item;
-        if (target is null)
-        {
-            OutputFollowTitle = "实时输出流";
-            OutputEmptyHint = "（该任务暂无实时输出）";
-            return;
-        }
-
-        OutputFollowTitle = $"实时输出流 · {target.Id}";
-        OutputEmptyHint = $"任务 {target.Id} 暂无实时输出";
+        _statsState.Apply(BatchStatistics.Compute(_taskItems(), _host.Options.DefaultWorkspace));
+        OnPropertyChanged(nameof(ProgressPercent));
+        OnPropertyChanged(nameof(ProgressText));
+        OnPropertyChanged(nameof(VisibleTasks));
     }
 
     private void UpdateWaitingText()
@@ -668,309 +359,30 @@ public sealed class MonitorViewModel : ViewModelBase
             : $"等待至 {_resumeAt.Value:HH:mm:ss} 自动继续（剩余 {remaining:hh\\:mm\\:ss}，可取消）";
     }
 
-    private void SyncTasks()
+    // ---------------- 协作者属性变更透传（保住 Avalonia 反射绑定契约） ----------------
+
+    private void _Forward(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        var tasks = _host.Engine?.Tasks;
-        if (tasks is null)
+        if (!string.IsNullOrEmpty(e.PropertyName))
         {
-            return;
-        }
-
-        // P1-7：移出集合前先处置旧行 VM，解除其对长生命周期 TaskItem 的订阅，避免反复重建泄漏。
-        foreach (var old in Tasks)
-        {
-            old.Dispose();
-        }
-
-        Tasks.Clear();
-        foreach (var t in tasks)
-        {
-            Tasks.Add(new TaskRowViewModel(t));
-        }
-
-        // 重建后若选中行已被替换，重新指向同 Id 的新行，避免 _selectedTask 悬空指向已处置实例。
-        if (_selectedTask is not null)
-        {
-            _selectedTask = Tasks.FirstOrDefault(r => r.Id == _selectedTask.Id);
-        }
-
-        RebuildDagRows();
-        OnPropertyChanged(nameof(HasDag));
-        OnPropertyChanged(nameof(VisibleTasks));
-        Recalculate();
-    }
-
-    private void SyncTaskRow(TaskItem item)
-    {
-        var row = Tasks.FirstOrDefault(r => r.Item.Id == item.Id);
-        if (row is null)
-        {
-            Tasks.Add(new TaskRowViewModel(item));
-        }
-        else
-        {
-            row.Refresh();
-        }
-
-        RebuildDagRows();
-        OnPropertyChanged(nameof(HasDag));
-        OnPropertyChanged(nameof(VisibleTasks));
-        RefreshSelectedStages();
-    }
-
-    /// <summary>重建选中任务的工作流阶段树（WorkflowView / GateResultView）。</summary>
-    private void RefreshSelectedStages()
-    {
-        SelectedStages.Clear();
-        var stages = _selectedTask?.Item.StageResults;
-        if (stages is null)
-        {
-            return;
-        }
-
-        foreach (var s in stages)
-        {
-            SelectedStages.Add(new StageRowViewModel(s));
+            OnPropertyChanged(e.PropertyName);
         }
     }
 
-    /// <summary>
-    /// 重建依赖看板（DagBoardView）：按拓扑层级缩进排列，
-    /// blocked_by 取自引擎的依赖阻断判定（与报告一致）。
-    /// </summary>
-    private void RebuildDagRows()
+    private void _ForwardStatus(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        DagRows.Clear();
-        var items = Tasks.Select(t => t.Item).ToList();
-        if (!items.Any(t => t.DependsOn is { Count: > 0 }))
+        if (!string.IsNullOrEmpty(e.PropertyName))
         {
-            return;
+            OnPropertyChanged(e.PropertyName);
         }
 
-        var levels = ComputeLevels(items);
-        foreach (var item in items)
+        // 原 Status setter 在状态变更时联动刷新命令可用性（Start/Terminate/CancelWaiting 的
+        // can-execute 谓词读宿主 IsRunning / 状态，与原行为一致）。
+        if (e.PropertyName == nameof(BatchStatusState.Status))
         {
-            var blockedBy = ComputeBlockedByView(item, items);
-            DagRows.Add(new DagRowViewModel(item, levels.GetValueOrDefault(item.Id, 0), blockedBy));
-        }
-    }
-
-    /// <summary>拓扑层级：无依赖 = 0，否则 = max(依赖层级) + 1（环/悬空按 0 层保守处理）。</summary>
-    private static Dictionary<string, int> ComputeLevels(IReadOnlyList<TaskItem> items)
-    {
-        var byId = items.ToDictionary(t => t.Id, StringComparer.OrdinalIgnoreCase);
-        var levels = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-
-        int LevelOf(TaskItem t)
-        {
-            if (levels.TryGetValue(t.Id, out var cached))
-            {
-                return cached;
-            }
-
-            levels[t.Id] = 0; // 防环：先占位
-            var level = 0;
-            if (t.DependsOn is { Count: > 0 })
-            {
-                foreach (var dep in t.DependsOn)
-                {
-                    if (byId.TryGetValue(dep, out var depTask))
-                    {
-                        level = Math.Max(level, LevelOf(depTask) + 1);
-                    }
-                }
-            }
-
-            levels[t.Id] = level;
-            return level;
-        }
-
-        foreach (var t in items)
-        {
-            LevelOf(t);
-        }
-
-        return levels;
-    }
-
-    /// <summary>看板视图的 blocked_by：上游失败/阻塞/悬空的依赖 Id（与引擎 ApplyDependencyBlockAsync 判定一致）。</summary>
-    private static List<string> ComputeBlockedByView(TaskItem item, IReadOnlyList<TaskItem> items)
-    {
-        if (item.DependsOn is not { Count: > 0 } ||
-            item.Status is not (TaskStatus.Pending or TaskStatus.Blocked))
-        {
-            return new List<string>();
-        }
-
-        var byId = items.ToDictionary(t => t.Id, StringComparer.OrdinalIgnoreCase);
-        return item.DependsOn.Where(dep =>
-            !byId.TryGetValue(dep, out var upstream) ||
-            upstream.Status is TaskStatus.Failed or TaskStatus.Blocked or TaskStatus.NeedsAttention).ToList();
-    }
-
-    private void Recalculate()
-    {
-        var tasks = Tasks.Select(t => t.Item).ToList();
-        Total = tasks.Count;
-        Done = tasks.Count(t => t.Status == TaskStatus.Done);
-        Failed = tasks.Count(t => t.Status == TaskStatus.Failed);
-        Running = tasks.Count(t => t.Status == TaskStatus.Running);
-        Interrupted = tasks.Count(t => t.Status == TaskStatus.Interrupted);
-        Pending = tasks.Count(t => t.Status == TaskStatus.Pending);
-        NeedsAttention = tasks.Count(t => t.Status == TaskStatus.NeedsAttention);
-        Blocked = tasks.Count(t => t.Status == TaskStatus.Blocked);
-        OnPropertyChanged(nameof(ProgressPercent));
-        OnPropertyChanged(nameof(ProgressText));
-        OnPropertyChanged(nameof(VisibleTasks));
-
-        // 预计剩余：已完成任务均值 × 待处理数（无已完成样本时回退「—」）
-        if (Done > 0 && Pending > 0)
-        {
-            var avg = tasks.Where(t => t.Status == TaskStatus.Done)
-                           .Average(t => Math.Max(t.DurationSeconds, 1.0));
-            var remain = TimeSpan.FromSeconds(avg * Pending);
-            EtaText = remain.TotalMinutes >= 1
-                ? $"~{Math.Ceiling(remain.TotalMinutes)} min"
-                : $"~{Math.Ceiling(remain.TotalSeconds)} s";
-        }
-        else
-        {
-            EtaText = "—";
-        }
-
-        var current = tasks.FirstOrDefault(t => t.Status == TaskStatus.Running);
-        CurrentTaskText = current is null ? "无" : $"{current.Id} {current.Instruction}";
-        CurrentComboText = current is null
-            ? "-"
-            : string.Join(" + ", new[] { current.AccountUsed, current.ModelUsed }.Where(x => !string.IsNullOrEmpty(x)));
-        CurrentWorkspaceText = current?.Workspace ?? _host.Options.DefaultWorkspace ?? "-";
-    }
-
-    // ---------------- 操作 ----------------
-
-    private async Task LoadAsync()
-    {
-        if (string.IsNullOrWhiteSpace(_host.Options.TaskFilePath))
-        {
-            NotifyIssue("请先在配置页选择任务文件", level: "warning");
-            return;
-        }
-
-        try
-        {
-            await _host.LoadTasksAsync().ConfigureAwait(false);
-            SetStatusMessage($"已加载任务文件（{DateTime.Now:HH:mm:ss}）");
-        }
-        catch (Exception ex)
-        {
-            NotifyIssue($"加载失败：{ex.Message}");
-        }
-    }
-
-    private async Task PreflightAsync()
-    {
-        try
-        {
-            var report = await _host.PreflightAsync().ConfigureAwait(false);
-            if (report.CanStart)
-            {
-                SetStatusMessage($"预检通过：{report.LoadedTaskCount} 条任务，待处理 {report.PendingTaskCount} 条");
-            }
-            else
-            {
-                NotifyIssue("预检未通过：" + string.Join("；", report.Errors), level: "warning");
-            }
-        }
-        catch (Exception ex)
-        {
-            NotifyIssue($"预检异常：{ex.Message}", level: "warning");
-        }
-    }
-
-    private async Task StartAsync()
-    {
-        if (!await EnsurePreflightPassedAsync().ConfigureAwait(true))
-        {
-            return;
-        }
-
-        try
-        {
-            var report = await _host.StartAsync(_waitIfUnavailable).ConfigureAwait(false);
-            FinishWithReport(report);
-        }
-        catch (Exception ex)
-        {
-            SetStatusMessage($"执行异常：{ex.Message}");
-        }
-    }
-
-    private async Task ResumeAsync()
-    {
-        if (!await EnsurePreflightPassedAsync().ConfigureAwait(true))
-        {
-            return;
-        }
-
-        try
-        {
-            var report = await _host.StartAsync(_waitIfUnavailable).ConfigureAwait(false);
-            FinishWithReport(report);
-        }
-        catch (Exception ex)
-        {
-            SetStatusMessage($"执行异常：{ex.Message}");
-        }
-    }
-
-    /// <summary>批处理结束后的界面收尾（P0-6：后台线程 → UI 线程后再写绑定属性）。</summary>
-    private void FinishWithReport(BatchReport report) => UiThread.Post(() =>
-    {
-        StatusMessage = $"批处理结束：{report.BatchStatus}，成功 {report.Done} / 失败 {report.Failed} / 中断 {report.Interrupted}";
-        OnPropertyChanged(nameof(LastReportPath));
-    });
-
-    /// <summary>状态栏文案写入：调用方可能来自后台线程，统一marshal到 UI 线程。</summary>
-    private void SetStatusMessage(string text) => UiThread.Post(() => StatusMessage = text);
-
-    /// <summary>
-    /// 需要用户注意的失败提示：同时写状态栏与「事件提示」页签。
-    /// 只写状态栏的代价是「点了按钮似乎没反应」——状态栏在窗口最底部、字号 12，极易被忽略（2026-10-18 现场）。
-    /// </summary>
-    private void NotifyIssue(string message, string level = "danger")
-    {
-        SetStatusMessage(message);
-        UiThread.Post(() =>
-        {
-            Toasts.Insert(0, new ToastItem(level, message, DateTimeOffset.Now));
-            while (Toasts.Count > 100)
-            {
-                Toasts.RemoveAt(Toasts.Count - 1);
-            }
-        });
-    }
-
-    /// <summary>
-    /// 启动前预检闸门（REQ-010）：CLI 缺失 / 任务文件与工作空间问题 / 账号池为空等
-    /// 环境错误在进入执行循环前拦截，避免每条任务白跑重试后判失败。
-    /// </summary>
-    private async Task<bool> EnsurePreflightPassedAsync()
-    {
-        try
-        {
-            var report = await _host.PreflightAsync().ConfigureAwait(false);
-            if (report.CanStart)
-            {
-                return true;
-            }
-
-            SetStatusMessage("预检未通过，已取消启动：" + string.Join("；", report.Errors));
-            return false;
-        }
-        catch (Exception ex)
-        {
-            SetStatusMessage($"预检异常，已取消启动：{ex.Message}");
-            return false;
+            CancelWaitingCommand.NotifyCanExecuteChanged();
+            StartCommand.NotifyCanExecuteChanged();
+            TerminateCommand.NotifyCanExecuteChanged();
         }
     }
 }

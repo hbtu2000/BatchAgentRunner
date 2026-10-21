@@ -7,11 +7,7 @@
              x:Class="BatchAgentRunner.Desktop.Views.TemplateEditorView"
              Background="{DynamicResource BgAppBrush}">
 
-    <Design.DataContext>
-        <vm:TemplateEditorViewModel />
-    </Design.DataContext>
-
-    <Grid RowDefinitions="Auto,*,Auto" Margin="12" ColumnDefinitions="300,*">
+<Grid RowDefinitions="Auto,*,Auto" Margin="12" ColumnDefinitions="300,*">
 
         <!-- 模板清单 -->
         <Border Grid.Row="0" Grid.RowSpan="2" Grid.Column="0" Padding="8" Theme="{StaticResource Card}"

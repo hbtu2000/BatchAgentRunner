@@ -98,4 +98,171 @@ public class LayeringRulesTests
             }
         }
     }
+
+    /// <summary>
+    /// §3.4 第 5 条 + P-02 退出标准：<see cref="BatchEngine"/> facade 文件硬上限 400 行，防止上帝类回潮。
+    /// 扫描源文件物理行数（行为等价性由契约测试守护，此处只守「行数规模」这道量化的架构闸门）。
+    /// </summary>
+    [Fact]
+    public void BatchEngine_facade文件不得超过400行_防上帝类回潮()
+    {
+        const int FacadeLineCap = 400;
+        var path = LocateEngineSource();
+        Assert.True(File.Exists(path), $"未找到 BatchEngine.cs 源文件：{path}（守卫测试须在仓库检出内运行）");
+
+        var lines = File.ReadAllLines(path).Length;
+        Assert.True(lines <= FacadeLineCap,
+            $"BatchEngine.cs 共 {lines} 行，超过 P-02 上帝类收口上限 {FacadeLineCap} 行；请继续下沉编排到协作者而非在此膨胀。");
+    }
+
+    private static string LocateEngineSource()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "BatchAgentRunner.slnx")))
+        {
+            dir = dir.Parent;
+        }
+
+        Assert.NotNull(dir);
+        return Path.Combine(dir!.FullName, "src", "BatchAgentRunner.Core", "Engine", "BatchEngine.cs");
+    }
+
+    /// <summary>
+    /// §3.4 第 5 条 + P-03 退出标准（与 <see cref="BatchEngine_facade文件不得超过400行_防上帝类回潮"/> 同款闸门）：
+    /// <see cref="TaskRunner"/> facade 文件硬上限 400 行，防止从 <c>TaskRunner</c> 抽出的决策/协作逻辑回流膨胀。
+    /// P-03 已将降级/冷却/兜底/免费时段判定下沉为 <c>DegradationPolicy</c> 等，状态机本体移入 <c>TaskStepExecutor</c>，
+    /// <c>TaskRunner</c> 仅作薄 facade；此处守「行数规模」这道量化的架构闸门。
+    /// </summary>
+    [Fact]
+    public void TaskRunner_facade文件不得超过400行_防上帝类回潮()
+    {
+        const int FacadeLineCap = 400;
+        var path = LocateTaskRunnerSource();
+        Assert.True(File.Exists(path), $"未找到 TaskRunner.cs 源文件：{path}（守卫测试须在仓库检出内运行）");
+
+        var lines = File.ReadAllLines(path).Length;
+        Assert.True(lines <= FacadeLineCap,
+            $"TaskRunner.cs 共 {lines} 行，超过 P-03 上帝类收口上限 {FacadeLineCap} 行；请继续下沉决策到策略对象而非在此膨胀。");
+    }
+
+    private static string LocateTaskRunnerSource()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "BatchAgentRunner.slnx")))
+        {
+            dir = dir.Parent;
+        }
+
+        Assert.NotNull(dir);
+        return Path.Combine(dir!.FullName, "src", "BatchAgentRunner.Core", "Engine", "TaskRunner.cs");
+    }
+
+    /// <summary>
+    /// §3.4 第 5 条 + P-04 退出标准（与 <see cref="BatchEngine_facade文件不得超过400行_防上帝类回潮"/> 同款闸门）：
+    /// <see cref="ConfigViewModel"/> facade 文件硬上限 400 行，防止 UI 上帝类回潮。
+    /// P-04 已将 9 个配置域拆为 <c>BatchAgentRunner.Desktop.ViewModels.Config</c> 下的子编辑器，
+    /// <c>ConfigViewModel</c> 退为「状态持有 + 绑定转发 + 跨域编排」薄 facade；此处守「行数规模」这道量化的架构闸门。
+    /// </summary>
+    [Fact]
+    public void ConfigViewModel_facade文件不得超过400行_防上帝类回潮()
+    {
+        const int FacadeLineCap = 400;
+        var path = LocateConfigViewModelSource();
+        Assert.True(File.Exists(path), $"未找到 ConfigViewModel.cs 源文件：{path}（守卫测试须在仓库检出内运行）");
+
+        var lines = File.ReadAllLines(path).Length;
+        Assert.True(lines <= FacadeLineCap,
+            $"ConfigViewModel.cs 共 {lines} 行，超过 P-04 上帝类收口上限 {FacadeLineCap} 行；请继续下沉配置域到子编辑器而非在此膨胀。");
+    }
+
+    private static string LocateConfigViewModelSource()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "BatchAgentRunner.slnx")))
+        {
+            dir = dir.Parent;
+        }
+
+        Assert.NotNull(dir);
+        return Path.Combine(dir!.FullName, "src", "BatchAgentRunner.Desktop", "ViewModels", "ConfigViewModel.cs");
+    }
+
+    /// <summary>
+    /// §3.4 第 5 条 + P-05 退出标准（与 <see cref="ConfigViewModel_facade文件不得超过400行_防上帝类回潮"/> 同款闸门）：
+    /// <see cref="TemplateEditorViewModel"/> facade 文件硬上限 400 行，防止 UI 上帝类回潮。
+    /// P-05 已将模板加载 / 变量展开 / 流程示意构建三类交互逻辑下沉为
+    /// <c>BatchAgentRunner.Desktop.ViewModels.TemplateEditor</c> 下的三个 Coordinator，
+    /// <c>TemplateEditorViewModel</c> 退为「状态持有 + 绑定转发 + 编排」薄 facade；此处守「行数规模」这道量化的架构闸门。
+    /// </summary>
+    [Fact]
+    public void TemplateEditorViewModel_facade文件不得超过400行_防上帝类回潮()
+    {
+        const int FacadeLineCap = 400;
+        var path = LocateTemplateEditorViewModelSource();
+        Assert.True(File.Exists(path), $"未找到 TemplateEditorViewModel.cs 源文件：{path}（守卫测试须在仓库检出内运行）");
+
+        var lines = File.ReadAllLines(path).Length;
+        Assert.True(lines <= FacadeLineCap,
+            $"TemplateEditorViewModel.cs 共 {lines} 行，超过 P-05 上帝类收口上限 {FacadeLineCap} 行；请继续下沉交互逻辑到 Coordinator 而非在此膨胀。");
+    }
+
+    private static string LocateTemplateEditorViewModelSource()
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "BatchAgentRunner.slnx")))
+        {
+            dir = dir.Parent;
+        }
+
+        Assert.NotNull(dir);
+        return Path.Combine(dir!.FullName, "src", "BatchAgentRunner.Desktop", "ViewModels", "TemplateEditorViewModel.cs");
+    }
+
+    /// <summary>
+    /// §3.4 第 5 条 + P-06 退出标准（与 <see cref="ConfigViewModel_facade文件不得超过400行_防上帝类回潮"/> 同款闸门）：
+    /// <see cref="MonitorViewModel"/> facade 文件硬上限 400 行，防止 UI 上帝类回潮。
+    /// P-06 已将原 983 行上帝类下沉为 <c>BatchAgentRunner.Desktop.ViewModels.Monitor</c> 下的协作者
+    /// （输出流 / 统计 / 批次状态 / 提示板 / 任务列表 / 操作编排），facade 仅「状态持有 + 绑定转发 + 事件编排」。
+    /// </summary>
+    [Fact]
+    public void MonitorViewModel_facade文件不得超过400行_防上帝类回潮()
+    {
+        const int FacadeLineCap = 400;
+        var path = LocateViewModelSource("MonitorViewModel.cs");
+        Assert.True(File.Exists(path), $"未找到 MonitorViewModel.cs 源文件：{path}（守卫测试须在仓库检出内运行）");
+
+        var lines = File.ReadAllLines(path).Length;
+        Assert.True(lines <= FacadeLineCap,
+            $"MonitorViewModel.cs 共 {lines} 行，超过 P-06 上帝类收口上限 {FacadeLineCap} 行；请继续下沉交互逻辑到 Coordinator 而非在此膨胀。");
+    }
+
+    /// <summary>
+    /// §3.4 第 5 条 + P-06 退出标准（与 <see cref="ConfigViewModel_facade文件不得超过400行_防上帝类回潮"/> 同款闸门）：
+    /// <see cref="LoginViewModel"/> facade 文件硬上限 400 行，防止 UI 上帝类回潮。
+    /// P-06 已将原 751 行上帝类下沉为 <c>BatchAgentRunner.Desktop.ViewModels.Login</c> 下的协作者
+    /// （一键登录流程 / 积分领取流程 / 账号池 / 步骤条）+ 三个行视图模型独立文件。
+    /// </summary>
+    [Fact]
+    public void LoginViewModel_facade文件不得超过400行_防上帝类回潮()
+    {
+        const int FacadeLineCap = 400;
+        var path = LocateViewModelSource("LoginViewModel.cs");
+        Assert.True(File.Exists(path), $"未找到 LoginViewModel.cs 源文件：{path}（守卫测试须在仓库检出内运行）");
+
+        var lines = File.ReadAllLines(path).Length;
+        Assert.True(lines <= FacadeLineCap,
+            $"LoginViewModel.cs 共 {lines} 行，超过 P-06 上帝类收口上限 {FacadeLineCap} 行；请继续下沉交互逻辑到 Coordinator 而非在此膨胀。");
+    }
+
+    private static string LocateViewModelSource(string fileName)
+    {
+        var dir = new DirectoryInfo(AppContext.BaseDirectory);
+        while (dir is not null && !File.Exists(Path.Combine(dir.FullName, "BatchAgentRunner.slnx")))
+        {
+            dir = dir.Parent;
+        }
+
+        Assert.NotNull(dir);
+        return Path.Combine(dir!.FullName, "src", "BatchAgentRunner.Desktop", "ViewModels", fileName);
+    }
 }

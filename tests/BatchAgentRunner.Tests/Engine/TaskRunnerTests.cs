@@ -3,6 +3,7 @@ using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Engine;
 using BatchAgentRunner.Core.Events;
+using BatchAgentRunner.Core.Observability;
 using BatchAgentRunner.Core.Options;
 using BatchAgentRunner.Core.Scheduling;
 using BatchAgentRunner.Infrastructure.Logging;
@@ -90,6 +91,7 @@ public class TaskRunnerTests
             ExecuteWorkflow = (_, _) => Task.FromResult(TaskOutcome.Finished),
             GetPendingCount = () => 0,
             Coordinator = coordinator,
+            Metrics = new RunMetrics("run-taskrunner-tests"),
             DeferredAccountSwitchEnabled = deferredSwitch
         };
 

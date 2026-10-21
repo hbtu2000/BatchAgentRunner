@@ -22,11 +22,15 @@ public sealed class FakeEngineHost : IEngineHost
     private int _saveCount;
     private int _rebuildCount;
     private IReadOnlyList<ModelCatalogEntry> _fetchModelsResult = Array.Empty<ModelCatalogEntry>();
+    private EventHandler<BatchEvent>? _eventRaised;
+    private EventHandler? _tasksChanged;
+    private EventHandler<CreditsClaimProgress>? _creditsClaimProgressRaised;
+    private PropertyChangedEventHandler? _propertyChanged;
 
     public FakeEngineHost(RunOptions? options = null)
     {
         var registry = new CredentialLocationRegistry();
-        var vault = new FakeCredentialVault();
+        var vault = new FakeCredentialVault(this);
         var guard = new FakeCliProcessGuard();
         var launcher = new FakeCliLoginLauncher();
         _vaultHost = new CredentialVaultHost(
@@ -54,24 +58,34 @@ public sealed class FakeEngineHost : IEngineHost
 
     public event EventHandler<BatchEvent>? EventRaised
     {
-        add { }
-        remove { }
+        add { _eventRaised += value; }
+        remove { _eventRaised -= value; }
     }
     public event EventHandler? TasksChanged
     {
-        add { }
-        remove { }
+        add { _tasksChanged += value; }
+        remove { _tasksChanged -= value; }
     }
     public event EventHandler<CreditsClaimProgress>? CreditsClaimProgressRaised
     {
-        add { }
-        remove { }
+        add { _creditsClaimProgressRaised += value; }
+        remove { _creditsClaimProgressRaised -= value; }
     }
     public event PropertyChangedEventHandler? PropertyChanged
     {
-        add { }
-        remove { }
+        add { _propertyChanged += value; }
+        remove { _propertyChanged -= value; }
     }
+
+    /// <summary>P-06：按引擎广播语义触发 <see cref="EventRaised"/>（调用方负责在 UI 线程触发，与真实宿主一致）。</summary>
+    public void RaiseEvent(BatchEvent ev) => _eventRaised?.Invoke(this, ev);
+
+    /// <summary>P-06：触发 <see cref="TasksChanged"/>（调用方负责在 UI 线程触发，与真实宿主一致）。</summary>
+    public void RaiseTasksChanged() => _tasksChanged?.Invoke(this, EventArgs.Empty);
+
+    /// <summary>P-06：触发 <see cref="CreditsClaimProgressRaised"/>（Login 页领取进度条契约）。</summary>
+    public void RaiseCreditsClaimProgress(CreditsClaimProgress progress) =>
+        _creditsClaimProgressRaised?.Invoke(this, progress);
 
     /// <summary>探针：SaveConfigAsync 被调用次数（断言 SaveAsync 确实落盘）。</summary>
     public int SaveConfigAsyncCallCount => _saveCount;
@@ -81,6 +95,12 @@ public sealed class FakeEngineHost : IEngineHost
 
     /// <summary>探针：设置 FetchModelsAsync 返回的模型目录（默认空清单，保持零 IO 桩语义）。</summary>
     public void SetFetchModelsResult(IReadOnlyList<ModelCatalogEntry> entries) => _fetchModelsResult = entries;
+
+    /// <summary>P-06：设置 ClaimDailyCreditsAsync 返回的汇总（默认空汇总，走「没有可领取的账号」分支）。</summary>
+    public CreditsClaimSummary? ClaimResult { get; set; }
+
+    /// <summary>P-06：设置后 Vault 的 Switch/DeleteSnapshot 操作抛出该异常（错误翻译契约）。</summary>
+    public Exception? VaultFailure { get; set; }
 
     public Task InitializeAsync() => Task.CompletedTask;
     public Task RebuildEngineAsync(CancellationToken cancellationToken = default)
@@ -98,7 +118,7 @@ public sealed class FakeEngineHost : IEngineHost
         Task.FromResult<IReadOnlyList<TaskItem>>(Array.Empty<TaskItem>());
 
     public Task<CreditsClaimSummary> ClaimDailyCreditsAsync(bool force = true,
-        CancellationToken cancellationToken = default) => Task.FromResult(new CreditsClaimSummary());
+        CancellationToken cancellationToken = default) => Task.FromResult(ClaimResult ?? new CreditsClaimSummary());
 
     public Task<PreflightReport> PreflightAsync() => Task.FromResult(new PreflightReport());
 
@@ -128,6 +148,10 @@ public sealed class FakeEngineHost : IEngineHost
 
     private sealed class FakeCredentialVault : ICredentialVault
     {
+        private readonly FakeEngineHost _owner;
+
+        public FakeCredentialVault(FakeEngineHost owner) => _owner = owner;
+
         public string? CurrentLiveAccount(AgentKind cli) => null;
         public bool SnapshotExists(AgentKind cli, string accountId) => false;
         public CredentialSnapshotInfo? GetSnapshot(AgentKind cli, string accountId) => null;
@@ -135,11 +159,27 @@ public sealed class FakeEngineHost : IEngineHost
             string? displayName = null, string? site = null, CancellationToken cancellationToken = default) =>
             Task.FromResult(default(CredentialSnapshotInfo)!);
         public Task SwitchToAsync(AgentKind cli, string accountId, string reason,
-            CancellationToken cancellationToken = default) => Task.CompletedTask;
+            CancellationToken cancellationToken = default)
+        {
+            if (_owner.VaultFailure is { } failure)
+            {
+                throw failure;
+            }
+
+            return Task.CompletedTask;
+        }
         public Task MarkVerifiedAsync(AgentKind cli, string accountId,
             CancellationToken cancellationToken = default) => Task.CompletedTask;
         public Task DeleteSnapshotAsync(AgentKind cli, string accountId,
-            CancellationToken cancellationToken = default) => Task.CompletedTask;
+            CancellationToken cancellationToken = default)
+        {
+            if (_owner.VaultFailure is { } failure)
+            {
+                throw failure;
+            }
+
+            return Task.CompletedTask;
+        }
     }
 
     private sealed class FakeCliProcessGuard : ICliProcessGuard

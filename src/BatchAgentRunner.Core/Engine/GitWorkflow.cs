@@ -1,5 +1,6 @@
 using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
+using BatchAgentRunner.Core.Observability;
 using BatchAgentRunner.Core.Options;
 using TaskStatus = BatchAgentRunner.Core.Domain.TaskStatus;
 
@@ -78,7 +79,7 @@ public sealed class GitWorkflow : IGitWorkflow
             }
             catch (Exception ex)
             {
-                _logger.Write("WARN", $"任务 {task.Id} diff 快照失败（已忽略）：{ex.Message}");
+                _logger.Write(RunLogLevels.Warn, $"任务 {task.Id} diff 快照失败（已忽略）：{ex.Message}");
             }
         }
 
@@ -91,7 +92,7 @@ public sealed class GitWorkflow : IGitWorkflow
             }
             catch (Exception ex)
             {
-                _logger.Write("WARN", $"任务 {task.Id} 创建 Git 分支失败（已忽略）：{ex.Message}");
+                _logger.Write(RunLogLevels.Warn, $"任务 {task.Id} 创建 Git 分支失败（已忽略）：{ex.Message}");
             }
         }
 
@@ -112,7 +113,7 @@ public sealed class GitWorkflow : IGitWorkflow
             }
             catch (Exception ex)
             {
-                _logger.Write("WARN", $"任务 {task.Id} 打开 PR 失败（已忽略）：{ex.Message}");
+                _logger.Write(RunLogLevels.Warn, $"任务 {task.Id} 打开 PR 失败（已忽略）：{ex.Message}");
             }
         }
 
@@ -132,7 +133,7 @@ public sealed class GitWorkflow : IGitWorkflow
             }
             catch (Exception ex)
             {
-                _logger.Write("WARN", $"任务 {task.Id} diff 采集失败（已忽略）：{ex.Message}");
+                _logger.Write(RunLogLevels.Warn, $"任务 {task.Id} diff 采集失败（已忽略）：{ex.Message}");
             }
         }
 
@@ -145,7 +146,7 @@ public sealed class GitWorkflow : IGitWorkflow
             }
             catch (Exception ex)
             {
-                _logger.Write("WARN", $"任务 {task.Id} Markdown 原回写失败（已忽略）：{ex.Message}");
+                _logger.Write(RunLogLevels.Warn, $"任务 {task.Id} Markdown 原回写失败（已忽略）：{ex.Message}");
             }
         }
     }

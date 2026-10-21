@@ -2,6 +2,7 @@ using System.Text;
 using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Events;
+using BatchAgentRunner.Core.Observability;
 using BatchAgentRunner.Core.Options;
 using BatchAgentRunner.Infrastructure.CredentialVault;
 using BatchAgentRunner.Infrastructure.Http;
@@ -297,8 +298,17 @@ public class CreditsClaimTests
         public List<string> Lines { get; } = new();
 
         public string LogFilePath => string.Empty;
+
+        public string StructuredLogFilePath => string.Empty;
+
+        public string RunId => string.Empty;
+
         public void Write(BatchEvent ev) => Lines.Add(ev.Message ?? string.Empty);
+
         public void Write(string level, string message) => Lines.Add(message);
+
+        /// <summary>结构化条目留痕（P-10：测试可直接断言字段，不必解析文本）。</summary>
+        public void Write(RunLogEntry entry) => Lines.Add(entry.RenderBody());
         public void WriteTaskStarted(string taskId, string? account, string? model, string? expert, string? workspace) { }
         public void WriteTaskFinished(string taskId, BatchAgentRunner.Core.Domain.TaskStatus status,
             double durationSeconds, int retryCount)
@@ -316,6 +326,7 @@ public class CreditsClaimTests
         public void WriteBatchTerminated(int doneCount, int unfinishedCount) { }
         public void WriteDangerousOperation(string taskId, string interactionPoint) { }
         public void WriteAutoAnswered(string taskId, string interactionPoint, string answer) { }
+        public void WriteTaskOutput(string message) => Lines.Add(message);
         public void Dispose() { }
     }
 }

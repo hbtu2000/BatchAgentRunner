@@ -59,7 +59,7 @@ sealed class Program
         };
     }
 
-    private static void Log(string level, string message)
+    internal static void Log(string level, string message)
     {
         var line = $"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {level,-5} {message}";
         try
@@ -99,9 +99,6 @@ sealed class Program
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()
-#if DEBUG
-            .WithDeveloperTools()
-#endif
             .WithInterFont()
             .LogToTrace();
 }

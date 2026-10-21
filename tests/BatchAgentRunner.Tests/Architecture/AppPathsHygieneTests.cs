@@ -14,7 +14,10 @@ namespace BatchAgentRunner.Tests.Architecture;
 ///    不得再出现应用名字面量 <c>"BatchAgentRunner"</c>；
 /// ② **样板清零**：三份 <c>Json*Store</c> 不得再自带「<c>Directory.CreateDirectory</c> /
 ///    <c>JsonSerializer</c> / <c>AtomicFileWriter</c>」加载与原子写样板，
-///    且必须继承 <see cref="JsonStoreBase{T}"/>。
+///    且必须继承 <see cref="JsonStoreBase{T}"/>；
+/// ③ **第 4 份同构仓储拦截**：② 按文件名清单核对，新增第 4 份仓储会静默漏网——
+///    故再按「类型名 <c>Json*Store</c>」扫描 Infrastructure 程序集，
+///    凡具体仓储一律要求继承 <see cref="JsonStoreBase{T}"/>（ARCH P-07 收口轮加固）。
 ///
 /// 与 <see cref="EscapeValveHygieneTests"/>（管门禁例外）、<see cref="CommentHygieneTests"/>（管注释内容）并列，
 /// 同属 §4.3「第三道墙：架构约束自动化」。
@@ -159,6 +162,32 @@ public class AppPathsHygieneTests
             problems.Count == 0,
             "三份 Json*Store 的重复样板未清零（P2-31）：\n" + string.Join('\n', problems) +
             "\n处置：把加载/保存样板保留在 JsonStoreBase<T>，派生类只提供 CreateEmpty() 与可选的 NormalizeAsync()。");
+    }
+
+    [Fact]
+    public void Infrastructure内Json仓储具体类型_均须继承JsonStoreBase_防第四份同构仓储()
+    {
+        var baseType = typeof(JsonStoreBase<>);
+        var stores = baseType.Assembly.GetTypes()
+            .Where(t => t is { IsAbstract: false, IsInterface: false } &&
+                        t.Name.StartsWith("Json", StringComparison.Ordinal) &&
+                        t.Name.EndsWith("Store", StringComparison.Ordinal))
+            .OrderBy(t => t.Name, StringComparer.Ordinal)
+            .ToArray();
+
+        Assert.NotEmpty(stores); // 清单本身为空说明命名约定已变，需同步本守卫
+
+        var problems = stores
+            .Where(t => t.BaseType is null || !t.BaseType.IsGenericType ||
+                        t.BaseType.GetGenericTypeDefinition() != baseType)
+            .Select(t => $"{t.Name}（基类：{t.BaseType?.Name ?? "<无>"}）")
+            .ToArray();
+
+        Assert.True(
+            problems.Length == 0,
+            "存在未继承 JsonStoreBase<T> 的单文件 JSON 仓储（ARCH P-07 防第四份同构）：\n" +
+            string.Join('\n', problems) +
+            "\n处置：新增单文件 JSON 仓储一律继承 JsonStoreBase<T>，只提供 CreateEmpty() 与可选的 NormalizeAsync()。");
     }
 
     private static List<string> SourceFiles(string repoRoot)

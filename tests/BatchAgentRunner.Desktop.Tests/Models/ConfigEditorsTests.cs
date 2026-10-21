@@ -13,6 +13,58 @@ namespace BatchAgentRunner.Desktop.Tests.Models;
 /// </summary>
 public class ConfigEditorsTests
 {
+    [Fact]
+    public void 候选模型编辑_时段非法输入_保留原时段且错误可见()
+    {
+        // P-09：起止时刻原本手写 TryParse，解析失败时 Apply() 会把用户已配置的免费时段静默抹掉。
+        var window = new FreeTimeWindow(new TimeOnly(22, 0), new TimeOnly(6, 0), null);
+        var model = new ModelCandidate { Name = "m1", FreeTimeWindow = window };
+        var editor = new ModelEditor(model);
+        var previewBefore = editor.Preview;
+        editor.StartTime.Text = "25:99";
+
+        Assert.True(editor.StartTime.HasError);
+        Assert.Equal("起始时刻格式无效", editor.StartTime.Error);
+        Assert.Equal("时段无效", editor.Preview);
+        Assert.NotEqual(previewBefore, editor.Preview); // P-09：文本变更经回调驱动 Preview 刷新
+
+        editor.Apply();
+
+        Assert.Same(window, model.FreeTimeWindow); // 非法输入不清空已配置时段
+    }
+
+    [Fact]
+    public void 候选模型编辑_时段合法输入_按输入回写()
+    {
+        var model = new ModelCandidate { Name = "m1" };
+        var editor = new ModelEditor(model) { WindowEnabled = true };
+        editor.StartTime.Text = "08:30";
+        editor.EndTime.Text = "12:00";
+
+        editor.Apply();
+
+        var window = model.FreeTimeWindow;
+        Assert.NotNull(window);
+        Assert.Equal(new TimeOnly(8, 30), window.Start);
+        Assert.Equal(new TimeOnly(12, 0), window.End);
+    }
+
+    [Fact]
+    public void 候选模型编辑_关闭时段_回写为空且不留残值()
+    {
+        var model = new ModelCandidate
+        {
+            Name = "m1",
+            FreeTimeWindow = new FreeTimeWindow(new TimeOnly(22, 0), new TimeOnly(6, 0), null)
+        };
+        var editor = new ModelEditor(model) { WindowEnabled = false };
+
+        editor.Apply();
+
+        Assert.Null(model.FreeTimeWindow);
+        Assert.Equal("全天可用", editor.Preview);
+    }
+
     private static ModelCandidate NewModel() => new() { Name = "m1" };
 
     [Fact]

@@ -4,6 +4,7 @@ using System.Text;
 using System.Text.Json;
 using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
+using BatchAgentRunner.Core.Observability;
 
 namespace BatchAgentRunner.Infrastructure.Notification;
 
@@ -124,7 +125,7 @@ public sealed class SmtpNotifier : INotifier
         }
         catch (Exception ex)
         {
-            _logger?.Write("WARN", $"SMTP 通知发送失败：{ex.Message}");
+            _logger?.Write(RunLogLevels.Warn, $"SMTP 通知发送失败：{ex.Message}");
         }
 #pragma warning restore SYSLIB0014
     }

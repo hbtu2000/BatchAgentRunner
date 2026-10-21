@@ -49,11 +49,7 @@
         </Style>
     </UserControl.Styles>
 
-    <Design.DataContext>
-        <vm:ConfigHubViewModel />
-    </Design.DataContext>
-
-    <Grid ColumnDefinitions="212,*" RowDefinitions="Auto,*,Auto">
+<Grid ColumnDefinitions="212,*" RowDefinitions="Auto,*,Auto">
 
         <!-- 左：区段 rail（原三个 Tab + 五个 Tab 合并于此，按语义分组） -->
         <Border Grid.Column="0" Grid.Row="0" Grid.RowSpan="3"

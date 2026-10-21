@@ -10,8 +10,6 @@ public sealed class ModelEditor : ObservableObject
 {
     private string _name;
     private bool _windowEnabled;
-    private string _startText = "00:00";
-    private string _endText = "23:59";
     private bool _mon = true;
     private bool _tue = true;
     private bool _wed = true;
@@ -24,19 +22,21 @@ public sealed class ModelEditor : ObservableObject
     {
         Model = model;
         _name = model.Name;
-        if (model.FreeTimeWindow is { } w)
+        var window = model.FreeTimeWindow;
+        var startText = "00:00";
+        var endText = "23:59";
+        if (window is not null)
         {
             _windowEnabled = true;
-            _startText = w.Start.ToString("HH:mm");
-            _endText = w.End.ToString("HH:mm");
-            var days = w.Days;
-            _mon = days?.Contains(DayOfWeek.Monday) ?? true;
-            _tue = days?.Contains(DayOfWeek.Tuesday) ?? true;
-            _wed = days?.Contains(DayOfWeek.Wednesday) ?? true;
-            _thu = days?.Contains(DayOfWeek.Thursday) ?? true;
-            _fri = days?.Contains(DayOfWeek.Friday) ?? true;
-            _sat = days?.Contains(DayOfWeek.Saturday) ?? true;
-            _sun = days?.Contains(DayOfWeek.Sunday) ?? true;
+            startText = window.Start.ToString("HH:mm");
+            endText = window.End.ToString("HH:mm");
+            _mon = window.Days?.Contains(DayOfWeek.Monday) ?? true;
+            _tue = window.Days?.Contains(DayOfWeek.Tuesday) ?? true;
+            _wed = window.Days?.Contains(DayOfWeek.Wednesday) ?? true;
+            _thu = window.Days?.Contains(DayOfWeek.Thursday) ?? true;
+            _fri = window.Days?.Contains(DayOfWeek.Friday) ?? true;
+            _sat = window.Days?.Contains(DayOfWeek.Saturday) ?? true;
+            _sun = window.Days?.Contains(DayOfWeek.Sunday) ?? true;
         }
 
         // P2-15：解析类字段一律走 FieldEditor<T>（解析失败显式报错，不再静默置 null）
@@ -44,6 +44,10 @@ public sealed class ModelEditor : ObservableObject
             model.EstimatedUnitPrice?.ToString() ?? string.Empty, FieldParsers.DecimalOrNull);
         Discount = new FieldEditor<decimal?>("折扣",
             model.Discount?.ToString() ?? string.Empty, FieldParsers.DecimalOrNull);
+        // P-09：时段起止原本手写 TryParse，解析失败时 Apply() 会把已配置的时段静默抹掉 → 一并收敛为 FieldEditor<T>；
+        // 且直接暴露给视图绑定（不再包 StartText/EndText 裸字符串桥接），文本变更经回调刷新 Preview。
+        StartTime = new FieldEditor<TimeOnly?>("起始时刻", startText, FieldParsers.TimeOnlyOrNull, RefreshPreview);
+        EndTime = new FieldEditor<TimeOnly?>("结束时刻", endText, FieldParsers.TimeOnlyOrNull, RefreshPreview);
     }
 
     public ModelCandidate Model { get; }
@@ -53,6 +57,12 @@ public sealed class ModelEditor : ObservableObject
 
     /// <summary>折扣倍率编辑字段（P2-15）。</summary>
     public FieldEditor<decimal?> Discount { get; }
+
+    /// <summary>免费时段起始编辑字段（P-09；非法输入不再静默丢弃已配置时段）。</summary>
+    public FieldEditor<TimeOnly?> StartTime { get; }
+
+    /// <summary>免费时段结束编辑字段（P-09；非法输入不再静默丢弃已配置时段）。</summary>
+    public FieldEditor<TimeOnly?> EndTime { get; }
 
     public string Name
     {
@@ -66,30 +76,6 @@ public sealed class ModelEditor : ObservableObject
         set
         {
             if (SetProperty(ref _windowEnabled, value))
-            {
-                OnPropertyChanged(nameof(Preview));
-            }
-        }
-    }
-
-    public string StartText
-    {
-        get => _startText;
-        set
-        {
-            if (SetProperty(ref _startText, value))
-            {
-                OnPropertyChanged(nameof(Preview));
-            }
-        }
-    }
-
-    public string EndText
-    {
-        get => _endText;
-        set
-        {
-            if (SetProperty(ref _endText, value))
             {
                 OnPropertyChanged(nameof(Preview));
             }
@@ -130,7 +116,8 @@ public sealed class ModelEditor : ObservableObject
             return null;
         }
 
-        if (!TimeOnly.TryParse(StartText, out var start) || !TimeOnly.TryParse(EndText, out var end))
+        // 留空 = 未配置，非法 = 错误态：两者都不生成窗口，但都不允许抹掉已配置的时段（见 Apply）
+        if (StartTime.Value is not { } start || EndTime.Value is not { } end)
         {
             return null;
         }
@@ -147,11 +134,19 @@ public sealed class ModelEditor : ObservableObject
         return new FreeTimeWindow(start, end, days.Count == 7 ? null : days);
     }
 
+    /// <summary>时段文本变更 → 刷新 <see cref="Preview"/>（P-09：由 <see cref="FieldEditor{TValue}"/> 回调驱动，取代原字符串桥接属性的手工通知）。</summary>
+    private void RefreshPreview() => OnPropertyChanged(nameof(Preview));
+
     /// <summary>把编辑结果写回领域对象。</summary>
     public void Apply()
     {
         Model.Name = Name;
-        Model.FreeTimeWindow = BuildWindow();
+        // P-09：起止时刻非法时保留原时段——原实现 BuildWindow() 返回 null 会静默抹掉用户已配置的免费时段
+        if (!StartTime.HasError && !EndTime.HasError)
+        {
+            Model.FreeTimeWindow = BuildWindow();
+        }
+
         // P2-15：解析失败时保留原值（不再静默置 null），错误态经 FieldEditor.Error 对用户可见
         if (!UnitPrice.HasError)
         {

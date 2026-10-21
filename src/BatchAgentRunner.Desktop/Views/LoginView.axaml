@@ -8,11 +8,7 @@
              x:CompileBindings="True"
              x:DataType="vm:LoginViewModel">
 
-    <Design.DataContext>
-        <vm:LoginViewModel />
-    </Design.DataContext>
-
-    <StackPanel Margin="0" Spacing="12">
+<StackPanel Margin="0" Spacing="12">
 
             <!-- 顶部欢迎横幅 -->
             <Border Padding="16,12" CornerRadius="8" Background="{DynamicResource PrimarySoftBrush}" BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1">

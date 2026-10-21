@@ -495,10 +495,36 @@ public record AgentRequest(
 | 备份 | `<name>.backup-<yyyyMMddHHmmss>` | 每次启动前，保留最近 5 份（REQ-006） |
 | 冷却记录 | `%LOCALAPPDATA%/BatchAgentRunner/cooldowns.json` | 重启有效（REQ-004c） |
 | 配置 | `%LOCALAPPDATA%/BatchAgentRunner/config.json` | 凭据**不明文落地**为设计约束：账号仅存标识 + 凭据引用（profile/env/keychain 引用），日志脱敏 |
-| 运行日志 | `<任务文件目录>/runs/run-<时间戳>.log` | task_started/finished、model_switched、account_switched、model_window_skipped、quota_reset_recorded、model_cooldown_skipped、fallback_used、batch_blocked/resumed/terminated（第 11 章） |
+| 运行日志 | `<任务文件目录>/runs/run-<时间戳>.log` | task_started/finished、model_switched、account_switched、model_window_skipped、quota_reset_recorded、model_cooldown_skipped、fallback_used、batch_blocked/resumed/terminated、**TaskOutput（逐行实时落盘，见 7.1）**；明细见第 11 章埋点表 |
 | 汇总报告 | `<任务文件目录>/report-<时间戳>.json/.md` | REQ-011：成败统计、账号/模型使用量、切换时间线、兜底花费、失败清单；切换原因四段区分 + 时段外/冷却累计等待时长 |
 
 **原子写（`AtomicFileWriter`）**：写同目录临时文件 → `Flush(true)` → `File.Move(tmp, target, overwrite: true)`；失败保留临时文件不破坏原文件。
+
+#### 7.1 运行日志与实时可观测（REQ：实时可观测）
+
+**问题背景**：早期 headless 管道模式（`show_cli_window=false`）下，CLI 的逐行流式输出只在内存 UI 中呈现、**不落盘**；任务处于配额冷却 / 静默等待时，run 日志往往只剩会话起始标记一行，外部 `tail` 看不到任何过程——观感即"批次无实时输出"，且不同批次间无法做文件级回放对比。
+
+**改动（落盘链路）**：任务执行期间，CLI 的 stream-json 输出经以下链路**逐行带时间戳实时落盘**：
+
+```
+CLI stdout（管道，非 TTY）
+  → CliProcessRunner.OnData（剥离 ANSI、累积原始文本）
+  → CliAdapterBase.ExecuteAsync 的 onOut 回调
+  → StreamJsonRenderer.Feed(raw) 翻译成可读行
+  → request.OnOutputChunk(line)              // 喂 UI 实时流（REQ-007）
+  → Settings.Logger?.WriteTaskOutput(line)   // 落盘（即时刷盘）
+  → FileRunLogger.WriteLine(..., important:true) → runs/run-<时间戳>.log
+```
+
+- **落盘格式**：`[HH:mm:ss] INFO [TaskOutput] <渲染后的可读行>`。`[TaskOutput]` 标签 + 即时刷盘（`important:true`）使日志可作为「实时 tail」观测，不再依赖批次结束才批量刷盘。
+- **与事件路径互斥**：`BatchEngine.Raise` 仍会把 `TaskOutput` 事件派发给 `FileRunLogger.Write(BatchEvent)`，但 `Write(BatchEvent)` 对 `BatchEventKind.TaskOutput` **早退**，改由适配器直写，避免同一行输出被写两次（UI 实时流与落盘各走各的、互不重复）。
+- **范围**：仅「执行路径」（`EngineFactory.CreateEngine` 经 `AgentAdapterFactory` 注入的 `IRunLogger`）落盘；预检（`ValidateAccountAsync`）、列模型（`ListModelCatalogAsync`）等非执行路径 `Logger` 为 null，`WriteTaskOutput` 安全空操作。
+
+**如何观测**：批次运行后，对最新日志执行 `tail -f "<任务文件目录>/runs/run-<最新时间戳>.log" | grep TaskOutput`，即可实时看到各任务 CLI 输出；也可直接打开该 `.log` 文件做两批次之间的文本对比。
+
+**取舍说明**：为避免 P2-24 引入的「INFO 批量刷盘」（高频率 `TaskOutput` 分片下的 syscall 风暴），普通 INFO 事件仍按批（64 行）落盘；唯独 `TaskOutput` 走即时刷盘——这是为"实时可观测"刻意保留的例外，对本地桌面工具可接受（非高并发服务端）。
+
+**生效条件**：改动在源码层，需**重新部署 / 启动新实例**后生效；已发布的旧二进制不受影响，今日未发布则旧实例仍走旧行为。
 
 ---
 

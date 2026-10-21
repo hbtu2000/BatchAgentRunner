@@ -8,6 +8,7 @@ using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Engine;
 using BatchAgentRunner.Core.Events;
+using BatchAgentRunner.Core.Observability;
 using BatchAgentRunner.Core.Options;
 using BatchAgentRunner.Desktop.Services;
 using BatchAgentRunner.Infrastructure;
@@ -17,6 +18,7 @@ using BatchAgentRunner.Infrastructure.Git;
 using BatchAgentRunner.Infrastructure.Http;
 using BatchAgentRunner.Infrastructure.Logging;
 using BatchAgentRunner.Infrastructure.Notification;
+using BatchAgentRunner.Infrastructure.Observability;
 using BatchAgentRunner.Infrastructure.Persistence;
 using BatchAgentRunner.Infrastructure.Platform;
 using BatchAgentRunner.Infrastructure.Reporting;
@@ -43,6 +45,9 @@ public sealed class EngineFactory : IEngineFactory
 
     /// <summary>报告写入器（IReportWriter 接口，Infrastructure 实现）。</summary>
     public IReportWriter ReportWriter { get; } = new ReportWriter();
+
+    /// <summary>运行级指标写入器（ARCH P-10 / A-8；Infrastructure 实现）。</summary>
+    public IMetricsWriter MetricsWriter { get; } = new RunMetricsWriter();
 
     /// <summary>
     /// 凭证位置注册表（P1-16）：替代原静态全局注册表的唯一显式实例，Mock Live 根在此一次性覆写，
@@ -99,7 +104,7 @@ public sealed class EngineFactory : IEngineFactory
         ICredentialVault? credentialVault,
         Action<string, string> raiseToast)
     {
-        var adapter = AgentAdapterFactory.Create(options, msg => logger.Write("INFO", msg), CredentialLocations);
+        var adapter = AgentAdapterFactory.Create(options, msg => logger.Write(RunLogLevels.Info, msg), CredentialLocations, logger);
         if (adapter is MockAdapter mock)
         {
             // Mock 的「Live 凭证文件」与 Vault 共用同一位置，保活回写/切换全链路可用 Mock 联调

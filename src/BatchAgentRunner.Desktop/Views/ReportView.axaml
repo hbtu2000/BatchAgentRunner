@@ -6,11 +6,7 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              x:Class="BatchAgentRunner.Desktop.Views.ReportView">
 
-    <Design.DataContext>
-        <vm:ReportViewModel />
-    </Design.DataContext>
-
-    <ScrollViewer>
+<ScrollViewer>
         <StackPanel Margin="12" Spacing="10">
 
             <StackPanel Orientation="Horizontal" Spacing="12">

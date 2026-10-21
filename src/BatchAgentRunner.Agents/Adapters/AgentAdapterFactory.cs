@@ -9,14 +9,15 @@ namespace BatchAgentRunner.Agents.Adapters;
 public static class AgentAdapterFactory
 {
     public static IAgentCliAdapter Create(RunOptions options, Action<string>? log = null,
-        ICredentialLocationRegistry? registry = null)
+        ICredentialLocationRegistry? registry = null, IRunLogger? logger = null)
     {
         var settings = new CliAdapterSettings
         {
             ExecutablePath = options.CliPath,
             ArgumentsTemplate = options.CliArgumentsTemplate,
             ShowWindow = options.ShowCliWindow,
-            Log = log
+            Log = log,
+            Logger = logger
         };
 
         return options.AgentKind switch

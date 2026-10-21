@@ -71,10 +71,13 @@ public sealed class CliProcessRunner
         psi.StandardOutputEncoding = new UTF8Encoding(false);
         psi.StandardErrorEncoding = new UTF8Encoding(false);
 
-        // 参数需逐段传入以避免转义问题；此处按空白切分保留引号内内容
+        // 参数需逐段传入以避免转义问题；此处按空白切分保留引号内内容。
+        // 每段再用 NormalizeToSingleLine 压平：可执行文件是 .cmd/.bat shim 时 .NET 会经 cmd.exe /c 转交，
+        // cmd.exe 把命令行中的换行当命令分隔符 → 换行后的参数被整体丢弃（2026-10-22 实时输出流空白事故根因，
+        // 详见 CliCommandBuilder.NormalizeToSingleLine）。此处是第二道防线，防止模板/extra 绕过 Build 时漏网。
         foreach (var arg in SplitArguments(spec.Arguments))
         {
-            psi.ArgumentList.Add(arg);
+            psi.ArgumentList.Add(NormalizeArgument(arg));
         }
 
         if (spec.EnvironmentVariables is not null)
@@ -314,7 +317,8 @@ public sealed class CliProcessRunner
                 : spec.WorkingDirectory,
             // 窗口模式必须用 Arguments 字符串传参；模板中的 prompt 已由 CliCommandBuilder.Quote 完成引号转义。
             // 实测 .cmd shim 在 UseShellExecute=false 下可由 CreateProcess 正常拉起（自动经 %COMSPEC% 转交）。
-            Arguments = spec.Arguments
+            // 这里同样必须压平换行：cmd.exe 会按换行截断命令行，导致后续参数全部丢失。
+            Arguments = CliCommandBuilder.NormalizeToSingleLine(spec.Arguments)
         };
 
         if (spec.EnvironmentVariables is not null)
@@ -395,6 +399,22 @@ public sealed class CliProcessRunner
         {
             // 进程已退出或已无权访问：回收目的已达成（无残留威胁），忽略。
         }
+    }
+
+    /// <summary>
+    /// 单个参数压平（换行/控制字符 → 空格）；真的发生压平时记一条 WARN，便于事后定位
+    /// 「参数被 cmd.exe 吞掉」类问题（否则子进程收到的参数与应用以为的不一致，现场无任何痕迹）。
+    /// </summary>
+    private string NormalizeArgument(string arg)
+    {
+        if (arg.IndexOfAny(['\r', '\n', '\t']) < 0)
+        {
+            return arg;
+        }
+
+        _log?.Invoke("[CLI 参数] 检测到参数内含换行/制表符，已压平为单行空格后再传给子进程" +
+                     "（cmd.exe 会把命令行中的换行当命令分隔符，导致后续参数整体丢失）");
+        return CliCommandBuilder.NormalizeToSingleLine(arg);
     }
 
     private static string Tail(string text, int maxChars) =>

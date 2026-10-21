@@ -1,4 +1,6 @@
-# BatchAgentRunner
+# NexYawNav · 纽曜·领航（BatchAgentRunner）
+
+> 纽曜 NexYaw 产品矩阵成员 · AI 智能层 · 批处理执行枢纽 · 子口号"枢纽驭批量，曜启领航新境"
 
 AI 批处理任务调度工具：把一批任务清单交给 WorkBuddy / CodeBuddy 等 CLI 智能体，**无人值守**串行跑完，自动降级（账号 × 模型池）、免费时段感知、额度冷却跳过、断点续跑、汇总报告。C# / .NET 10，界面基于 Avalonia 12（跨平台桌面，Windows 优先）。
 
@@ -54,7 +56,11 @@ Mock 适配器不调用任何 CLI，用来验证调度逻辑（降级、时段�
 
 ## 开发约定（技术债务治理阶段 −1 起生效）
 
-本仓库按 [`docs/TECH-DEBT-技术债务治理方案-v2.0.md`](docs/TECH-DEBT-技术债务治理方案-v2.0.md) 治理。**当前进度：阶段 −1（B 组 5 项，2026-10-17）、阶段 0（A 组 10 项 + P0-17，2026-10-17）、阶段 1（建网 6 项，2026-10-18）、阶段 2（动骨，2026-10-18 ~ 10-20）、阶段 3（持续化补完，2026-10-20）均已完成；P0 清单 17 项全部清偿**。阶段 4（持续化，2026-10-20 ~ 10-21）已收口 P2 批次五项：P2-26（误导性注释清算 + 计划性延期台账 + `CommentHygieneTests`）、P2-27（评估维持主动不偿还）、P2-29（`_harness/` 产物堆清理）、P2-30（逃逸阀台账四要素补齐 + 未登记的生产代码豁免归位 + `EscapeValveHygieneTests`）、P2-31（三份 `Json*Store` 抽 `JsonStoreBase<T>` + 路径魔法串收口 `AppPaths` + `AppPathsHygieneTests`）。测试基线（2026-10-21 P2-31 收口轮实跑）：主测试项目 507 用例 + Desktop.Tests 58 用例 = **565 通过 / 0 失败**（`dotnet test BatchAgentRunner.slnx`）。下一站：P2 余项（P2-6 手写 `Clone` → `record with`、P2-15 编辑器泛型化等）机会主义偿还。
+本仓库按 [`docs/TECH-DEBT-技术债务治理方案-v2.0.md`](docs/TECH-DEBT-技术债务治理方案-v2.0.md) 治理。**当前进度：阶段 −1（B 组 5 项，2026-10-17）、阶段 0（A 组 10 项 + P0-17，2026-10-17）、阶段 1（建网 6 项，2026-10-18）、阶段 2（动骨，2026-10-18 ~ 10-20）、阶段 3（持续化补完，2026-10-20）均已完成；P0 清单 17 项全部清偿**。阶段 4（持续化，2026-10-20 ~ 10-21）已收口 P2 批次五项：P2-26（误导性注释清算 + 计划性延期台账 + `CommentHygieneTests`）、P2-27（评估维持主动不偿还）、P2-29（`_harness/` 产物堆清理）、P2-30（逃逸阀台账四要素补齐 + 未登记的生产代码豁免归位 + `EscapeValveHygieneTests`）、P2-31（三份 `Json*Store` 抽 `JsonStoreBase<T>` + 路径魔法串收口 `AppPaths` + `AppPathsHygieneTests`）、P2-9（`RunOptions` 按 12 配置域横向切片，JSON 契约零变化；原 #D5 计划性延期结项）。
+
+同期 ARCH 架构重构阶段（[`docs/ARCH-架构重构与工程化治理方案.md`](docs/ARCH-架构重构与工程化治理方案.md)）已收口 P-01~P-10：P-01（`WaitCoordinator` 抽取）、P-02（`BatchEngine` facade 953→400 行 + 依赖方向 IL 断言）、P-03（`TaskRunner` 策略对象化）、P-04（`ConfigViewModel` 1065→366 行分解为 11 子编辑器）、P-05（`TemplateEditorViewModel` 674→240 行 + 3 Coordinator）、P-06（`MonitorViewModel` 983→388 行 + `LoginViewModel` 751→280 行）、P-07（`JsonStoreBase<T>` + `AppPaths` 去重）、P-08（领域原语单一事实来源 + 修 `TaskItem.Clone()` 浅拷贝缺陷）、P-09（配置契约收口：`RunOptions` 363 行 God Config 按 12 配置域切片 + 禁 JSON 往返克隆；`ConfigEditors` 解析字段全量 `FieldEditor<T>` + 修「非法输入静默抹掉已配置时段」缺陷 + 视图侧校验反馈统一）、**P-10（可观测性：结构化日志接线——`IRunLogger` 唯一落盘点 `Write(RunLogEntry)` + `run-*.jsonl` 结构化流；`RunId` 贯穿事件/日志/指标；`RunMetrics` 七类运行级指标埋点 + `metrics-<run_id>.json` 落盘；`SecretMasker` 脱敏在渲染入口统一生效；`facade` 维持 399 行）**。
+
+测试基线（2026-10-21 ARCH P-10 收口轮实跑）：主测试项目 **633** 用例 + Desktop.Tests **168** 用例 = **801 通过 / 0 失败**（`dotnet test BatchAgentRunner.slnx`）。下一站：ARCH P-11（CI 转阻断 + 覆盖率·格式门禁）/ P-12（规范集 + 静态安全扫描）；机会主义偿还余项：P2-12 全量编译绑定翻转、`git filter-repo` 历史净化。
 
 已落地的「防新增」机制：
 

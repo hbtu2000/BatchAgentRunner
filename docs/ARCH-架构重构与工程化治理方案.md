@@ -1,7 +1,7 @@
 # BatchAgentRunner 架构重构与工程化治理方案（ARCH）
 
 > 版本：v1.0 ｜ 日期：2026-10-21 ｜ 角色：资深软件架构师  
-> 更新：P-01（WaitCoordinator 抽取）已收口，见 §6.2 执行记录。
+> 更新：P-01（WaitCoordinator 抽取）、P-02（facade 收口 ≤400 行 + 依赖方向 IL 断言固化）、P-03（`TaskRunner` 策略对象化 + facade 收口 ≤400 行）、P-04（`ConfigViewModel` 分解为账号卡/降级/通知/Git/通用子编辑器 + 共享校验，facade 收口 366 行）、P-05（`TemplateEditorViewModel` 按 VM→Coordinator/Presenter 分解为模板加载/变量展开/流程示意三个 Coordinator + 4 个行视图模型独立文件，facade 收口 240 行）、P-06（`MonitorViewModel` 983→388 行 + `LoginViewModel` 751→280 行：按「状态持有 + 绑定转发 + 流程编排」分解为 Monitor/Login 两组协作者 + 行视图模型独立文件，均收口 ≤400 行）、P-07（`JsonStoreBase<T>` + `AppPaths` 去重：三份同构仓储退化为 `CreateEmpty()`/`NormalizeAsync()`、9 处路径魔法串收口，守卫扩为 4 项含「第 4 份同构仓储」拦截）、P-08（领域原语收口：截断/终态集合/`Clone`/依赖失败分派各自单一事实来源，新增 `DomainPrimitivesHygieneTests` 5 项守卫 + `TaskItemCloneTests` 4 项字段完整性契约，修掉 `TaskItem.Clone()` 阶段结果浅拷贝缺陷，并清偿 P-02 遗留的 `BatchEngine` 死私有 `Truncate` 别名使 facade 400→397 行）、P-09（配置契约收口：`RunOptions` 363 行 God Config 按 12 配置域横向切片为 `RunOptions.01~11-*.cs`（本体 369→18 行，切片各 ≤49 行，JSON 形状与落盘字节逐字不变；原 #D5 计划性延期结项）+ 禁 JSON 往返克隆守卫；`ConfigEditors` 解析字段全量 `FieldEditor<T>`（时段起止一并泛型化、`StartText`/`EndText` 裸字符串桥接删除、修掉「非法输入静默抹掉已配置时段」缺陷）+ 视图侧校验反馈统一（7 个缺反馈输入框补齐、错误文本样式单一来源）；新增 `RunOptionsContractTests` 5 项 + `RunOptionsHygieneTests` 3 项 + `ConfigEditorsHygieneTests` 3 项守卫）、P-10（可观测性：结构化日志接线——`IRunLogger` 增 `Write(RunLogEntry)` 唯一落盘点 + `run-*.jsonl` 结构化流 + `RunId` 贯穿事件/日志/指标；`RunMetrics` 运行级指标埋点（吞吐 / 平均耗时 / 降级次数 / 兜底触发 / 冷却·时段跳过 / 失败率 / 误切换率）+ `metrics-<run_id>.json` 落盘；`SecretMasker` 脱敏单一事实来源在渲染入口统一生效；新增 `ObservabilityHygieneTests` 6 项守卫 + `SecretMaskerTests` 20 项 / `RunMetricsTests` 8 项 / `RunMetricsInstrumentationTests` 4 项 / `RunMetricsWriterTests` 2 项 / `FileRunLoggerTests` +3 项；同轮把 20 处裸级别字面量收为 `RunLogLevels` 常量、`BatchEngine` 的 `ResolveWorkspacePath` 下沉 `WorkspaceResolver` 使 facade 维持 399 行）均已收口，见 §6.2 执行记录。
 > 关联文档：`docs/TECH-DEBT-技术债务治理方案-v2.0.md`（战术台账，本方案的落地清单来源）、`docs/DESIGN-BatchAgentRunner-v2.0.md`（单一设计权威源）、`docs/PRD-BatchAgentRunner-v2.0.md`、`docs/CONFIG-配置项说明.md`
 
 ## 文档定位（必读）
@@ -21,7 +21,7 @@
 | 维度    | 现状                                                                                            | 评估                           |
 | ----- | --------------------------------------------------------------------------------------------- | ---------------------------- |
 | 分层    | Core / Agents / Infrastructure / Desktop 四工程，目录语义清晰                                           | 良好，需补强依赖方向约束                 |
-| 引擎解耦  | `BatchEngine` 已拆 6 协作者 + 提 `IBatchEngine` 接口 + 下沉 `WaitCoordinator`（P-01）                       | 良好，facade 待 P-02 收口 ≤400 行（见 1.2 / §6.2） |
+| 引擎解耦  | `BatchEngine` 已拆 6 协作者 + 提 `IBatchEngine` 接口 + 下沉 `WaitCoordinator`（P-01）+ facade 收口 ≤400 行（P-02）；`TaskRunner` 已策略对象化（P-03）+ facade 收口 ≤400 行 | 良好，`BatchEngine` facade 收口 953→**397 行**（P-02 →400，P-08 再删死私有 `Truncate` 别名 →397）、`TaskRunner` facade 收口 903→76 行（见 1.2 / §6.2） |
 | 组合根   | `IEngineFactory`/`IEngineHost` 已落，UI 倒置已缓解                                                    | 良好，靠 IL 断言维持（脆弱，需文化固化）       |
 | 可测性缝  | 进程 `IProcessLauncher`、时钟 `IClock`、IO `IFileSystem`/`ITaskFileStore` 已抽                        | 良好，覆盖率不均                     |
 | 构建/分析 | `TreatWarningsAsErrors=true`、`AnalysisLevel=latest-recommended`、`Nullable`/`ImplicitUsings` 开 | 良好                           |
@@ -35,14 +35,14 @@
 
 | #    | 类别         | 问题                                                                                                                        | 证据（实测）                                                                | 严重度 | 关联                     |
 | ---- | ---------- | ------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- | --- | ---------------------- |
-| A-1  | 上帝类·编排     | `BatchEngine` facade 仍承载"批次编排 + 等待循环 + 唤醒 + 可用性轮询编排"，瘦身不彻底；**P-01 已下沉 `WaitCoordinator`（等待循环/唤醒/可用性轮询）**，facade 由 1018→953 行，剩余"≤400 行"收口见 P-02 | `src/.../Core/Engine/BatchEngine.cs` **953 行**（P-01 后）／`WaitCoordinator.cs` 156 行 | 高   | P1-1（已拆协作者）＋P-01（WaitCoordinator 下沉）＋P-02（facade ≤400 收口） |
-| A-2  | 上帝类·状态机    | 单任务状态机虽外置，但 `TaskRunner` 仍是巨类，分支/重试/退避/降级/超时全挤一处                                                                          | `TaskRunner.cs` **903 行**                                             | 高   | P1-2（已外置，待策略对象化）       |
-| A-3  | 上帝类·UI     | Desktop 真实剩余热点在 VM：`ConfigViewModel` 1065 / `MonitorViewModel` 983 / `LoginViewModel` 751 / `TemplateEditorViewModel` 674 | `src/.../Desktop/ViewModels/*`                                        | 高   | P1-19（已补测试，待分解）        |
-| A-4  | 重复·样板      | 三份 `Json*Store` 逐行同构（构造+默认目录+Load+Atomic 保存）；"BatchAgentRunner" 路径魔法串在 **9 处**硬编码                                         | `JsonCooldownStore`/`JsonCreditsClaimStore`/`JsonConfigStore`、`P2-31` | 中   | P2-31 ✅ 已收口（2026-10-21，见 TECH-DEBT §5.11） |
-| A-5  | 重复·领域      | `Truncate`×3、终态集合×3、`Clone`×6、失败分派状态机逐字重复                                                                                 | `P2-1~P2-6`                                                           | 中   | P2-1~6                 |
-| A-6  | God Config | `RunOptions` 369 行 + `Clone()` 靠 JSON 往返；`ConfigEditors` 509 行手写 DTO 编辑器                                                  | `RunOptions.cs` / `ConfigEditors.cs`                                  | 中   | P2-9 / P2-15           |
+| A-1  | 上帝类·编排     | `BatchEngine` facade 仍承载"批次编排 + 等待循环 + 唤醒 + 可用性轮询编排"，瘦身不彻底；**P-01 已下沉 `WaitCoordinator`（等待循环/唤醒/可用性轮询）**，facade 由 1018→953 行；**P-02 已下沉持久化/凭证切换/生命周期编排三个协作者**，facade 收口至 **397 行（≤400 收口达标；P-02 →400，P-08 删死私有 `Truncate` 别名 →397）** | `src/.../Core/Engine/BatchEngine.cs` **397 行**（P-02 后 400，P-08 后 397）／`WaitCoordinator.cs` 156 行／`BatchPersistence.cs` 193 行／`AccountSwitchCoordinator.cs` 185 行／`BatchLifecycle.cs` 283 行 | 高   | P1-1（已拆协作者）＋P-01（WaitCoordinator 下沉）＋P-02（facade ≤400 收口） |
+| A-2  | 上帝类·状态机    | 单任务状态机虽外置，但 `TaskRunner` 曾是巨类，分支/重试/退避/降级/超时全挤一处；**P-03 已将「降级/冷却/兜底/免费时段」判定下沉为 4 个纯函数式 `Policy` 对象、状态机本体移入 `TaskStepExecutor`**，`TaskRunner` 退为 76 行薄 facade（≤400 收口达标） | `src/.../Core/Engine/TaskRunner.cs` **76 行**（P-03 后）／`TaskStepExecutor.cs` 569 行／`DegradationPolicy.cs`／`CooldownPolicy.cs`／`FallbackPolicy.cs`／`FreeTimeWindowPolicy.cs` | 高   | P1-2（已外置）＋P-03（策略对象化 ✅ 已收口，见 §6.2） |
+| A-3  | 上帝类·UI     | Desktop 真实热点在 VM：`ConfigViewModel` **1065→366（P-04 已分解）** / `MonitorViewModel` **983→388（P-06 已分解）** / `LoginViewModel` **751→280（P-06 已分解）** / `TemplateEditorViewModel` **674→240（P-05 已分解）** | `src/.../Desktop/ViewModels/*`                                        | 高   | P1-19（已补测试）；`ConfigViewModel` 分解 **P-04 ✅ 已收口**（facade 366 行 + 账号卡/降级/通知/Git/通用 子编辑器 + 共享校验）；`TemplateEditorViewModel` 分解 **P-05 ✅ 已收口**（facade 240 行 + 模板加载/变量展开/流程示意三个 Coordinator + 4 个行视图模型独立文件）；`Monitor`/`Login` 分解 **P-06 ✅ 已收口**（facade 388/280 行 + Monitor 8 协作者 / Login 5 协作者 + 3 个行视图模型独立文件） |
+| A-4  | 重复·样板      | 三份 `Json*Store` 逐行同构（构造+默认目录+Load+Atomic 保存）；"BatchAgentRunner" 路径魔法串在 **9 处**硬编码                                         | `JsonStoreBase.cs` 64 行／`AppPaths.cs` 45 行（收口后）；三份仓储 191/70/50 → **167/51/19 行** | 中   | P2-31 ✅ 已偿（2026-10-21，TECH-DEBT §5.11）＝ **ARCH P-07 ✅ 已收口**（§6.2 执行记录） |
+| A-5  | 重复·领域      | 原「`Truncate`×3、终态集合×3、`Clone`×6、失败分派状态机逐字重复」：**P-08 ✅ 已收口（2026-10-21）**——P2-1~P2-6 已收敛的前提下补齐防回潮闸门：残留内联截断 3 处（`StreamJsonRenderer`×2 / `TemplateFlowNodeViewModel`×1）并入 `TextTruncate`、终态/深拷贝/依赖分派判定入口由 `DomainPrimitivesHygieneTests`（5 项）锁唯一，并修掉 `TaskItem.Clone()` 阶段结果浅拷贝（改 `StageResult` 为 record + 逐元素 `Clone`） | `TextTruncate.cs`／`TaskStatusExtensions.cs`／`WorkflowTypeClones`／`DagScheduler.EvaluateDependency` | 中   | P2-1~6 ＝ **ARCH P-08 ✅ 已收口**（§6.2 执行记录） |
+| A-6  | God Config | **P-09 ✅ 已收口（2026-10-21）**：`RunOptions` **369→18 行**（按 12 配置域横向切片为 `RunOptions.01~11-*.cs`，各 ≤49 行，JSON 形状与落盘字节逐字不变），JSON 往返克隆随 v2.0 消除且由守卫禁复现；`ConfigEditors` 手写 DTO 编辑器 **510→505 行**——解析字段全量 `FieldEditor<T>`（含本轮收口的时段起止）、删掉 `StartText`/`EndText` 裸字符串桥接、视图侧校验反馈统一（7 个缺反馈的输入框已补齐，错误文本样式单一来源） | `Core/Options/RunOptions*.cs` / `Desktop/Models/FieldEditor.cs` / `Desktop/Models/ConfigEditors.cs` | 中   | P2-9 / P2-15 ＝ **ARCH P-09 ✅ 已收口**（§6.2 执行记录） |
 | A-7  | 依赖·脆弱      | 跨层引用靠 IL 扫描断言"硬维持"，一旦断言漏写即回潮；组合根外偶有 `new` 具体类型                                                                            | `P1-4` 收口项、`§4.3`                                                     | 中   | P1-4 / P4.3            |
-| A-8  | 可运维·可观测    | 无运行级指标（降级次数/兜底触发/冷却跳过/误切换率/吞吐/平均耗时）；日志是否结构化、是否带 RunId 关联未统一                                                               | `IRunLogger` 存在但未统一语义                                                 | 高   | 工程化缺口                  |
+| A-8  | 可运维·可观测    | ~~无运行级指标（降级次数/兜底触发/冷却跳过/误切换率/吞吐/平均耗时）；日志是否结构化、是否带 RunId 关联未统一~~ **P-10 ✅ 已收口（2026-10-21）**：结构化日志接线（唯一落盘点 + `run-*.jsonl`）+ `RunId` 贯穿事件/日志/指标 + `RunMetrics` 七类运行级指标埋点（含 `metrics-<run_id>.json` 落盘）+ `SecretMasker` 脱敏在渲染入口统一生效（原「凭证不落日志」零基础设施、全靠写入点自觉） | `Core/Observability/*`／`Infrastructure/Logging/FileRunLogger.cs`（文本 + JSONL 双轨）／`Infrastructure/Observability/RunMetricsWriter.cs` | 高   | **P-10 ✅ 已收口**（§6.2 执行记录） |
 | A-9  | 工程·CI      | CI "只报告不阻断"；单平台（windows-latest，Avalonia 跨平台却只验 Windows）；无覆盖率、无静态安全扫描、无 Release 流水线                                        | `ci.yml`                                                              | 高   | P0-16 / P4.9           |
 | A-10 | 工程·规范      | `.editorconfig` 仅 28 行，团队级关键规则（命名/CA/IDExxxx）未成集；`CS1591` 已关，公共 API 文档无约束                                                 | `Directory.Build.props:NoWarn CS1591` 已移除                             | 中   | P0-15                  |
 | A-11 | 风险·安全      | `CliCommandBuilder`/`CliAdapterBase` 392/470 行是命令构造安全敏感区；凭证格式兼容面（`FileCredentialVault` 671 行）                             | `Agents/*`、`CredentialVault/*`                                        | 中   | P0-3（已修注入，需守卫防回潮）      |
@@ -166,8 +166,14 @@
 | Core 不得引用 Infrastructure/Agents/Desktop 具体命名空间              | 跨层倒置    |
 | Infrastructure 不得被 Core 工程引用（反向依赖）                          | 端口反转    |
 | Desktop 除 `Composition` 外不得 `new` Infrastructure/Agent 具体类型 | UI 成组合根 |
-| 公共资源（JsonStore/路径常量/Truncate/Clone）须来自 Core 或共享 Internal    | 重复实现回潮  |
+| 公共资源（`JsonStoreBase<T>`/路径常量/Truncate/Clone）须来自单一事实来源   | 重复实现回潮  |
+| 编辑器解析字段一律 `FieldEditor<T>` + `FieldParsers`，且视图必呈校验反馈       | 手写编辑器回潮  |
+| 日志写入一律经 `RunLogEntry` 单一落盘点；脱敏/级别/指标字段集各有单一事实来源          | 可观测性回潮  |
 | `BatchEngine`/`TaskRunner`/最大 VM 行数 ≤ 阈值                    | 上帝类回潮   |
+
+> 第 4 条落地进度：`JsonStoreBase<T>` + `AppPaths` 由 `AppPathsHygieneTests`（**4 项**）锁死——**P-07 ✅ 已收口**（含「第 4 份同构仓储」类型扫描拦截，见 §6.2）；`Truncate`/`Clone`/终态集合/依赖失败分派 由 `DomainPrimitivesHygieneTests`（**5 项**）锁死——**P-08 ✅ 已收口**（见 §6.2）；`RunOptions` 配置域切片与「禁 JSON 往返克隆」由 `RunOptionsHygieneTests`（**3 项**）锁死、配置读写契约由 `RunOptionsContractTests`（**5 项**）锁死、编辑器泛型化与统一校验反馈由 `ConfigEditorsHygieneTests`（**3 项**）锁死——**P-09 ✅ 已收口**（见 §6.2）。
+>
+> 第 6 条落地进度（**P-10 ✅ 已收口，见 §6.2**）：由 `ObservabilityHygieneTests`（**6 项**）锁死——脱敏实现全仓唯一 / 级别字面量不得出现在写日志点 / `IRunLogger` 实现必须提供结构化通道与 RunId / 日志实现内不得绕过统一落盘点 / 指标快照覆盖运行级指标全集 / 引擎事件携带 RunId。四类事实（脱敏 `SecretMasker`、级别 `RunLogLevels`、事件名 `LogEventNames`、指标 `RunMetrics`）各自单一事实来源，防"再写一份"式回潮。
 
 ---
 
@@ -191,9 +197,9 @@
 
 ### 4.3 消除重复（A-4/A-5/A-6）
 
-- **Json*Store 抽 `JsonStoreBase<T>`**（P2-31）✅ **已落地（2026-10-21，见 TECH-DEBT §5.11）**：构造/默认目录/`LoadAsync` 三条回落（文件缺失 / `JsonException` / 反序列化为空）/ `AtomicFileWriter` 原子保存统一到基类，派生类只留 `CreateEmpty()` 与可选 `NormalizeAsync()` 自愈·迁移钩子；9 处魔法串收为 `AppPaths` 常量类（`Root` / `ConfigDirectory` / `TemplatesDirectory` / `VaultDirectory` / `RunsDirectory` / `LogsDirectory` / `MockLiveDirectory`），并由 `AppPathsHygieneTests` 守卫防复发。行为与落盘字节零变化。
-- **领域工具收口到 Core**（P2-1~6）：`Truncate`/`IsTerminal`/`Clone`/`失败分派` 提为内核纯函数，旧三份实现删除。
-- **RunOptions/ConfigEditors 泛型化**（P2-9/P2-15）：编辑器走 `FieldEditor<T>` + 统一校验反馈；配置项用记录类型或源码生成收口，弃用 JSON 往返克隆。
+- **Json*Store 抽 `JsonStoreBase<T>`**（P2-31 ＝ **P-07**）✅ **已收口（2026-10-21，见 TECH-DEBT §5.11 / 本方案 §6.2 P-07 执行记录）**：构造/默认目录/`LoadAsync` 三条回落（文件缺失 / `JsonException` / 反序列化为空）/ `AtomicFileWriter` 原子保存统一到基类，派生类只留 `CreateEmpty()` 与可选 `NormalizeAsync()` 自愈·迁移钩子；9 处魔法串收为 `AppPaths` 常量类（`Root` / `ConfigDirectory` / `TemplatesDirectory` / `VaultDirectory` / `RunsDirectory` / `LogsDirectory` / `MockLiveDirectory`），并由 `AppPathsHygieneTests`（4 项）守卫防复发。行为与落盘字节零变化。
+- **领域工具收口到 Core**（P2-1~6 ＝ **P-08**）✅ **已收口（2026-10-21，见 §6.2 P-08 执行记录）**：`Truncate` → `Core/Text/TextTruncate`（`Result` 结果截断 + `Truncate` 通用截断）、终态集合 → `TaskStatusExtensions.IsTerminal`、`Clone` → 工作流域 `record with`（`WorkflowTypeClones`）+ `TaskItem`（唯一手写点，因承载属性通知无法记录化）、依赖失败分派 → `DagScheduler.EvaluateDependency`（三态判定）四者各自单一事实来源；本轮再收口残留内联截断 3 处，并修掉 `TaskItem.Clone()` 对 `StageResults` 的浅拷贝（元素共享 → 改 `StageResult` 为 record + 逐元素 `Clone`）。防回潮闸门：`DomainPrimitivesHygieneTests` **5 项**（内联截断拦截 / 终态成员须委派 + 全枚举值行为等价 / 深拷贝入口只允许 `WorkflowTypeClones` 与 `TaskItem` / 依赖分派公开入口唯一且 `TaskDispatcher` 保持委派）+ `TaskItemCloneTests` **4 项**（反射遍历可写属性的字段完整性 · 深拷贝不共享 · 序列化形状一致 · 可空语义）。
+- **RunOptions/ConfigEditors 泛型化**（P2-9/P2-15 ＝ **P-09**）✅ **已收口（2026-10-21，见 §6.2 P-09 执行记录）**：编辑器解析字段一律 `FieldEditor<T>` + `FieldParsers` 单一解析来源（含本轮收口的时段起止，并删掉 `StartText`/`EndText` 裸字符串桥接），`Apply()` 对错误态保留原值；视图侧统一呈现校验反馈（错误文本样式 `TextBlock.field-error` 单一来源），由 `ConfigEditorsHygieneTests`（**3 项**：解析调用单一来源 / 声明即须被 `Apply()` 读取 / 凡绑 `X.Text` 必呈 `X.Error`）防回潮。`RunOptions` 由 363 行单一大类按 12 个配置域横向切片为 `RunOptions.NN-*.cs`（切片各 ≤49 行），**JSON 形状与属性落盘顺序逐字节不变**；JSON 往返克隆本就随 v2.0 消除，现由 `RunOptionsHygieneTests`（**3 项**：须按配置域切片不得回缩 / 切片行数上限 / 禁 `Clone`/`Copy`/`Snapshot` 成员复现）锁死，读写契约由 `RunOptionsContractTests`（**5 项**）锁死。
 
 ### 4.4 简化逻辑
 
@@ -254,19 +260,21 @@
 - 依赖扫描（ Supply-chain ）：CPM 已 centralized，定期 `dotnet list package --vulnerable`。
 - 代码质量看板：复杂度、重复率、覆盖率趋势（TECH-DEBT §4.8 度量看板复用）。
 
-### 5.6 日志与可观测性（A-8，本期重点）
+### 5.6 日志与可观测性（A-8，**P-10 ✅ 已收口，2026-10-21**）
 
-- **统一结构化日志**：`IRunLogger` 接入结构化实现（如 `ILogger`/Serilog），统一级别与字段。
-- **关联标识**：`RunId`/`TaskId` 贯穿批次与任务，日志可按批次聚合。
-- **运行级指标**（新增，不侵入业务语义）：任务吞吐、平均耗时、降级次数、兜底触发、冷却跳过、失败率、**误切换率**（设计已定义"时段外/冷却跳过不计失败"）。
-- **敏感脱敏**：凭证/密钥绝不落日志；报告与日志可关联但分离存储。
-- 指标与 `BatchReport` 互补：报告给用户看，指标给运维看。
+- **统一结构化日志** ✅：`IRunLogger` 增 `Write(RunLogEntry)` 作为<b>唯一落盘点</b>——十余个 `Write*` 便捷方法一律转条目后经此渲染：文本 `run-*.log`（人读 tail，正文逐字不变）+ 结构化 `run-*.jsonl`（机器采集，含 `ts/level/event/run_id/task_id/account/model/message/fields`）。新增日志点不可能绕过结构化。
+- **关联标识** ✅：`IRunLogger.RunId` 为批次关联标识（`run-{时间戳}-{6 位随机}`，全局唯一生成入口 `RunLogEntry.NewRunId()`），引擎与日志共用同一实例；`BatchEvent.RunId` 由 `BatchEngine.Raise` 统一填充，事件流 / 日志 / 指标三者可按同一次运行聚合。
+- **运行级指标**（新增，不侵入业务语义）✅：`RunMetrics` 在状态机决策点埋点——任务吞吐、平均耗时、降级次数、兜底触发、冷却跳过、时段跳过、失败率、**误切换率**（设计已定义"时段外/冷却跳过不计失败"）；批次终态输出 `metrics_snapshot` 结构化条目，并由 `RunMetricsWriter` 落 `metrics-<run_id>.json`（snake_case、派生量随快照同落）。
+- **敏感脱敏** ✅：`SecretMasker`（键名形态 / Bearer / JWT / `sk-`·`ghp_`·`AKIA` 前缀）在渲染入口统一生效，凭证/密钥绝不落日志；报告与日志可关联但分离存储。
+- 指标与 `BatchReport` 互补：报告给用户看，指标给运维看（二者同批落盘、命名同口径、字段集各自稳定）。
+
+> 口径（由 `RunMetricsTests` 锁死）：失败率 = 失败 / 终态（待人工与依赖阻断计入终态但不计失败）；误切换率 = 切换后本次尝试仍因额度耗尽或凭据失效的切换 / 切换总次数；吞吐 = 完成任务数 / 批次已运行小时数。
 
 ### 5.7 配置治理（A-6/A-12）
 
 - **schema 单一事实来源**：由 `RunOptions` 生成 JSON Schema，CI 校验 `config.json`。
 - **迁移框架**：版本化迁移器，新增字段默认兼容；破坏性变更走主版本。
-- **约定固化**：snake_case + 派生属性 `[JsonIgnore]`（已实现，需文档化 + §3.4 断言守卫）。
+- **约定固化**：snake_case + 派生属性 `[JsonIgnore]`（已实现；**P-09 已由 `RunOptionsContractTests` 的「命名契约」/「派生契约」断言守卫**，不再依赖人肉 review）。
 - **密钥隔离**：凭证不入 config（已由 Vault 处理），配置仅存非敏感项。
 
 ### 5.8 文档与决策留痕
@@ -288,15 +296,15 @@
 | 阶段       | 主题     | 范围          | 关键交付                                                                | 依赖   | 退出标准                            |
 | -------- | ------ | ----------- | ------------------------------------------------------------------- | ---- | ------------------------------- |
 | **P-01** | A 架构收口 | A-1 (①)     | 抽取 `WaitCoordinator`（等待循环/唤醒/可用性轮询下沉）                               | —    | ✅ 已收口（2026-10-21）：diff<400 行；facade 1018→953 行；IL 绿；测试绿 |
-| **P-02** | A 架构收口 | A-1 (②)+A-7 | `BatchEngine` facade 收口 ≤400 行 + 防腐层/依赖方向 IL 断言固化                   | P-01 | facade ≤400 行；IL 断言全绿           |
+| **P-02** | A 架构收口 | A-1 (②)+A-7 | `BatchEngine` facade 收口 ≤400 行 + 防腐层/依赖方向 IL 断言固化                   | P-01 | ✅ 已收口（2026-10-21）：facade 953→400 行；IL 断言全绿；测试绿 |
 | **P-03** | A 架构收口 | A-2         | `TaskRunner` 策略对象化（Degradation/Cooldown/Fallback/FreeTime → Policy） | —    | TaskRunner ≤400 行；Policy 单测覆盖   |
-| **P-04** | A 架构收口 | A-3 (①)     | `ConfigViewModel` 分解（账号卡/降级/通知/Git/通用 子编辑器 + 共享校验）                  | P-02 | 最大 VM ≤400 行；headless 契约测试绿     |
-| **P-05** | A 架构收口 | A-3 (②)     | `TemplateEditorViewModel` 分解（引入 Coordinator/Presenter）              | P-02 | 同上                              |
-| **P-06** | A 架构收口 | A-3 (③)     | `MonitorViewModel` + `LoginViewModel` 分解收口                          | P-02 | 同上                              |
-| **P-07** | B 去重   | A-4         | `JsonStoreBase<T>` + `AppPaths` 常量（消除 3 份同构 + 9 处魔法串）               | —    | §3.4 重复断言绿；测试绿                  |
-| **P-08** | B 去重   | A-5         | 领域工具收口 Core（Truncate/终态/Clone/失败分派 单一来源）                            | —    | 无三份同构；内核工具单测                    |
-| **P-09** | B 去重   | A-6         | `ConfigEditors` 泛型化 + `RunOptions` 收口（弃 JSON 往返克隆）                  | P-07 | 编辑器泛型化；配置契约测试绿                  |
-| **P-10** | C 工程化  | A-8         | 可观测性：结构化日志接线 + RunId 关联 + 运行级指标埋点                                   | —    | 日志可关联；指标可采集；脱敏有效                |
+| **P-04** | A 架构收口 | A-3 (①)     | `ConfigViewModel` 分解（账号卡/降级/通知/Git/通用 子编辑器 + 共享校验）                  | P-02 | ✅ 已收口（2026-10-21）：facade 1065→366 行；headless 契约测试绿；测试绿 |
+| **P-05** | A 架构收口 | A-3 (②)     | `TemplateEditorViewModel` 分解（引入 Coordinator/Presenter）              | P-02 | ✅ 已收口（2026-10-21）：facade 674→240 行；引入模板加载/变量展开/流程示意三个 Coordinator + 4 个行视图模型独立文件；测试绿；§3.4 第 5 条守卫扩展 |
+| **P-06** | A 架构收口 | A-3 (③)     | `MonitorViewModel` + `LoginViewModel` 分解收口                          | P-02 | ✅ 已收口（2026-10-21）：Monitor facade 983→388 行 + Login facade 751→280 行；Monitor 下沉 8 协作者（输出流/统计/批次状态/提示板/任务列表/DAG/纯统计/输出分类/操作编排）+ Login 下沉 5 协作者（登录流程/领取流程/账号池/步骤条/异常翻译）+ 3 个行视图模型独立文件；准入 headless 契约测试 29 项（Login 18 + Monitor 11）+ XAML 绑定守卫 1 项（2 视图）；§3.4 守卫扩展 2 项；全量测试 734 绿 |
+| **P-07** | B 去重   | A-4         | `JsonStoreBase<T>` + `AppPaths` 常量（消除 3 份同构 + 9 处魔法串）               | —    | ✅ 已收口（2026-10-21）：三份仓储 191/70/50→167/51/19 行；9 处魔法串清零（仅剩 `AppPaths.cs` 一处声明）；`AppPathsHygieneTests` 3→4 项；全量测试 735 绿 |
+| **P-08** | B 去重   | A-5         | 领域工具收口 Core（Truncate/终态/Clone/失败分派 单一来源）                            | —    | ✅ 已收口（2026-10-21）：内联截断清零（残留 3 处并入 `TextTruncate`）；终态/深拷贝/依赖分派判定入口唯一；`DomainPrimitivesHygieneTests` 5 项 + `TaskItemCloneTests` 4 项；清偿 `BatchEngine` 死私有 `Truncate` 别名（facade 400→397 行）；全量测试 744 绿 |
+| **P-09** | B 去重   | A-6         | `ConfigEditors` 泛型化 + `RunOptions` 收口（弃 JSON 往返克隆）                  | P-07 | ✅ 已收口（2026-10-21）：编辑器解析字段全量 `FieldEditor<T>` + 视图校验反馈统一；`RunOptions` 363 行大类按 12 配置域切片（各 ≤49 行）且 JSON 形状逐字节不变；`RunOptionsHygieneTests` 3 项 + `RunOptionsContractTests` 5 项 + `ConfigEditorsHygieneTests` 3 项；全量测试 758 绿 |
+| **P-10** | C 工程化  | A-8         | 可观测性：结构化日志接线 + RunId 关联 + 运行级指标埋点                                   | —    | ✅ 已收口（2026-10-21）：日志可关联（RunId 贯穿事件/日志/指标）；指标可采集（`metrics-<run_id>.json` + JSONL）；脱敏有效（`SecretMasker` 单一事实来源 + 渲染入口统一生效）；全量测试 801 绿 |
 | **P-11** | C 工程化  | A-9(①)      | CI 转阻断（required status）+ 覆盖率门禁 + 格式门禁进 CI                           | P-07 | 构建/单测阻断生效；覆盖率阈值拦截               |
 | **P-12** | C 工程化  | A-10/A-11   | `.editorconfig` 规则集扩充 + 恢复 `CS1591` + 静态安全扫描固化命令/凭证守卫               | P-11 | 扫描 0 高危；公共 API 有文档              |
 | **P-13** | C 工程化  | A-9(②)      | 多平台 CI 矩阵（win/mac/linux）+ Release 流水线（publish+版本号+签名）               | P-11 | 多平台绿；制品可发布                      |
@@ -326,12 +334,121 @@
 - 退出：facade ≤400 行；IL 断言全绿；全量测试绿。
 - 风险：R-2（大改动 review 失效）→ 拆为 <400 行小提交。
 
+> **【执行记录 · 2026-10-21 · ✅ 已收口】**
+> - 新增 3 个 facade 协作者（沿用 `WaitCoordinator`/`TaskDispatcherContext` 的「上下文注入」范式，避免反向耦合）：
+>   - `src/BatchAgentRunner.Core/Engine/BatchPersistence.cs`（193 行，含 `BatchPersistence` + 构造期 `GateReleaser`）：承接持久化/IO——`LoadCooldownsAsync`/`LoadTasksAsync`/`BackupAsync`/`SaveCooldownsAsync`/`PersistAsync`/`EnterWriteGateAsync`/`CheckIdSnapshot`，独占 `_writeGate`/`_persistGate`，由 `BatchEngine.Dispose()` 一并释放。
+>   - `src/BatchAgentRunner.Core/Engine/AccountSwitchCoordinator.cs`（185 行，含 `AccountSwitchContext`）：承接凭证切换——`EnsureLiveCredentialAsync`/`SwitchAccountAsync`/`EnsurePreferredLiveAccountAsync`/`RotateAccountToFront`。
+>   - `src/BatchAgentRunner.Core/Engine/BatchLifecycle.cs`（283 行，含 `BatchLifecycle` + `BatchLifecycleContext` + 共享 `BatchRunState`）：承接批次生命周期编排——`RunAsync`/`ExecuteWorkflowAsync`/`BuildWorkflowContext`/`IsQuotaUnboundedWait`。
+> - `BatchEngine` 改造：移除持久化/凭证切换/生命周期编排约 550 行，facade **953→400 行**（净下降 553 行，≤400 收口达标）；新增 `_persistence`/`_accountSwitch`/`_lifecycle` 字段并在 ctor 经 `BuildTaskRunnerContext`/`BuildTaskDispatcherContext`/`BuildWaitCoordinatorContext` 装配；`InitializeAsync`/`LoadTasksAsync`/`PreflightAsync`/`StartAsync`/`Dispose` 改为委托/调用协作者；引入 `BatchRunState`（与 `BatchLifecycle` 共享同一可变运行态实例，避免 `TerminateRequested`/`StopAfterCurrentTask`/`CurrentTaskId`/`RunCts` 重复持有）；保留 `IBatchEngine` 公开行为逐字节等价。
+> - **构造顺序护栏**：runner/dispatcher 的上下文注入依赖 `persistence`/`accountSwitch`/`lifecycle`，而 `lifecycle` 的上下文注入又依赖 `dispatcher`/`waitCoordinator`，故 ctor 顺序固定为「叶子协作者 → dispatcher/waitCoordinator → lifecycle → runner」，以规避空 this 委托 / 空引用上下文注入。
+> - **IL 断言固化**：既有 §3.4 第 1~3 条（防腐层 + 依赖方向：Core 不得引用 Infrastructure/Agents/Desktop、Core 不得直 `new System.Diagnostics.Process`、Desktop 除组合根外不得 `new` Infrastructure/Agent 具体类型）收口后持续绿；**新增第 5 条** `BatchEngine_facade文件不得超过400行_防上帝类回潮`（Core `LayeringRulesTests`，`LocateEngineSource()` 自仓库检出定位 `BatchEngine.cs`，断言 `≤400` 行），防上帝类回潮。
+> - **逃逸阀台账**：P-02 抽取的 `BatchRunState` 触发 `CA1001`（可释放字段未实现 IDisposable），按 P2-30 守卫登记为 TECH-DEBT §4.7 **#11**（到期日 2027-01-20，由 `BatchEngine.Dispose` 统一释放 `RunCts`）；另下线既有的 stale 台账 **#9**（pre-commit 钩已于 2026-10-21 禁用、CHARSET 过滤豁免不复存在，无代码引用）。
+> - **退出验证**：全量 `--no-incremental` 构建 **0 警告/0 错误**；全量测试 **653 通过/0 失败**（主 541 + Desktop 112，较收口前 +1：新增 facade 行数守卫）；§3.4 IL 断言（Core `LayeringRulesTests` 4 项 + Desktop `LayeringRulesTests` 4 项）全绿；facade 行数收口达标且由守卫测试锁死。
+> - **提交切片建议（§7 护栏）**：facade 改动单次 `git diff --stat` 约 771 行（>400），须按协作者为单位切片提交——`BatchPersistence` / `AccountSwitchCoordinator` / `BatchLifecycle` 三次提取各自独立可编译、独立 <400 行提交，最后收口 `BatchEngine.cs` 的委托化改造。
+
 **P-03 · TaskRunner 策略对象化（A-2，5 人天）**
 
 - 步骤：将"降级/冷却/兜底/免费时段"判定抽为纯函数式 `Policy` 对象（输入领域状态、输出决策），`TaskRunner` 退为"状态机驱动 + 调 Policy"，目标 ≤400 行、CC 可测。
 - 准入：降级矩阵/冷却/兜底不变量测试先就位（P0-1/P0-5 不变量）。
 - 退出：TaskRunner ≤400 行；Policy 单测覆盖四类决策；业务行为等价（契约测试锁定）。
 - 风险：R-1 → 不变量 + E2E 真实任务清单回归。
+
+> **【执行记录 · 2026-10-21 · ✅ 已收口】**
+> - 新增 4 个纯函数式策略对象（输入领域状态、输出决策，可独立单测，无副作用）：
+>   - `src/BatchAgentRunner.Core/Scheduling/DegradationPolicy.cs`（145 行）：`DecideNext`（降级矩阵展开 / 临时限流重试同一组合）+ `DecideFailure`（失败路由：重试同一组合 / 记录冷却 / 停用账号 / 重试任务 / 判失败 / 判失败停批 / 危险操作拒绝）。**矩阵以 `Func<DegradationMatrix>` 延迟持有**——引擎 `NotifyConfigurationChanged()` 会重建矩阵，若在此捕获实例将读到陈旧矩阵（复测发现「配置变更补充可用组合后任务误判 Blocked」），故沿用 `BatchEngine.BuildTaskRunnerContext` 的 `MatrixProvider` 懒解析约定，每次判定现取现用。
+>   - `src/BatchAgentRunner.Core/Scheduling/CooldownPolicy.cs`（31 行）：`RecordAndPurge` 封装「记录额度冷却 + 清过期」单一动作。
+>   - `src/BatchAgentRunner.Core/Scheduling/FreeTimeWindowPolicy.cs`（66 行）：`DecideWait` 综合免费时段窗口 + 额度无限等待（`QuotaWaitPolicy.IsUnboundedQuotaWait` 单一事实来源）判定等待/阻塞。同样以 `Func<DegradationMatrix>` 延迟持有矩阵。
+>   - `src/BatchAgentRunner.Core/Engine/FallbackPolicy.cs`（32 行）：封装「已投入执行的当前任务（`invested && 兜底启用`）才允许兜底（REQ-004b）」准入 + 全池 / 指定账号选取路由 + 成本截断委托。
+> - 新增 4 个薄协作器（沿用 P-01/P-02 的「上下文注入 + 纯搬运」范式，杜绝逻辑改写导致行为漂移）：`TaskTerminalWriter.cs`（109 行，终态写入）、`TaskEventReporter.cs`（59 行，跳过/切换事件）、`TaskRequestBuilder.cs`（34 行，请求构建）、`TaskCredentialSwitch.cs`（56 行，Live 凭证确保）。
+> - 状态机本体移入 `src/BatchAgentRunner.Core/Engine/TaskStepExecutor.cs`（569 行，构造期装配 4 个 Policy + 4 个协作器）：承载单任务状态机（重试 / 退避 / 降级 / 超时 / 兜底 / 终止）全部步骤，`TaskRunner` 退为 **76 行薄 facade**（仅 `new TaskStepExecutor(ctx)` + 委托 `RunSafeAsync`）——与 P-02 将 `BatchEngine` 薄面化同源。
+> - **关键修复（复测拦截）**：`TaskStepExecutor` 原在 ctor 一次性捕获 `MatrixProvider()` 结果，导致配置变更后读到陈旧矩阵、`BatchEngineTests.等待中配置变更补充可用组合_提前退出等待并继续` 由 Completed 退化为 Blocked；改为向 Policy 传递 `MatrixProvider` 委托后恢复绿。
+> - **守卫测试**：`LayeringRulesTests` 新增第 5 条扩展 `TaskRunner_facade文件不得超过400行_防上帝类回潮`（`LocateTaskRunnerSource()` 自仓库检出定位 `TaskRunner.cs`，断言 ≤400 行），与 `BatchEngine` 守卫同款，防上帝类回潮。
+> - **Policy 单测**：新增 `Scheduling/PolicyTests.cs`，覆盖四类决策（降级：重试同一组合 / 选下一组合 / 全部不可用；失败路由：限流连击升降级 / 额度耗尽 / 凭据失效 / 危险操作 / 超时 / 普通错误重试与达上限停批；冷却：CLI 可靠/不可靠来源 + 清过期；免费时段：纯额度无限等待 / 关闭无限等待仍窗口内 / 无候选阻塞 / 超窗口阻塞；兜底：启用透传 + `invested && enabled` 准入门 + 选取路由 + 成本截断），共 31 项。
+> - **退出验证**：全量 `--no-incremental` 构建 **0 警告/0 错误**；全量测试 **680 通过/0 失败**（主 568 + Desktop 112，较 P-02 收口 653 → 680）；其中 P-03 新增 Policy 决策单测 31 项 + TaskRunner facade 行数守卫 1 项；§3.4 IL 断言（Core `LayeringRulesTests` + Desktop `LayeringRulesTests`）全绿；`TaskRunner` facade 行数收口达标且由守卫测试锁死；`ITaskRunner` 接口与既有 `TaskRunnerTests` 契约测试逐字节等价（行为未漂移）。
+> - **提交切片建议（§7 护栏）**：按「策略对象 → 协作器 → TaskStepExecutor → TaskRunner facade」顺序切片，每个文件独立 <400 行、独立可编译。
+
+**P-04 · ConfigViewModel 分解（A-3 ①，5 人天）**
+
+- 步骤：将 1065 行 God Object `ConfigViewModel` 拆为 11 个子编辑器（账号卡/任务/调度/关机/安全/降级/兜底/通知/Git/工作流/通用）+ 共享校验器 + `ConfigSaveCoordinator`，facade 仅保留"状态持有 + 绑定转发"，并通过 `_Forward`/`_ForwardStatus` 转发子编辑器 `PropertyChanged` 以保留 Avalonia 绑定通知契约。
+- 准入：先补 Avalonia headless 契约测试（P1-19 基座），锁死 facade 公开 API 映射/交互/绑定契约/headless 视图四条路径。
+- 退出：最大单个 VM ≤400 行；headless 契约测试绿；UI 行为等价。
+- 风险：R-4（破坏 UI 行为）→ headless 契约测试先补再改。
+
+> **【执行记录 · 2026-10-21 · ✅ 已收口】**
+> - **facade 收口**：`src/BatchAgentRunner.Desktop/ViewModels/ConfigViewModel.cs` 由 **1065 行 → 366 行**（≤400 达标），退化为薄面：持有 11 个子编辑器（`_models`/`_task`/`_schedule`/`_shutdown`/`_safety`/`_expert`/`_fallback`/`_notif`/`_git`/`_workflow`/`_misc`）+ `_status`(`ConfigStatus`)+`_coordinator`(`ConfigSaveCoordinator`)。ctor 订阅各子编辑器 `PropertyChanged`→`_Forward`（转发非空属性名）、`_status.PropertyChanged`→`_ForwardStatus`（转发 `Message`→`StatusMessage`），保留 Avalonia 绑定通知契约（`AvaloniaUseCompiledBindingsByDefault=false`，绑定路径须为可解析公共属性）。
+> - **11 个子编辑器**（`src/BatchAgentRunner.Desktop/ViewModels/Config/`）：
+>   - `ModelsAccountSectionViewModel.cs`（最大，~250 行）：`Models`/`Accounts`/`AvailableModels`/`IsFetchingModels`；Add/Remove/MoveModel 命令；`FetchModelsCommand`/`FetchModelsForAccountCommand`（经 `ModelCatalogFiller.Fill` + `_status.Show`）；`ModelPoolMode`（`SharedMode`/`PerAccountMode`）+ `MigrateModelPool`；`LoadFrom`（填充 Models/Accounts + 模式探测）；**`WriteModelPool(RunOptions)`** 承接原 `SaveAsync` 模型池合并块（Shared/PerAccount 合并 + 清退重加 `ModelCandidates`/`Accounts`）。
+>   - `TaskSectionViewModel.cs`：`TaskFilePath`/`Agent`/`CliArgs`/`Workspace` + Add/RemoveWorkspace + BrowseTaskFile + PickTaskFile + WorkspaceLimit；ctor 取 `ConfigStatus`。
+>   - `ScheduleSectionViewModel.cs`：并发/重试/超时/冷却/配额/强制/停止。
+>   - `ShutdownSectionViewModel.cs`：自动关机。
+>   - `SafetySectionViewModel.cs`：自动应答/黑名单/白名单/静默/选择。
+>   - `ExpertDegradationSectionViewModel.cs`：`DegradationStrategy`/`Expert.Kind`/`Id`/`DisplayName` + `Strategies`/`ExpertKinds` 列表；经 `ConfigFieldRules.NullIfBlank` 加载/落盘。
+>   - `FallbackSectionViewModel.cs`：`FallbackEnabled`/`MaxPerTask`/`MaxPerBatch`。
+>   - `NotificationSectionViewModel.cs`：`NotificationRules`（`ObservableCollection`）+ Add/RemoveNotificationRuleCommand；`LoadFrom` 每条规则 `new NotificationRuleEditor`/`ApplyTo` 调 `r.Apply()`（引用 `BatchAgentRunner.Core.Domain.NotificationRule`）。
+>   - `GitSectionViewModel.cs`：`GitRepoPath`/`BaseBranch`/`BranchNaming`/`PrTargetBranch`/`AutoOpenPr`；经 `ConfigFieldRules`（RepoPath→`TrimmedOrEmpty`、BaseBranch/PrTargetBranch→`TrimmedOrNull`、BranchNaming→`OrFallback(...).Trim()`）。
+>   - `WorkflowSectionViewModel.cs`：`DefaultMaxGateLoops`/`EnableSessionResume`/`MarkdownInPlaceWriteback`/`DependencyFailurePolicy`/`TemplateBatchExpansionLimit`/`CollectDiffs`/`DiffGlobsText` + `DependencyPolicies` 列表；`MultiValueText.Join` 加载/`ApplyTo` 落盘。
+>   - `MiscSectionViewModel.cs`：`MaxResultKb`/`BackupRetentionCount`；经 `ConfigFieldRules.AtLeastZero`。
+> - **共享校验器 / 防腐层**：
+>   - `ConfigFieldRules.cs`：`AtLeastOne`/`AtLeastZero`/`NullIfBlank`/`TrimmedOrNull`/`TrimmedOrEmpty`/`OrFallback` 单一事实来源，消除各子编辑器重复清洗。
+>   - `ConfigStatus.cs`：单消息槽 `Message` + `Show`，替代原 facade 多字段状态拼接。
+>   - `ModelCatalogFiller.cs`：`Fill` 承接模型目录拉取（去原 facade 内联实现）。
+>   - `ConfigSaveCoordinator.cs`（internal）：ctor 取 `ConfigStatus` + 11 子编辑器；`Load(RunOptions)` 按「task 先、models 后」顺序逐节 `LoadFrom`；`Apply(RunOptions): bool` 逐节 `ApplyTo` 后执行 REQ-019 拦截 `if (_task.Workspaces.Count > o.MaxWorkspaces) { _status.Show("保存被拦截…"); return false; }`，否则 `_notif.ApplyTo(o); _models.WriteModelPool(o); return true;`——集中编排「加载/落盘 + 工作区上限拦截 + 模型池合并」三类跨域动作。
+> - **契约等价性**：facade 全部公共属性/命令转发至子编辑器（`TaskFilePath => _task.TaskFilePath`、`Concurrency => _schedule.Concurrency`、`PickTaskFile => _task.PickTaskFile`、`StatusMessage => _status.Message` 等）；`Reload()`→`_coordinator.Load`+`RefreshReadiness()`，`SaveAsync()`→`Apply` 拦截失败即返回、否则 `SaveConfigAsync`+`RebuildEngineAsync`+ 状态回写；`RefreshSnapshotStatuses()`/`RefreshReadiness()` 沿用 `ConfigViewModelTests` 锁定的原语义。
+> - **守卫测试**：`LayeringRulesTests` 第 5 条扩展 `ConfigViewModel_facade文件不得超过400行_防上帝类回潮`（`LocateConfigViewModelSource()` 自仓库检出定位 `ConfigViewModel.cs`，断言 ≤400 行），与 `BatchEngine`/`TaskRunner` 守卫同款，防上帝类回潮。
+> - **准入契约测试（P1-19 基座，先行锁死行为等价，未改动、须持续绿）**：`ConfigViewModelTests.cs`（Reload/Save 全配置域 + 模型池迁移 round-trip）、`ConfigViewModelInteractionContractTests.cs`（工作区上限/分区导航/就绪/模型拉取/取消/快照）、`ConfigViewBindingContractTests.cs`（静态校验 `ConfigView.axaml`+`ConfigHubView.axaml` XAML 绑定路径可解析）、`ConfigViewTests.cs`（headless 构造 + PickTaskFile 注入）、`ConfigHubViewModelTests.cs`、`FakeEngineHost.cs`。
+> - **退出验证**：全量 `--no-incremental` 构建 **0 警告/0 错误**；全量测试 **700 通过/0 失败**（主 568 + Desktop 132，较 P-03 收口 680 → 700：Desktop 112→132 为新增 P-04 headless 契约测试 + facade 行数守卫）；§3.4 IL 断言（Core `LayeringRulesTests` + Desktop `LayeringRulesTests`）全绿；facade 366 行 ≤400 收口达标且由守卫测试锁死；UI 公开契约逐字节等价（XAML 绑定路径未改、行为未漂移）。
+> - **提交切片建议（§7 护栏）**：按「共享校验器 → 子编辑器（逐文件）→ `ConfigSaveCoordinator` → `ConfigViewModel` facade 转发化」顺序切片，每个子编辑器独立 <400 行、独立可编译。
+
+**P-05 · TemplateEditorViewModel 分解（A-3 ②，5 人天）**
+
+- 步骤：将 674 行 God Object `TemplateEditorViewModel` 按「VM → Coordinator/Presenter」拆为「状态持有 + 绑定转发 + 编排」薄 facade，交互逻辑下沉为三个 Coordinator；行级视图模型拆为独立文件。
+- 准入：目标 VM 已有 P1-19 基座契约测试（`TemplateEditorViewModelTests`，覆盖构造默认输出路径 / 命名工作空间按名落盘 / 目录路径按绝对路径落盘 / 变量多值展开 / 未选模板不抛），须持续绿。
+- 退出：最大单个 VM ≤400 行；headless 契约测试绿；UI 行为等价。
+- 风险：R-4（破坏 UI 行为）→ 准入契约测试先补再改（P-05 未改动公开 API，仅凭既有测试锁死）。
+
+> **【执行记录 · 2026-10-21 · ✅ 已收口】**
+> - **facade 收口**：`src/BatchAgentRunner.Desktop/ViewModels/TemplateEditorViewModel.cs` 由 **674 行 → 240 行**（≤400 达标），退化为薄面：持有 `Templates`/`VarInputs`/`PreviewTasks`/`FlowNodes` 四个集合 + 状态属性（`Workspace`/`OutputPath`/`StatusMessage`/`FlowSummary`/`IsFlowExpanded`/`SelectedTemplate` 等）+ 三个 Coordinator（`TemplateFlowCoordinator` 纯静态 `/ TemplateExpansionCoordinator / TemplateLoadCoordinator`）；命令 `LoadCommand`/`PreviewCommand`/`GenerateCommand`/`ToggleFlowCommand` 直接委托；`SelectedTemplate` setter 触发 `BuildFlow` → 灌入 `FlowNodes`/`FlowSummary` + `LoadVarInputs` + 清空预览，保留 Avalonia 绑定通知契约；ctor 经 `IEngineHost` 端口装配（`P1-4/P1-5` 组合根唯一 `new`，无直 `new` Infrastructure 具体类型）。
+> - **三个 Coordinator**（`src/BatchAgentRunner.Desktop/ViewModels/TemplateEditor/`）：
+>   - `TemplateLoadCoordinator.cs`（32 行，internal）：`LoadAsync()` 调 `IWorkflowTemplateStore.ListAsync()` 映射 `TemplateRowViewModel`，异常转状态文案。
+>   - `TemplateExpansionCoordinator.cs`（116 行，internal）：`BuildSpec`（界面变量写回模板副本）/ `ResolveWorkspaceRoot` / `NormalizeWorkspaceForTask`（命名工作空间 ↔ 目录路径解析，沿用 `_host.Options.Workspaces`）/ `ExpandFromInputs`（调 `TemplateExpander.Expand`）/ `WriteTasksAsync`（原子序列化落盘）；`BuildSpec`/`WriteTasksAsync` 为纯静态方法（CA1822 合规）。
+>   - `TemplateFlowCoordinator.cs`（136 行，internal，纯静态 `BuildFlow`）：承载流程示意构建——`TopoSortStages`（按 `depends_on_stage` 稳定拓扑排序，有环/悬空降级原序）/ `BuildOutputConsumers`（统计阶段产出被引用关系）/ `DescribeOnFailure`，输出 `FlowBuildResult`（`Nodes` + `Summary`）供 VM 灌入。
+> - **4 个行视图模型独立文件**（同目录，命名空间保持 `BatchAgentRunner.Desktop.ViewModels` 以兼容既有测试，无行为变化）：`TemplateRowViewModel.cs`（22 行）/ `TemplateVarInputViewModel.cs`（44 行）/ `TemplateFlowNodeViewModel.cs`（162 行，含 `PlaceholderRx`/`BuildExecutorText`/`BuildGateText` 等）/ `PreviewTaskRowViewModel.cs`（30 行）。
+> - **契约等价性**：facade 全部公共属性/命令保持原签名与语义（`OutputPath` 末尾 `template-output.tasks.json`、`Templates`/`PreviewTasks`/`VarInputs`/`FlowNodes` 集合、`Preview()`/`GenerateAsync()`/`LoadAsync()`、依赖 `HasFlow`/`HasPreviewTasks`/`FlowNodeCountText`/`Selected*` 派生属性）；`TemplateEditorViewModelTests` 5 项全绿，行为逐字节等价（展开产物与手写任务字节级等价）。
+> - **守卫测试**：`LayeringRulesTests` 第 5 条扩展 `TemplateEditorViewModel_facade文件不得超过400行_防上帝类回潮`（`LocateTemplateEditorViewModelSource()` 自仓库检出定位 `TemplateEditorViewModel.cs`，断言 ≤400 行），与 `BatchEngine`/`TaskRunner`/`ConfigViewModel` 守卫同款，防 UI 上帝类回潮。
+> - **退出验证**：全量 `--no-incremental` 构建 **0 警告/0 错误**（CA1822/CA1861/IDE 等全清）；全量测试 **702 通过/0 失败**（主 570 + Desktop 132，较 P-04 收口 701 → 702：新增 P-05 facade 行数守卫 1 项）；`dotnet format --verify-no-changes`（CHARSET 假阳性按 §4.7 #9 过滤）本阶段文件 0 问题；§3.4 IL 断言（Core `LayeringRulesTests` + Desktop `LayeringRulesTests`）全绿；facade 240 行 ≤400 收口达标且由守卫测试锁死；UI 公开契约逐字节等价。
+> - **提交切片建议（§7 护栏）**：按「行视图模型（逐文件）→ 三个 Coordinator（逐文件）→ `TemplateEditorViewModel` facade 薄面化」顺序切片，每个文件独立 <400 行、独立可编译。
+
+**P-06 · MonitorViewModel + LoginViewModel 分解（A-3 ③，5 人天）**
+
+- 步骤：将 983 行 `MonitorViewModel` 与 751 行 `LoginViewModel` 按「VM → Coordinator/Presenter」拆为「状态持有 + 绑定转发 + 事件/流程编排」薄 facade，交互逻辑下沉协作者，行级视图模型拆独立文件；两者均收口 ≤400 行。
+- 准入：目标 VM 先补 Avalonia headless 契约测试（P1-19 基座）+ XAML 绑定路径静态守卫（复用 P-04 的绑定检查器）。
+- 退出：最大单个 VM ≤400 行；headless 契约测试绿；UI 行为等价（既有测试零改动通过）。
+- 风险：R-4（破坏 UI 行为）→ 准入契约测试先补再改 + 守卫测试锁死。
+
+> **【执行记录 · 2026-10-21 · ✅ 已收口】**
+> - **facade 收口**：`MonitorViewModel.cs` **983→388 行**、`LoginViewModel.cs` **751→280 行**（均 ≤400 达标，守卫测试锁死），退化为薄面：持有可绑定状态 + 转发集合/属性/命令 + 把引擎事件路由到协作者。对外公开 API（属性名 / 命令名 / 语义）逐字节等价，既有 `LoginViewModelTests` / `MonitorViewModelTests` **零改动全绿**。
+> - **Monitor 协作者**（`src/BatchAgentRunner.Desktop/ViewModels/Monitor/`，8 个）：
+>   - `OutputStreamCoordinator.cs`（234 行，`ViewModelBase`）：独占全局输出缓冲 + 跟随过滤视图 + 跟随模式（`OutputFollowMode`），`AppendChunk`/`AppendEvent`/`OnTaskStarted`/`SetSelectedTask`；任务清单经 ctor `taskItems` 委托按需读取（不持引用）。
+>   - `TaskListCoordinator.cs`（164 行）：独占 `Tasks`/`DagRows`/`SelectedStages` 三集合，整表重建（P1-7：移出前逐行 `Dispose` 解除 `TaskItem` 订阅）、单行 upsert、DAG 看板拓扑层级/blocked_by 计算、选中任务阶段树刷新。
+>   - `BatchStatsState.cs`（81 行，`ViewModelBase`）：统计快照可绑定状态，`Apply(BatchStatistics.Snapshot)` 一次性落入（分解前 `_skipped` 字段从未赋值恒 0，同语义保留；CA1822/CS0649/CA1805 三规则拉锯下以实例字段 + ctor 赋值形态保留）。
+>   - `BatchStatusState.cs`（77 行，`ViewModelBase`）：批次状态（Status/StatusText/StatusBrush/IsWaiting/DispatchPaused/Can*），`Status` 变更级联通知派生属性，命令可用性由 facade 监听后统一 `NotifyCanExecuteChanged`（与原 setter 行为等价）。
+>   - `EventToastBoard.cs`（66 行）：提示板集合 + 两级写入（引擎事件定级 + 操作失败双写），二期关注类关键词升级 warning，上限 100 条尾淘汰。
+>   - `BatchStatistics.cs`（64 行，纯静态）：统计纯计算（各状态计数 + ETA + 当前任务三栏文案），无副作用、可独立单测。
+>   - `OutputTagClassifier.cs`（46 行，纯静态）：单行 stdout 关键字启发式分类 + 引擎事件→输出流标签映射。
+>   - `MonitorOperationsCoordinator.cs`（156 行，含 `MonitorOperationsContext` 上下文注入）：承载「加载任务文件 / 启动前预检 / 开始执行 / 续跑」操作编排——预检门、结果回写、失败状态栏+提示板双写；`ConfigureAwait(false)` 续延的 UI 写回经 `UiThread` 投递（P0-6/P0-7 线程收敛，与原实现逐字节等价），经 `WriteStatusMessage`/`NotifyLastReportPathChanged` 回调写回 facade。
+> - **Login 协作者**（`src/BatchAgentRunner.Desktop/ViewModels/Login/`，5 个 + 3 个行 VM 独立文件）：
+>   - `ILoginView.cs`（58 行，internal 缝）：facade 向协作者暴露的最小可变状态面（宿主/AgentKind/忙碌态/状态条/结果横幅/行集合/步骤条 + `RebuildRows`/`Refresh` 回调），协作者不反向依赖 facade 具体类型（沿用 P-01/P-02 上下文注入范式）。
+>   - `GuidedLoginFlow.cs`（167 行，`IDisposable`）：一键登录全流程（守卫→分配账号→忙碌态→`GuidedLoginAsync`→入池保存→成功收尾）+ 编排器进度回调 → 步骤条；独占登录 CTS（可取消，facade `Dispose` 一并释放）。
+>   - `CreditsClaimFlow.cs`（130 行，`IDisposable`）：每日积分领取全流程（守卫→启用账号检查→领取中态→批量领取→逐账号结果行→汇总文案）；独占领取 CTS。
+>   - `AccountPoolCoordinator.cs`（153 行）：账号行整表重建（账号池 + Vault 快照描述 + Live 标记）、一键切换、两段式删除（清快照+出池+保存+重建引擎）、`NextAccountId`；ctor 取 facade 具体类型（账号行构造需要 owner 承接行命令路由，公开构造签名不变）。
+>   - `LoginStepsPresenter.cs`（95 行）：六步固定步骤集合 + 全部步骤态迁移 + `ApplyProgress`（阶段→步骤索引映射，Done/Failed 收尾归流程层）。
+>   - `LoginErrorTranslator.cs`（33 行，纯静态）：异常人话翻译（超时/进程互斥/未找到命令 + 原始细节附注），登录流与账号操作共用。
+>   - 行视图模型独立文件（命名空间保持 `BatchAgentRunner.Desktop.ViewModels` 兼容既有测试，公开签名不变）：`LoginStepItem.cs`（35）/ `LoginAccountRow.cs`（72，ctor owner 仍为 `LoginViewModel`）/ `CreditsClaimRow.cs`（41）。
+> - **契约等价性**：facade 全部公共属性/命令保持原签名与语义（`Steps`/`Rows`/`AgentKinds`/`ForceClaim`/`IsBusy`/`IsClaimIdle`/`HasResult`/`LoginCommand`/`CancelLoginCommand`/`ClaimCreditsCommand`/`SwitchToAsync`/`ReLoginAsync`/`DeleteAsync`/`CancelDelete`/`Refresh`/`HasAccounts`/`Dispose` 等）；`StatusMessage`/`LastReportPath` 经上下文回调写回，集合直接透传协作者同一实例（集合自身通知）。
+> - **准入契约测试（先行锁死行为等价，分解后零改动持续绿）**：`LoginViewModelContractTests` 18 项（步骤条初始化/Refresh 同步/快照描述/Mock·WorkBuddy 守卫/切换成功与异常翻译/Live 拒绝删除/删除异常不清池/两段式确认/领取四分支文案/行命令路由/Dispose 幂等）+ `MonitorViewModelContractTests` 11 项（默认统计与批次状态/集合透传同一实例/StatusChanged 与 SlotFrozen 驱动/TaskOutput·TaskStarted 输出流联动/BatchWaiting 倒计时/选中任务派生属性与阶段树/工作流模板溯源/统计转发与 DAG 重建/ForceRerun 回写/加载未选文件 warning 双写/筛选切换）；`FakeEngineHost` 扩容 `RaiseEvent`/`RaiseTasksChanged`/`RaiseCreditsClaimProgress`/`ClaimResult`/`VaultFailure` 五个探针（仅测试项目）支撑事件编排路径覆盖。**XAML 绑定守卫**：`MonitorLoginViewBindingContractTests` 1 项（`MonitorView.axaml` + `LoginView.axaml` 全部 `{Binding 路径}` 静态可解析，含 DataTemplate 经 ItemsSource 推断元素类型的作用域）；同轮将 P-04 的绑定检查器提取为共享 `XamlBindingPathChecker`（`ConfigViewBindingContractTests` 改复用，行为不变）。
+> - **守卫测试**：`LayeringRulesTests` 第 5 条扩展 `MonitorViewModel_facade文件不得超过400行_防上帝类回潮` 与 `LoginViewModel_facade文件不得超过400行_防上帝类回潮`（自仓库检出定位源文件，断言 ≤400 行），与 `BatchEngine`/`TaskRunner`/`ConfigViewModel`/`TemplateEditorViewModel` 守卫同款，防 UI 上帝类回潮。
+> - **退出验证**：全量 `--no-incremental` 构建 **0 警告/0 错误**；全量测试 **734 通过/0 失败**（主 572 + Desktop 162，较 P-05 收口 702 → 734：新增 Login 契约 18 + Monitor 契约 11 + XAML 绑定守卫 1 + facade 行数守卫 2）；§3.4 IL 断言（Core `LayeringRulesTests` 9 项 + Desktop `LayeringRulesTests` 4 项）全绿；`dotnet format --verify-no-changes`（CHARSET 假阳性按 §4.7 #9 过滤）本阶段文件 0 问题；两个 facade 行数收口达标且由守卫测试锁死；UI 公开契约逐字节等价（既有 VM 测试零改动通过 + XAML 绑定路径机器校验）。
+> - **提交切片建议（§7 护栏）**：Monitor 半边按「协作者（逐文件）→ 操作编排提取 → `MonitorViewModel` facade 委托化」切片；Login 半边按「行视图模型（逐文件）→ `ILoginView` 缝 + 步骤条/翻译 → 三个流程/账号协作者（逐文件）→ `LoginViewModel` facade 薄面化」切片；测试与守卫独立提交。每个文件独立 <400 行、独立可编译。
 
 **P-04~P-06 · VM 分解（A-3，各 5 人天）**
 
@@ -345,20 +462,75 @@
 - 步骤：抽 `JsonStoreBase<T>`（构造/默认目录/`LoadAsync` catch/`AtomicFileWriter.SaveAsync` 统一），9 处路径魔法串收为 `AppPaths` 常量；三份 `Json*Store` 改为继承。
 - 退出：无三份同构实现；§3.4 重复断言绿；测试绿。
 
+> **【执行记录 · 2026-10-21 · ✅ 已收口】**
+> - **代码本体已于 P2-31 提前偿还**（`adace61`，TECH-DEBT §5.11），本轮为「复核真值 + 加固守卫 + 阶段收口」：
+>   - `src/BatchAgentRunner.Infrastructure/Persistence/JsonStoreBase.cs`（**64 行**）：统一三份仓储逐行同构的四段样板——① 目录解析（`null` → `AppPaths.Root`）并建目录；② `FilePath` 由「目录 + 文件名」拼出；③ `LoadAsync` 三条回落（文件缺失 / `JsonException` / 反序列化为空 → `CreateEmpty()`）；④ `SaveAsync` 一律走 `AtomicFileWriter`。
+>   - 三份仓储退化为「`CreateEmpty()` + 可选 `NormalizeAsync()`」：`JsonConfigStore` **191→167 行**（`CreditsClaimMigrator.Migrate` 迁移钩子）、`JsonCooldownStore` **70→51 行**（超长 raw 截断自愈 + 原子重写）、`JsonCreditsClaimStore` **50→19 行**（默认钩子）。样板全部在基类，派生类无 `Directory.CreateDirectory` / `JsonSerializer.` / `AtomicFileWriter` 残留。
+>   - `src/BatchAgentRunner.Infrastructure/AppPaths.cs`（**45 行**）为应用数据目录单一事实来源：`Root`（`%LOCALAPPDATA%\BatchAgentRunner`）+ `ConfigDirectory`/`TemplatesDirectory`/`VaultDirectory`/`RunsDirectory`/`LogsDirectory`/`MockLiveDirectory`；原散落 **9 处**的「`LocalApplicationData` + 应用名」前缀清零（三份仓储经基类 `Root`、`FileWorkflowTemplateStore`、`FileCredentialVault`、`FileRunLogger`、`Desktop/Program`、`Desktop/Composition/EngineFactory`×2）。`grep -rn '"BatchAgentRunner"' src` 现仅剩 `AppPaths.cs` 一处声明；`Environment.SpecialFolder.LocalApplicationData` 亦仅此一处。
+> - **本轮加固（P-07 收口轮新增）**：`AppPathsHygieneTests` 由 3 项扩为 **4 项**——原第 ② 项按**文件名清单**核对（改名或新增第 4 份仓储即静默漏网），新增 `Infrastructure内Json仓储具体类型_均须继承JsonStoreBase_防第四份同构仓储`：扫描 Infrastructure 程序集内所有 `Json*Store` 具体类型，凡不继承 `JsonStoreBase<T>` 即失败。**负测试实测**：临时注入 `JsonNegativeProbeStore`（不继承基类）→ 报「存在未继承 `JsonStoreBase<T>` 的单文件 JSON 仓储：JsonNegativeProbeStore（基类：Object）」；探针已删除、不入库。
+> - **退出验证**：全量 `--no-incremental` 严格构建 **0 警告/0 错误**；全量测试 **735 通过/0 失败**（主 573 + Desktop 162，较 P-06 收口 734 +1：新增「第 4 份同构仓储」拦截守卫）；`AppPathsHygieneTests` **4/4** + `JsonStoreBaseTests` **12/12** + 既有三份仓储测试全绿；§3.4 第 4 条在「JSON 仓储 / 路径常量」两个维度达标（`Truncate`/`Clone`/终态集合 归 P-08）。
+> - **边界（交接必读）**：① **`AppPaths` 落在 Infrastructure 而非 Core**：路径布局是「文件存放在哪」的基础设施事实，Core 不消费；`AppPaths` 为静态类、无实例，Desktop 经组合根引用不构成 §3.4 依赖倒置（附录 C 第 4 条已据此校准口径）。② **只收口「跨文件复用」的应用根前缀**：`FileWorkflowTemplateStore` 的 `builtin`/`user`、`FileRunLogger` 任务文件同级 `runs` 是「所属仓储自持 + 支持 `baseDir` 注入」的子目录名，各只一处使用，收进 `AppPaths` 反而破坏测试注入能力，不属同构重复；`CredentialLocationRegistry` 的 `AppData/Local/CodeBuddyExtension/…` 是**外部 CodeBuddy CLI** 的路径，不在本工具治理范围。③ **`CliPermissionSettings` 不套基类**：它对外部 `settings.json` 做「`JsonNode` 局部改写 + 保留未知字段」，与「整文档往返」的 `JsonStoreBase<T>` 形态不同，强行统一会丢字段。④ `ConfigDirectory == Root` 是历史数据布局，收口时刻意不改（改了会让既有用户 config/cooldowns/credits 台账「凭空消失」）。
+> - **提交切片建议（§7 护栏）**：本轮仅 1 个测试文件（+29 行）+ 文档变更，单步 `git diff --stat` 远 < 400 行，单提交即可。
+
 **P-08 · 领域工具收口（A-5，5 人天）**
 
 - 步骤：`Truncate`/`IsTerminal`/`Clone`/`失败分派状态机` 提为 Core 纯函数，删除重复实现（P2-1~6）。
 - 退出：公共工具单一来源；内核工具单测；§3.4 重复断言绿。
+
+> **【执行记录 · 2026-10-21 · ✅ 已收口】**
+> - **代码本体已于 P2-1~P2-6 提前偿还**（`518103a` / `9a1c782` / `f0dc708`，TECH-DEBT §5.12），本轮为「残留清零 + 缺陷修复 + 防回潮闸门 + 阶段收口」：
+>   - **截断**：`src/BatchAgentRunner.Core/Text/TextTruncate.cs`（**35 行**）为唯一事实来源（`Result` 结果截断 + `Truncate` 通用截断）。本轮把 P2-4 遗漏的 **3 处内联副本**并入——`Agents/Internal/StreamJsonRenderer.cs` 2 处（`s[..120] + "…"` → `TextTruncate.Truncate(s, 120, "…")`）与 `Desktop/ViewModels/TemplateEditor/TemplateFlowNodeViewModel.cs` 1 处（`Shorten` 内联 → `TextTruncate.Truncate(flat, max, "…")`），行为逐字等价。同轮清偿 P-02 facade 收口后遗留在 `BatchEngine.cs` 的**无调用点死私有 `Truncate` 别名**（P2-25 死代码）：删除该方法及其后失效的 `using BatchAgentRunner.Core.Text;`，facade 400→**397 行**。`src` 内 `Truncate` 声明点自此只剩「单一事实来源 `TextTruncate` + 4 个保留调用点的薄后缀适配器」（见「边界」①）。
+>   - **终态集合**：`src/BatchAgentRunner.Core/Domain/TaskStatusExtensions.cs`（**14 行**）为唯一事实来源（`TaskItem.IsTerminal` / `StageResult.IsTerminal` 均降级为委派属性）。
+>   - **深拷贝**：工作流域走 `WorkflowTypes.WorkflowTypeClones` 的 `record with` 扩展方法（8 个），`TaskItem` 是唯一手写点（承载 `INotifyPropertyChanged` 通知字段，无法记录化）。**本轮修复真实缺陷**：`TaskItem.Clone()` 对 `StageResults` 只做 `new List<StageResult>(…)` 浅拷贝——快照与原任务**共享 `StageResult` 元素**，改快照的阶段摘要会污染原型；改为 `StageResult` 记录化 + 逐元素 `s.Clone()`（与工作流域同构的 `with` 深拷贝）。
+>   - **依赖失败分派**：`DagScheduler.EvaluateDependency`（三态判定 + 阻断依赖报出）为唯一事实来源，`TaskDispatcher` 的私有同名方法保持委派调用。
+> - **本轮新增守卫（防回潮，`tests/BatchAgentRunner.Tests/Architecture/DomainPrimitivesHygieneTests.cs` 231 行，5 项）**：① `Src内_除TextTruncate外_不得内联截断实现`（词法扫 `src`，拦截 `[..N] + "…"` 形态）；② `终态成员_除单一事实来源外_一律委派TaskStatusExtensions`；③ `终态成员_对全部枚举值_与单一事实来源判定一致`（`TaskItem`/`StageResult` × 全部 `TaskStatus` 值行为等价）；④ `深拷贝入口_仅允许WorkflowTypeClones与TaskItem`（反射扫 Core/Infrastructure/Agents 程序集）；⑤ `依赖失败分派_公开判定入口唯一且TaskDispatcher保持委派`。**负测试实测**：临时注入 `P08Probe`（内联 `Cut` + 自造 `IsTerminal => true` + 自造 `Clone()` + 公开 `DependencyVerdict Eval()`）→ ①②③⑤ 四项全部按预期报错；探针已删除、不入库。
+> - **本轮新增契约测试（`tests/BatchAgentRunner.Tests/Domain/TaskItemCloneTests.cs` 166 行，4 项）**：反射遍历 `TaskItem` 全部可写属性并注入非默认样本值，克隆后逐一比对值（聚合节点按 JSON 结构比对）+ 断言引用类型不共享 + 序列化形状一致 + 可空字段保持可空；**新增字段漏进 `Clone()` 即红**，未知属性类型则直接抛错要求同步守卫——把 P2-6「改字段必漏改」的根因变成机器可校验的不变量。
+> - **退出验证**：全量 `--no-incremental` 严格构建 **0 警告/0 错误**；全量测试 **744 通过/0 失败**（主 582 + Desktop 162，较 P-07 收口 735 +9：新增守卫 5 + 克隆契约 4；死代码删除不改行为，测试数不变）；`DomainPrimitivesHygieneTests` **5/5** + `TaskItemCloneTests` **4/4** + `WorkflowTypeCloneTests` **7/7** + `TextTruncateTests` **6/6** + `TaskStatusExtensionsTests` **7/7** 全绿；`BatchEngine` facade 400→**397 行**（死别名删除），≤400 守卫仍绿；`dotnet format --verify-no-changes` 除 §4.7 #9 已登记的 CHARSET 假阳性 304 条外 **0 问题**；hygiene 守卫（主 28 + Desktop 4 = 32 项）全绿；§3.4 第 4 条在「截断 / 终态集合 / `Clone` / 依赖失败分派」四个维度达标（与 P-07 的「JSON 仓储 / 路径常量」两个维度合起来即第 4 条完整覆盖）。
+> - **边界（交接必读）**：① **保留调用点的薄后缀适配器**：`WorkflowExecutor` / `GateEvaluator` / `ReportWriter` / `CodeBuddyCreditsApiClient` 各有一处 `private static Truncate(...) => TextTruncate.Truncate(...)`，仅为「固定后缀 + 单一入参」的本地简写，**不含截断逻辑**，强删会让十余处调用点变啰嗦，不属重复实现；守卫拦的是「再写一份截断运算」而非「再写一个名字」。② **`QuotaErrorClassifier` / `JsonCooldownStore` 的 `text[^MaxRawChars..]` 不并入 `TextTruncate`**：它们是「保留尾部 + 前置说明」的取尾语义，与 `TextTruncate` 的「保留头部 + 后置后缀」相反，形态不同不强行统一。③ **`StageResult` 记录化的影响面**：仅新增编译器生成的 `Equals`/`GetHashCode`/`ToString`（值语义），JSON 契约与构造方式零变化；全仓无依赖其引用相等的用法（只读映射与序列化）。④ **Desktop 未纳入 ④ 号深拷贝反射扫描**：主测试工程不引用 Desktop（组合根隔离），且 Desktop 深拷贝入口为零；Desktop 侧回潮由 `Desktop.Tests` 的 XAML/VM 契约守卫覆盖。⑤ **`BatchEngine` 死私有 `Truncate` 已于本轮删除（原单列登记为 P2-25 机会主义偿还项）**：P-02 facade 收口时未一并清掉的无调用点别名 `private static string? Truncate(...) => TextTruncate.Result(...)` 及其后失效的 `using BatchAgentRunner.Core.Text;` 已删除，facade 400→**397 行**。删除后 `src` 内 `Truncate` 声明点只剩「单一事实来源 + 4 个保留调用点的薄后缀适配器」两类，均不含截断运算；`DomainPrimitivesHygieneTests` 5 项仍全绿（该别名本就是无调用点死代码，删除不影响任何行为）。
+> - **提交切片建议（§7 护栏）**：本轮主体为 2 个新增测试文件 + 4 个生产文件小改（净 +30 行量级）+ 文档变更，单步 `git diff --stat` 远 < 400 行，单提交即可。**唯一例外是 `BatchEngine.cs` 的死别名删除**：该文件在本轮提交时点仍承载 P-02 facade 收口（953→400 行）的未提交改动，若 P-02 尚未独立提交，则须**先切 P-02 提交、再提本轮**，否则 `git add BatchEngine.cs` 会把 P-02 的数百行重构裹进 P-08 提交、违反 §7「单步 ≤400 行」护栏。
 
 **P-09 · ConfigEditors/RunOptions 收口（A-6，5 人天）**
 
 - 步骤：`ConfigEditors` 改为泛型 `FieldEditor<T>` + 统一校验反馈（P2-15）；`RunOptions` 弃用 JSON 往返克隆，改用记录类型/显式映射（P2-9）。
 - 退出：编辑器泛型化；配置读写契约测试绿；克隆行为等价。
 
+> **【执行记录 · 2026-10-21 · ✅ 已收口】**
+> - **代码本体分两批**：P2-15「五编辑器 → `FieldEditor<T>`」已于 `91fb700` 提前偿还（TECH-DEBT §5.12），P2-9 的 `RunOptions.Clone()` JSON 往返已在 v2.0 重构中消除；本轮为「**残留清零 + 缺陷修复 + 统一校验反馈落地 + 防回潮闸门 + 阶段收口**」，并把 P2-9 剩余的 **#D5「God Config 40+ 配置项分组」**一并收口。
+> - **编辑器泛型化残留清零（`Desktop/Models/ConfigEditors.cs` 510→505 行、`Desktop/Models/FieldEditor.cs` 65→82 行）**：
+>   - **① 时段起止收敛 `FieldEditor<T>` + 修真实缺陷**：`ModelEditor` 的起止时刻原本是「手写 `TimeOnly.TryParse` + 裸字符串属性」，`Apply()` 时 `BuildWindow()` 因非法输入返回 `null` → **把用户已配置的免费时段静默抹掉**（`FreeTimeWindow` 直接置空，无任何提示）。现改为 `FieldEditor<TimeOnly?>`（`FieldParsers.TimeOnlyOrNull`），`Apply()` 对错误态**保留原时段**，错误经 `HasError`/`Error` 对用户可见。
+>   - **② 删掉 `StartText`/`EndText` 裸字符串桥接**：这两个属性是为「改文本 → 刷新 `Preview`」与 XAML 绑定而包的薄壳，导致「改了文本却不刷新派生态」与「校验反馈漏绑」两件事同时隐身。现 `FieldEditor<T>` 新增可选 `onTextChanged` 回调，`ModelEditor` 以 `RefreshPreview` 装配，视图直接绑 `{Binding StartTime.Text}`；桥接删除后编辑器对外一律 `FieldEditor<T>`，无第二套字符串入口。
+>   - **③ 视图侧统一校验反馈（`Views/ConfigView.axaml` 767→795 行）**：原本只有「共享候选模型池」的单价/折扣有 P2-15 反馈块，**时段起止（共享池 + 每账号两处视图共 4 个）、每账号候选模型的单价/折扣（2 个）、兜底模型单价（1 个）共 7 个输入框**虽已是 `FieldEditor<T>` 却**完全不呈现错误**——用户填「25:99」界面毫无反应。现全部补齐：每个解析字段的 `TextBox` 带 `ToolTip.Tip="{Binding X.Error}"`，并在同一数据模板内给出 `X.Error`/`X.HasError` 错误文本；**错误文本的字体/颜色收为 `UserControl.Styles` 里的 `TextBlock.field-error` 单一来源**（消除各字段各写一遍 `FontSize="11" Foreground="{DynamicResource ErrorBrush}"` 的样板）。
+> - **本轮新增守卫 1（`tests/BatchAgentRunner.Tests/Options/RunOptionsContractTests.cs` 243 行，5 项）**：把 #D5 的收口结果变成机器可校验的不变量——① **顺序契约**：`System.Text.Json` 按成员声明顺序落盘，而 partial 成员声明顺序＝文件名升序，故切片文件名以两位序号固定，实测 39 个持久化键的顺序与切片前逐项一致（顺序漂移会让用户 `config.json` 产生无意义 diff）；② **往返契约**：反射构造「全字段已填充」的配置实例，"写 → 读 → 再写"逐字节稳定，且所有持久化属性都必须真正出现在 JSON 里（新增字段漏配 `[JsonPropertyName]` 即红）；③ **前向兼容契约**：未知字段宽容忽略且已知字段不丢；④ **命名契约**：Core 内持久化键一律 snake_case；⑤ **派生契约**：`[JsonIgnore]` 只允许挂在只读派生属性上（可写属性漏配 `[JsonPropertyName]` 会静默丢用户编辑）。
+> - **本轮新增守卫 2（`tests/BatchAgentRunner.Tests/Architecture/RunOptionsHygieneTests.cs` 102 行，3 项）**：① `RunOptions_须按配置域切片_不得回缩为单一大类`（切片文件数 < 5 即红）；② `RunOptions_各配置域切片_均不得超过行数上限`（单片 > 200 行即红，防 God Config 回潮）；③ `RunOptions_禁止深拷贝成员_JSON往返克隆不得复现`（不得实现 `ICloneable`，且全仓无任何返回 `RunOptions` 的 `Clone`/`Copy`/`DeepCopy`/`Duplicate`/`Snapshot` 成员）。
+> - **本轮新增守卫 3（`tests/BatchAgentRunner.Desktop.Tests/Architecture/ConfigEditorsHygieneTests.cs` 179 行，3 项）**：① `Desktop内_解析调用_只出现在FieldParsers单一事实来源`（词法扫 `src/BatchAgentRunner.Desktop`，`X.TryParse(` 只允许出现在 `Models/FieldEditor.cs`）；② `编辑器_解析字段_一律参与回写_声明即须被读取`（反射式词法：新声明的 `FieldEditor<T>` 字段必须在 `Apply()` 里被读取，否则用户输入永不落盘——把 P2-15 前「改字段必漏改」的根因变成机器可校验的不变量）；③ `配置视图_凡绑定解析字段文本的输入框_必须呈现校验反馈`（静态解析视图的 `{Binding X.Text}`，凡 `X` 是 `FieldEditor<>` 字段，同一 `DataTemplate` 内必须存在 `X.Error`/`X.HasError` 绑定）。
+> - **负测试实测（两侧均实测，探针已删除、不入库）**：
+>   - **编辑器侧**：临时注入 `Desktop/Models/P09Probe.cs`（手写 `int.TryParse` + 声明后从不读取的 `FieldEditor<int?> ProberPort`）→ 守卫 ①③ 按预期报「1 处解析调用（应改走 FieldParsers + FieldEditor<T>）」「字段 ProberPort 声明后无任何读取点」；临时删掉「每账号候选模型」视图的 4 个校验反馈绑定 → 守卫 ② 按预期报「`UnitPrice.Text` 有输入框，但无 `UnitPrice.Error / UnitPrice.HasError` 反馈绑定」。`ConfigEditorsHygieneTests` **3/3 全部实测可捕获**。
+>   - **配置契约侧**：临时注入 `Core/Options/RunOptions.12-Probe.cs`（219 行超限切片 + `camelCase` 键名 `probeCamelCase` + 可写属性挂 `[JsonIgnore]` + `public RunOptions Snapshot()`）→ `RunOptionsHygieneTests` ②③ 与 `RunOptionsContractTests` ①②④⑤ **共 5 项按预期报错**。
+> - **负测试顺带暴露并修掉的守卫盲区**：首次注入探针时，`RunOptionsContractTests` ②「往返逐字节稳定」**没有报警**——`Populator` 对 `int?` 等**可空基元**填充为 `null`，被 `WhenWritingNull` 忽略后该属性根本不进 JSON，「全部持久化属性参与序列化」的断言形同虚设（当前 `RunOptions` 恰好无可空基元字段，故此前未暴露）。已修 `Populator`：`Nullable.GetUnderlyingType(type) ?? type` 拆到基元再填值；修复后重新注入可空基元探针，② 与 ① **均按预期报错**（实测 2 项）。**新增可空基元配置字段漏配 `[JsonPropertyName]` 自此无法蒙混过关**。
+> - **退出验证**：全量 `--no-incremental` 严格构建 **0 警告/0 错误**（本轮顺带修掉 `Core/Options/RunOptions.09-Phase2.cs` 的 `dotnet format` IMPORTS 排序问题）；`dotnet format --verify-no-changes` 除 §4.7 #9 已登记的 CHARSET 假阳性（本次实测 322 条）外 **0 问题**；全量测试 **758 通过/0 失败**（主 590 + Desktop 168，较 P-08 收口 744 +14：主 `RunOptionsContractTests` 5 + `RunOptionsHygieneTests` 3，Desktop `ConfigEditorsHygieneTests` 3 + 时段行为契约 3）；架构守卫 `Architecture` 命名空间实测 主 **27** 项 + Desktop **11** 项全绿，另 `RunOptionsContractTests` 5 项全绿；§3.4 第 4 条在「JSON 仓储 / 路径常量」（P-07）、「截断 / 终态集合 / `Clone` / 依赖失败分派」（P-08）、「配置契约 / 编辑器泛型化 + 校验反馈」（本轮）三类维度上完整覆盖；`RunOptions` 落盘字节与切前**逐字节等价**（顺序契约 + 往返契约双锁）。
+> - **边界（交接必读）**：① **`RunOptions` 不改 `record`、不嵌套分组**：它是用户配置的产品契约（§2.2 不动清单），嵌套分组会改 `config.json` 形状、破坏既有用户配置与前向兼容；故以 `partial class` **横向切片**（类型面、属性名、`[JsonPropertyName]` 键名、落盘字节全部不变）收口 God Config，是 #D5 唯一不破坏对外契约的形态。② **切片顺序即 JSON 落盘顺序**：调整/新增切片须同步 `RunOptionsContractTests` 的顺序契约（文件名两位序号固定）。③ **SMTP 端口非法仍回落 587 属于刻意保留**：587 是协议默认端口，回落才能让规则可用；与「保留原值」的差异在于端口有明确默认值、而时段没有——但错误态同样对用户显式呈现（不静默）。④ 保留的薄桥接：`NotificationRuleEditor.SmtpToText`（收件人列表是「逗号/换行分隔的多值文本」，不是解析回写字段）、`QuietHours`（原样透传的 `HH:mm-HH:mm` 文本，由通知侧解析）均非 `FieldEditor<T>` 适用场景，不强行泛型化。⑤ **Desktop 视图的 XAML 守卫只校验「有反馈绑定」**：不校验反馈的位置/文案形式（各视图布局差异大，机器判定形态弊大于利）。⑥ **`RunOptionsContractTests` 的 `Populator` 必须能填充可空基元**：可空基元（`int?`/`bool?`…）一旦被填成 `null`，会被 `WhenWritingNull` 忽略而不进 JSON，「全部持久化属性参与序列化」的往返断言即失效——本轮负测试正是靠这条才发现盲区（`Nullable.GetUnderlyingType(type) ?? type` 拆到基元再填值）。新增任何非字符串/非集合的配置字段类型时，须先确认 `Populator` 能为其造出非默认值。
+> - **提交切片建议（§7 护栏）**：本轮为 1 个新增守卫文件（Desktop `ConfigEditorsHygieneTests` 179 行）+ 1 个守卫文件小修（主 `RunOptionsContractTests` 的 `Populator` 可空基元填充 +15 行）+ 3 个生产文件小改（`FieldEditor.cs` +17 / `ConfigEditors.cs` / `ConfigView.axaml`）+ 1 个行为测试文件改动（`ConfigEditorsTests.cs`）+ 文档变更，**须按生产/测试分离切片**：① `refactor(debt): ARCH P-09 编辑器泛型化——时段起止收敛 FieldEditor<T> + 视图校验反馈统一`（`ConfigEditors.cs` / `FieldEditor.cs` / `ConfigView.axaml` / `ConfigEditorsTests.cs`）；② `test(debt): ARCH P-09 防回潮守卫——ConfigEditorsHygieneTests 3 项 + RunOptionsContractTests 可空基元填充修复`（若 `RunOptionsContractTests` / `RunOptionsHygieneTests` / 11 个 `RunOptions.NN-*.cs` 切片尚未入库，则须再拆出 ③ `refactor(debt): ARCH P-09 RunOptions 按配置域切片` 与 ④ `test(debt): ARCH P-09 配置契约守卫`）；⑤ `docs(governance): P-09 收口——同步 ARCH/TECH-DEBT/CODE-REVIEW/README 看板`。单步 `git diff --stat` 均 < 400 行。
+> - **⚠️ 提交前置条件（§7 护栏，必读）**：本轮涉及的 `ConfigEditors.cs` / `ConfigView.axaml` / `ConfigEditorsTests.cs` 三个文件在提交时点仍承载 **P-04 配置页分解（facade 1065→366 行）与 P2-15 编辑器泛型化**的未提交改动（工作区实测：三者 `git diff --stat` 合计分别 73 / 46 / 52 行，但 P-04 的 `ConfigViewModel.cs` 与 11 个子编辑器文件同一批未提交）；`RunOptions.cs` 亦承载 P-09 切片前的 363 行本体。故**必须先切出 P-04 + P2-15 + P-09 的 `RunOptions` 切片提交、再提本轮收口轮**，否则 `git add` 会把数百行 P-04 重构裹进本轮提交、违反 §7「单步 ≤400 行」护栏。**提交一律显式 `git add <具体文件>`，禁 `git add -A`**。
+
 **P-10 · 可观测性（A-8，5 人天）**
 
 - 步骤：`IRunLogger` 接结构化实现 + `RunId`/`TaskId` 贯穿；新增运行级指标（吞吐/平均耗时/降级次数/兜底触发/冷却跳过/失败率/误切换率）；敏感信息脱敏。
 - 退出：日志按批次聚合；指标可采集；凭证/密钥不落日志。
+
+> **【执行记录 · 2026-10-21 · ✅ 已收口】**
+> - **① 结构化日志接线（`IRunLogger` 唯一落盘点）**：新增 `Core/Observability/` 四个基础件——`RunLogEntry`（结构化条目：`Level/Event/Message` + `At/RunId/TaskId/Account/Model/IsDangerous/Fields/Flush`）、`LogEventNames`（16 个事件名单一事实来源 + `FromKind` 枚举转 snake_case）、`RunLogLevels`（级别常量 + `Normalize` + `IsImportant`，取代散落的裸字面量）、`SecretMasker`（脱敏单一事实来源）。`IRunLogger` 增 `Write(RunLogEntry)` 与 `StructuredLogFilePath`/`RunId`；`FileRunLogger` 的十余个 `Write*` 全部转为条目后经 `Write(RunLogEntry)` 渲染——**文本 `run-*.log` 正文逐字不变**（`{Event} {Message}` 渲染规则使事件名从正文前缀"平移"到结构化字段，人读结果一致），**新增 `run-*.jsonl` 结构化流**（`ts/level/event/run_id/task_id/account/model/message/fields`）供采集。文本与 JSONL 同批落盘、同一刷盘策略（重要级别/`Flush` 即时刷盘，INFO 按 64 行批），P2-24 的 syscall 削峰语义不变；同轮把 `NullRunLogger` 拆为独立文件（`Infrastructure/Logging/NullRunLogger.cs`），使实现文件维持在 400 行内。
+> - **② RunId 关联贯穿**：`IRunLogger.RunId` 由日志侧生成（`RunLogEntry.NewRunId()` 为全局唯一生成入口），`BatchEngine` 直接复用同一实例（空实现的场景自生成），杜绝"日志一个 id、指标另一个 id"；`BatchEvent` 增 `RunId`，由 `BatchEngine.Raise` 统一填充——**任何事件（含 UI 订阅到的事件流）天然带关联标识**，写入点想漏也漏不掉；指标快照与 `metrics-<run_id>.json` 同用该 id。
+> - **③ 运行级指标埋点**：新增 `RunMetrics`（锁内计数，并发安全）+ `RunMetricsSnapshot`（不可变，派生量随快照同落）。埋点固定在状态机的决策点而非渲染路径：`TaskStepExecutor`（任务开始 / 误切换 / 高危拒绝 / 兜底触发）、`TaskTerminalWriter`（终态与耗时，耗时已剔除本任务暂停等待）、`TaskEventReporter`（降级切换 / 冷却跳过 / 时段跳过）、`TaskCredentialSwitch`（任务边界凭证切换）、`BatchLifecycle`（工作流任务终态 + 批次终态输出 `metrics_snapshot`）。**误切换判定**：切换后的第一次尝试若仍因额度耗尽或凭据失效失败，计一次误切换（切换本身没错，错在没换来可用组合）；时段外与冷却跳过属预期调度行为，只计跳过、不计失败、不计误切换。
+> - **④ 指标可采集**：新增 `IMetricsWriter` + `Infrastructure/Observability/RunMetricsWriter`，批次完成后由 `EngineHost` 落 `metrics-<run_id>.json`（`AtomicFileWriter` 原子写，snake_case 与 config/sidecar/报告同口径），与报告同目录、失败不阻断批处理；`IBatchEngine` 暴露 `RunId` / `Metrics` 供宿主与外部读取。
+> - **⑤ 脱敏生效**：`SecretMasker` 在**渲染入口**对正文与全部 `Fields` 值统一脱敏（键名形态 / Bearer / JWT / `sk-`·`ghp_`·`AKIA` 前缀四类），键名与分隔符保留以便排障定位；脱敏幂等（占位符不再被二次打码）。这是 A-8「凭证/密钥绝不落日志」从"靠每个写入点自觉"变成"写入点无法绕过"的关键一步。
+> - **同轮收口的两处遗留**：① **20 处裸级别字面量**（`Write("WARN", …)` 散落 7 个文件）收为 `RunLogLevels` 常量——`Write("WARNING")` 这类拼写错误原本会静默退化为普通级别、丢掉即时刷盘；② `BatchEngine.ResolveWorkspacePath` 下沉为 `Core/Engine/WorkspaceResolver.cs`（无状态纯函数，行为零变化），使 facade 在新增 RunId/Metrics 字段后仍守住 **399 行 ≤400** 的 P-02 收口线。
+> - **本轮新增守卫（`tests/BatchAgentRunner.Tests/Architecture/ObservabilityHygieneTests.cs`，6 项）**：① 脱敏实现全仓唯一（除 `SecretMasker.cs` 外不得声明第二套 `Mask/Redact/Sanitize`）；② 日志级别字面量不得出现在写日志点（一律走 `RunLogLevels`）；③ `IRunLogger` 实现必须提供结构化通道与 `RunId`；④ `FileRunLogger` 内对底层 writer 的直接写只允许出现在统一落盘方法体内（防绕过脱敏与结构化）；⑤ 指标快照覆盖运行级指标全集且比率型指标不越界；⑥ 引擎事件模型携带 `RunId` 关联字段。
+> - **行为测试**：`SecretMaskerTests` **20 项**（键名/JSON 字段/JWT/前缀四类脱敏 + 非敏感业务字段原样保留 + 空输入 + 同一行多处 + 幂等）、`RunMetricsTests` **8 项**（失败率只算真失败 / 平均耗时 / 误切换率 / 跳过与兜底不计失败 / 吞吐 / 零值不除零 / 并发计数不丢 / 快照条目结构）、`RunMetricsInstrumentationTests` **4 项**（引擎级：吞吐与快照输出 / 降级切换 / 冷却跳过不计失败 / 事件流全带 RunId）、`RunMetricsWriterTests` **2 项**（文件名带 RunId + JSON 合法、snake_case 与派生量同落）、`FileRunLoggerTests` **+3 项**（JSONL 与文本同批落盘且逐行带 RunId / 含密钥内容两侧均脱敏 / 日志与指标共用同一 RunId）。另新增共享测试替身 `Helpers/FakeRunLogger`（录结构化条目，替代此前"只录文本、私有嵌套"的 `RecordingRunLogger` 写法）。
+> - **负测试实测（探针已删除、不入库）**：临时注入 `Core/Observability/P10Probe.cs`（第二套 `RedactText` 声明 + `logger.Write("WARN", …)` 裸级别）+ `FileRunLogger` 内一处直连 `_writer.WriteLine` → 守卫 ①②④ **共 3 项按预期报错**（分别指出"发现第二套脱敏实现""发现裸露的日志级别字面量""存在绕过结构化通道的直接写盘"）。
+> - **退出验证**：全量 `--no-incremental` 严格构建 **0 警告/0 错误**；全量测试 **801 通过/0 失败**（主 633 + Desktop 168，较 P-09 收口 758 +43：主新增 `SecretMaskerTests` 20 + `RunMetricsTests` 8 + `RunMetricsInstrumentationTests` 4 + `RunMetricsWriterTests` 2 + `FileRunLoggerTests` 3 + `ObservabilityHygieneTests` 6）；§3.4 IL 断言（Core `LayeringRulesTests` + Desktop `LayeringRulesTests`）全绿，`BatchEngine` facade **399 行**守门仍绿；A-8 三条退出标准（日志可关联 / 指标可采集 / 脱敏有效）均由测试直接断言，不再依赖人肉检查。
+> - **边界（交接必读）**：① **文本日志正文逐字不变是硬约束**：`RunLogEntry.RenderBody()` 用 `{Event} {Message}` 还原正文，新增 `Write*` 时把事件名放 `Event`、人读部分放 `Message`，不要把事件名再抄进 `Message`（否则正文出现双份事件名）。② **误切换率的分子是"切换后的第一次尝试仍失败"**：`TaskExecutionState.SwitchedBeforeAttempt` 在切换后由状态机置位、在尝试返回后立即清零，任何调整尝试/切换时序的改动都要同步这对标志。③ **`Flush` 只给高频实时行用**：`WriteTaskOutput` 置 `Flush=true` 是为保住「实时 tail」（P2-24 的批量刷盘会让它滞后），普通日志不要置，否则 syscall 削峰失效。④ **`RunId` 的唯一生成入口是 `RunLogEntry.NewRunId()`**：`FileRunLogger` 与 `BatchEngine`（空日志场景）共用，别在别处再写一个生成函数。⑤ **脱敏只做形态识别**：账号 id / 模型名 / 工作区路径等非敏感业务字段一律不脱敏（过度脱敏会让日志失去排障价值），新增形态只改 `SecretMasker` 的正则清单。⑥ **指标与报告刻意分离落盘**：报告按批次时间命名、内容随需求演进；指标按 `run_id` 命名、字段集由守卫锁定，便于长期采集与横向对比。
+> - **提交切片建议（§7 护栏）**：① `refactor(debt): ARCH P-10 结构化日志——IRunLogger 唯一落盘点 + RunId 贯穿`（`Core/Observability/*` 4 个新文件 + `IRunLogger.cs` + `FileRunLogger.cs` + `BatchEvent.cs` + `BatchEngine.cs`）；② `refactor(debt): ARCH P-10 运行级指标埋点 + 指标落盘`（`RunMetrics.cs` 随 ① 或独立、`IStores.cs`、`RunMetricsWriter.cs`、`EngineFactory.cs`、`EngineHost.cs`、埋点文件 5 个）；③ `refactor(debt): ARCH P-10 级别常量收口 + facade 维持 ≤400`（20 处级别字面量 + `WorkspaceResolver.cs`）；④ `test(debt): ARCH P-10 行为测试与防回潮守卫`（`ObservabilityHygieneTests` + 5 个测试文件）；⑤ `docs(governance): P-10 收口——同步 ARCH/TECH-DEBT/CODE-REVIEW/README 看板`。**提交一律显式 `git add <具体文件>`，禁 `git add -A`**。
+> - **⚠️ 提交前置条件（§7 护栏，必读）**：本轮涉及的 `FileRunLogger.cs` / `IRunLogger.cs`（实时输出 `WriteTaskOutput`）、`BatchEngine.cs`（P-02/P-08 收口）、`EngineHost.cs` / `EngineFactory.cs`（P-04/P1-4 组合根收口）、`TaskRunnerTests.cs`（P-03 契约）等文件在提交时点仍承载前序阶段的未提交改动；**须先切出前序阶段提交再提本轮**，否则 `git add` 会把数百行旧重构裹进 P-10 提交、违反「单步 ≤400 行」护栏。
 
 **P-11 · CI 阻断 + 覆盖率/格式门禁（A-9 ①，5 人天）**
 
@@ -451,7 +623,7 @@
 - VM 子编辑器 / Coordinator / `TaskItemViewModel` 防腐层
 - `JsonStoreBase<T>` + `AppPaths` 常量（去重）
 - Core 共享工具（Truncate/终态/Clone 收口）
-- 可观测性组件（结构化日志接线 + 运行级指标采集）
+- 可观测性组件（ARCH P-10 ✅ 已落：结构化日志接线 `RunLogEntry` + `run-*.jsonl`、RunId 关联、`RunMetrics` 七类运行级指标 + `metrics-<run_id>.json` 落盘、`SecretMasker` 脱敏单一事实来源）
 
 ### 8.3 工程配置类
 
@@ -480,30 +652,86 @@
 
 | 文件                                                      | 行数   | 角色         | 本期目标                      |
 | ------------------------------------------------------- | ---- | ---------- | ------------------------- |
-| `Core/Engine/BatchEngine.cs`                            | 953  | 编排 facade  | ≤ 400（WaitCoordinator 已下沉，剩余 facade 收口见 P-02） |
-| `Core/Engine/TaskRunner.cs`                             | 903  | 单任务状态机     | ≤ 400（策略对象化）              |
-| `Desktop/ViewModels/ConfigViewModel.cs`                 | 1065 | 配置 VM      | ≤ 400（切片子编辑器）             |
-| `Desktop/ViewModels/MonitorViewModel.cs`                | 983  | 监控 VM      | 分解                        |
-| `Desktop/ViewModels/LoginViewModel.cs`                  | 751  | 登录 VM      | 分解                        |
-| `Desktop/ViewModels/TemplateEditorViewModel.cs`         | 674  | 模板 VM      | 分解                        |
+| `Core/Engine/BatchEngine.cs`                            | 399  | 编排 facade  | ≤ 400 ✅ **已收口（P-02，953→400；P-08 再删死私有 `Truncate` 别名 →397；P-10 增可观测性字段后由 `ResolveWorkspacePath` 下沉 `WorkspaceResolver` 回到 399，守卫测试锁死）** |
+| `Core/Engine/WorkspaceResolver.cs`                      | 32   | 工作区路径解析纯函数（P-10 新增） | 维持（从 BatchEngine 下沉，行为零变化）   |
+| `Core/Observability/RunLogEntry.cs`                     | 71   | 结构化日志条目（P-10 新增） | 维持；新增写入一律转条目后经 `Write(RunLogEntry)` |
+| `Core/Observability/RunMetrics.cs`                      | 280  | 运行级指标采集器 + 快照（P-10 新增） | 维持；新增指标须同步 `ObservabilityHygieneTests` 字段清单 |
+| `Core/Observability/SecretMasker.cs`                    | 85   | 日志脱敏单一事实来源（P-10 新增） | 维持；新增敏感形态只改此处正则清单 |
+| `Core/Observability/RunLogLevels.cs`                    | 33   | 日志级别单一事实来源（P-10 新增） | 维持；写日志点一律引用常量 |
+| `Core/Observability/LogEventNames.cs`                   | 38   | 事件名单一事实来源（P-10 新增） | 维持；新增事件名在此登记 |
+| `Infrastructure/Logging/FileRunLogger.cs`               | 383  | 运行日志实现（P-10：文本 + JSONL 双轨、唯一落盘点；原 202 行含 `NullRunLogger`，本轮拆出后 383 行） | 维持；新增写入方法必须转条目后经 `Write(RunLogEntry)` |
+| `Infrastructure/Logging/NullRunLogger.cs`               | 88   | 空实现（P-10 从 `FileRunLogger.cs` 拆出独立文件） | 维持 |
+| `Infrastructure/Observability/RunMetricsWriter.cs`      | 42   | 指标落盘（P-10 新增） | 维持；与报告同目录、snake_case |
+| `Core/Engine/BatchPersistence.cs`                       | 193  | 持久化协作者（P-02 新增） | 维持（从 BatchEngine 下沉）      |
+| `Core/Engine/AccountSwitchCoordinator.cs`               | 185  | 凭证切换协作者（P-02 新增） | 维持（从 BatchEngine 下沉）      |
+| `Core/Engine/BatchLifecycle.cs`                         | 283  | 生命周期协作者（P-02 新增） | 维持（从 BatchEngine 下沉）      |
+| `Core/Engine/TaskRunner.cs`                             | 76   | 状态机 facade（P-03 收口） | ≤ 400 ✅ **已收口（P-03，903→76，守卫测试锁死）** |
+| `Core/Engine/TaskStepExecutor.cs`                       | 569  | 状态机本体（P-03 新增） | 维持（从 TaskRunner 下沉）     |
+| `Core/Scheduling/DegradationPolicy.cs`                  | 145  | 降级/失败策略（P-03 新增） | 维持                     |
+| `Core/Scheduling/CooldownPolicy.cs`                     | 31   | 冷却策略（P-03 新增）   | 维持                     |
+| `Core/Scheduling/FreeTimeWindowPolicy.cs`               | 66   | 免费时段策略（P-03 新增） | 维持                     |
+| `Core/Engine/FallbackPolicy.cs`                         | 32   | 兜底策略（P-03 新增）   | 维持                     |
+| `Core/Engine/TaskTerminalWriter.cs`                     | 109  | 终态写入协作器（P-03 新增） | 维持                   |
+| `Core/Engine/TaskEventReporter.cs`                      | 59   | 事件上报协作器（P-03 新增） | 维持                   |
+| `Core/Engine/TaskRequestBuilder.cs`                     | 34   | 请求构建协作器（P-03 新增） | 维持                   |
+| `Core/Engine/TaskCredentialSwitch.cs`                   | 56   | 凭证切换协作器（P-03 新增） | 维持                   |
+| `Desktop/ViewModels/ConfigViewModel.cs`                 | 366  | 配置 VM facade（P-04 收口） | ≤ 400 守卫锁死；逻辑已下沉 11 子编辑器（`ViewModels/Config/`）+ `ConfigSaveCoordinator` |
+| `Desktop/ViewModels/MonitorViewModel.cs`                | 388  | 监控 VM facade（P-06 收口） | ≤ 400 守卫锁死；逻辑已下沉 Monitor 8 协作者（`ViewModels/Monitor/`） |
+| `Desktop/ViewModels/LoginViewModel.cs`                  | 280  | 登录 VM facade（P-06 收口） | ≤ 400 守卫锁死；逻辑已下沉 Login 5 协作者（`ViewModels/Login/`）+ 3 个行视图模型独立文件 |
+| `Desktop/ViewModels/TemplateEditorViewModel.cs`         | 240  | 模板 VM facade（P-05 收口） | ≤ 400 守卫锁死；交互逻辑已下沉 3 个 Coordinator（`ViewModels/TemplateEditor/`）+ 4 个行视图模型独立文件 |
+| `Desktop/ViewModels/Monitor/OutputStreamCoordinator.cs` | 234  | 输出流协作者（P-06 新增） | 维持（从 MonitorViewModel 下沉） |
+| `Desktop/ViewModels/Monitor/TaskListCoordinator.cs`    | 164  | 任务列表/DAG/阶段树协作者（P-06 新增） | 维持（从 MonitorViewModel 下沉） |
+| `Desktop/ViewModels/Monitor/MonitorOperationsCoordinator.cs` | 156  | 操作编排协作者（P-06 新增） | 维持（从 MonitorViewModel 下沉） |
+| `Desktop/ViewModels/Monitor/BatchStatsState.cs`         | 81   | 统计快照状态（P-06 新增） | 维持（从 MonitorViewModel 下沉） |
+| `Desktop/ViewModels/Monitor/BatchStatusState.cs`        | 77   | 批次状态（P-06 新增） | 维持（从 MonitorViewModel 下沉） |
+| `Desktop/ViewModels/Monitor/EventToastBoard.cs`         | 66   | 事件提示板（P-06 新增） | 维持（从 MonitorViewModel 下沉） |
+| `Desktop/ViewModels/Monitor/BatchStatistics.cs`         | 64   | 纯统计计算（P-06 新增） | 维持（从 MonitorViewModel 下沉） |
+| `Desktop/ViewModels/Monitor/OutputTagClassifier.cs`     | 46   | 输出分类纯函数（P-06 新增） | 维持（从 MonitorViewModel 下沉） |
+| `Desktop/ViewModels/Monitor/OutputFollowMode.cs`        | 15   | 跟随模式枚举（P-06 新增） | 维持（从 MonitorViewModel 下沉） |
+| `Desktop/ViewModels/Login/GuidedLoginFlow.cs`           | 167  | 一键登录流程协作者（P-06 新增） | 维持（从 LoginViewModel 下沉） |
+| `Desktop/ViewModels/Login/AccountPoolCoordinator.cs`    | 153  | 账号池协作者（P-06 新增） | 维持（从 LoginViewModel 下沉） |
+| `Desktop/ViewModels/Login/CreditsClaimFlow.cs`          | 130  | 积分领取流程协作者（P-06 新增） | 维持（从 LoginViewModel 下沉） |
+| `Desktop/ViewModels/Login/ILoginView.cs`                | 58   | 视图缝接口（P-06 新增） | 维持（facade→协作者最小状态面） |
+| `Desktop/ViewModels/Login/LoginAccountRow.cs`           | 72   | 账号行 VM（P-06 抽出） | 维持 |
+| `Desktop/ViewModels/Login/LoginStepsPresenter.cs`       | 95   | 步骤条协作者（P-06 新增） | 维持（从 LoginViewModel 下沉） |
+| `Desktop/ViewModels/Login/CreditsClaimRow.cs`           | 41   | 积分结果行 VM（P-06 抽出） | 维持 |
+| `Desktop/ViewModels/Login/LoginStepItem.cs`             | 35   | 步骤行 VM（P-06 抽出） | 维持 |
+| `Desktop/ViewModels/Login/LoginErrorTranslator.cs`      | 33   | 异常人话翻译纯函数（P-06 新增） | 维持（从 LoginViewModel 下沉） |
+| `Desktop/ViewModels/TemplateEditor/TemplateFlowCoordinator.cs` | 136  | 流程示意 Coordinator（P-05 新增） | 维持（从 TemplateEditorViewModel 下沉） |
+| `Desktop/ViewModels/TemplateEditor/TemplateExpansionCoordinator.cs` | 116  | 变量展开 Coordinator（P-05 新增） | 维持（从 TemplateEditorViewModel 下沉） |
+| `Desktop/ViewModels/TemplateEditor/TemplateLoadCoordinator.cs` | 32  | 模板加载 Coordinator（P-05 新增） | 维持（从 TemplateEditorViewModel 下沉） |
+| `Desktop/ViewModels/TemplateEditor/TemplateFlowNodeViewModel.cs` | 162  | 流程节点行 VM（P-05 抽出） | 维持 |
+| `Desktop/ViewModels/TemplateEditor/TemplateVarInputViewModel.cs` | 44  | 变量输入行 VM（P-05 抽出） | 维持 |
+| `Desktop/ViewModels/TemplateEditor/TemplateRowViewModel.cs` | 22  | 模板清单行 VM（P-05 抽出） | 维持 |
+| `Desktop/ViewModels/TemplateEditor/PreviewTaskRowViewModel.cs` | 30  | 预览任务行 VM（P-05 抽出） | 维持 |
 | `Infrastructure/CredentialVault/FileCredentialVault.cs` | 671  | 凭证存储       | 守卫固化（禁重写）                 |
 | `Core/Domain/WorkflowTypes.cs`                          | 512  | 工作流类型      | 维持                        |
-| `Desktop/Models/ConfigEditors.cs`                       | 509  | 手写编辑器      | 泛型化（P2-15）                |
-| `Core/Options/RunOptions.cs`                            | 369  | God Config | 收口（P2-9）                  |
+| `Desktop/Models/ConfigEditors.cs`                       | 505  | 手写编辑器（P-09 收口，510→505） | 维持；新增解析字段一律 `FieldEditor<T>`（`ConfigEditorsHygieneTests` 锁死） |
+| `Desktop/Models/FieldEditor.cs`                         | 82   | 可校验字段 + 解析器单一来源（P-09，65→82） | 维持；新增解析一律加 `FieldParsers` 并由视图呈现 `Error` |
+| `Core/Options/RunOptions.cs`                            | 18   | God Config（P-09 收口，369→18） | 维持；仅留类型文档，新增配置落所属域切片 |
+| `Core/Options/RunOptions.01~11-*.cs`                    | ≤49  | 12 配置域切片（P-09 新增） | 维持；文件名两位序号 = JSON 落盘顺序（`RunOptionsContractTests` 锁死） |
 | `Agents/Adapters/CliAdapterBase.cs`                     | 392  | CLI 适配基类   | 安全守卫                      |
 | `Agents/Internal/CliProcessRunner.cs`                   | 470  | 进程运行       | 安全守卫                      |
 | `Core/Engine/WaitCoordinator.cs`                       | 156  | 等待协调者（P-01 新增） | 维持（从 BatchEngine 下沉）      |
+| `Infrastructure/AppPaths.cs`                           | 45   | 数据目录单一事实来源（P-07 收口） | 维持；新增数据目录必须先在此登记（`AppPathsHygieneTests` 锁死） |
+| `Infrastructure/Persistence/JsonStoreBase.cs`           | 64   | 单文件 JSON 仓储骨架（P-07 收口） | 维持；派生类只留 `CreateEmpty()` + 可选 `NormalizeAsync()` |
+| `Infrastructure/Persistence/JsonConfigStore.cs`         | 167  | 运行配置仓储（P-07 收口，191→167） | 维持（样板已入基类，仅留迁移钩子）     |
+| `Infrastructure/Persistence/JsonCooldownStore.cs`       | 51   | 额度冷却仓储（P-07 收口，70→51） | 维持（仅留 raw 截断自愈钩子）      |
+| `Infrastructure/Persistence/JsonCreditsClaimStore.cs`  | 19   | 积分台账仓储（P-07 收口，50→19） | 维持（默认钩子）              |
+| `Core/Text/TextTruncate.cs`                            | 35   | 文本截断单一事实来源（P-08 收口） | 维持；新增截断一律走此类（`DomainPrimitivesHygieneTests` 锁死） |
+| `Core/Domain/TaskStatusExtensions.cs`                  | 14   | 终态判定单一事实来源（P-08 收口） | 维持；新增终态状态只改此处                 |
+| `Core/Domain/TaskItem.cs`                              | 237  | 任务领域模型（P-08：唯一手写 `Clone`） | 维持；新增字段须同步 `Clone()`（`TaskItemCloneTests` 反射锁死） |
 
-> 测试：652 个测试方法（截至 2026-10-21；P-01 新增 2 项等待/唤醒契约测试，由 650 → 652）；CI 触发 `push`/`PR` 至 `master`，全量 `--no-incremental` 构建 + 分层测试，当前"只报告不阻断"。
+> 测试：801 个测试方法（截至 2026-10-21；P-06 收口新增 Login/Monitor headless 契约测试 29 项 + Monitor/Login XAML 绑定守卫 1 项 + Monitor/Login facade 行数守卫 2 项，由 P-05 收口 702 → 734：主 572 + Desktop 162；**P-07 收口 +1**「第 4 份同构仓储」拦截守卫 → **735：主 573 + Desktop 162**；**P-08 收口 +9**：`DomainPrimitivesHygieneTests` 5 项 + `TaskItemCloneTests` 4 项 → **744：主 582 + Desktop 162**；**P-09 收口 +14**：主 `RunOptionsContractTests` 5 项 + `RunOptionsHygieneTests` 3 项、Desktop `ConfigEditorsHygieneTests` 3 项 + 时段行为契约 3 项 → **758：主 590 + Desktop 168**；**P-10 收口 +43**：主 `SecretMaskerTests` 20 项 + `RunMetricsTests` 8 项 + `RunMetricsInstrumentationTests` 4 项 + `RunMetricsWriterTests` 2 项 + `FileRunLoggerTests` 3 项 + `ObservabilityHygieneTests` 6 项 → **801：主 633 + Desktop 168**）；CI 触发 `push`/`PR` 至 `master`，全量 `--no-incremental` 构建 + 分层测试，当前"只报告不阻断"。
 
 ## 附录 B：本方案 ↔ TECH-DEBT v2.0 映射
 
 | 本方案章节            | 对应债务条目                       |
 | ---------------- | ---------------------------- |
 | §1.2 A-1/A-2/A-3 | P1-1 / P1-2 / P1-19（收口）      |
-| §1.2 A-4/A-5/A-6 | P2-31 ✅（2026-10-21 已收口，见 TECH-DEBT §5.11）/ P2-1~6 / P2-9、P2-15  |
+| §1.2 A-4/A-5/A-6 | **P-07 ✅**（A-4，2026-10-21 收口，见 §6.2）＝ P2-31（TECH-DEBT §5.11）/ **P-08 ✅**（A-5，2026-10-21 收口，见 §6.2）← P2-1~6（TECH-DEBT §5.12）/ **P-09 ✅**（A-6，2026-10-21 收口，见 §6.2）← P2-9（God Config 分组，原 #D5）、P2-15  |
 | §1.2 A-7         | P1-4（§4.3 断言）                |
-| §1.2 A-8         | 工程化新增缺口                      |
+| §1.2 A-8         | **P-10 ✅**（可观测性，2026-10-21 收口，见 §6.2）＝ 工程化新增缺口 |
 | §1.2 A-9         | P0-16 / §4.9                 |
 | §1.2 A-10        | P0-15                        |
 | §1.2 A-11        | P0-3（守卫）                     |
@@ -515,5 +743,10 @@
 1. `Core` 工程禁止引用 `Infrastructure`/`Agents`/`Desktop` 具体命名空间。
 2. `Infrastructure`/`Agents` 不得出现在 `Core` 的 `ProjectReference`（仅 `Core.Abstractions`）。
 3. `Desktop`（除 `Composition`）禁止 `new` Infrastructure/Agent 具体类型。
-4. 公共工具（`JsonStore`/`AppPaths`/`Truncate`/`Clone`/`IsTerminal`）仅允许来自 Core 或声明为 `Internal` 的共享库。
+4. 公共工具（`JsonStoreBase<T>`/`AppPaths`/`Truncate`/`Clone`/`IsTerminal`/`FieldEditor<T>`+`FieldParsers`）只允许存在**单一事实来源**。
+   口径校准（P-07）：路径布局与 JSON 仓储属基础设施事实，单一事实来源落在 **Infrastructure**（`AppPaths` 静态类无实例、`JsonStoreBase<T>` 为抽象基类），
+   Desktop 经组合根引用 Infrastructure 不构成依赖倒置——故本条约束的是「不得出现第二份实现」，而非「必须位于 Core」；
+   编辑器解析属 Desktop 表示层事实，单一事实来源落在 **Desktop/Models**（`FieldEditor<T>` + `FieldParsers`）。
+   由 `AppPathsHygieneTests`（4 项）/`DomainPrimitivesHygieneTests`（5 项）/`ConfigEditorsHygieneTests`（3 项）机器校验
+   （`Truncate`/`Clone`/`IsTerminal` 部分归 P-08；编辑器部分归 P-09；`RunOptions` 配置契约由 `RunOptionsContractTests` 5 项 + `RunOptionsHygieneTests` 3 项校验）。
 5. `BatchEngine`/`TaskRunner`/最大 VM 行数硬上限（见 §7.3）。

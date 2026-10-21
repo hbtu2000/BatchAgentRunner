@@ -9,11 +9,7 @@
              x:Class="BatchAgentRunner.Desktop.Views.MonitorView"
              Background="{DynamicResource BgAppBrush}">
 
-    <Design.DataContext>
-        <vm:MonitorViewModel />
-    </Design.DataContext>
-
-    <UserControl.Styles>
+<UserControl.Styles>
         <!-- 工具栏分隔竖线 -->
         <Style Selector="Border.tb-sep">
             <Setter Property="Width" Value="1" />

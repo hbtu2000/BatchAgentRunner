@@ -4,6 +4,7 @@ using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Options;
 using BatchAgentRunner.Core.Scheduling;
+using BatchAgentRunner.Core.Text;
 using BatchAgentRunner.Infrastructure.CredentialVault;
 
 namespace BatchAgentRunner.Agents.Adapters;
@@ -32,6 +33,10 @@ public sealed class CliAdapterSettings
     public bool ShowWindow { get; set; }
 
     public Action<string>? Log { get; set; }
+
+    /// <summary>运行日志（用于任务输出逐行实时落盘，REQ：实时可观测）。执行路径由引擎注入，
+    /// 预检/列模型等非执行路径为 null，此时 WriteTaskOutput 安全空操作、不落盘。</summary>
+    public IRunLogger? Logger { get; set; }
 }
 
 /// <summary>
@@ -124,6 +129,14 @@ public abstract class CliAdapterBase : IAgentCliAdapter
         }
 
         var template = Settings.ArgumentsTemplate ?? DefaultArgumentsTemplate;
+        // 2026-10-22 事故：任务指令自带换行 → 经 cmd.exe 转交时命令行被截断，后续参数（--model /
+        // --output-format / --port）全部丢失，CLI 退回交互模式、stdout 无 stream-json，实时输出流一片空白。
+        // Build 内已折叠为单行；此处留一条痕迹，避免同类问题再靠现场猜测。
+        if (request.Instruction.IndexOfAny(['\r', '\n']) >= 0)
+        {
+            Settings.Log?.Invoke("[CLI 参数] 任务指令含换行，已折叠为单行后传给 CLI（换行会被 cmd.exe 当命令分隔符，截断后续参数）");
+        }
+
         var arguments = CliCommandBuilder.Build(template, request, Settings.ExtraArguments);
 
         // codebuddy / WorkBuddy 启动时占用固定本地端口（默认 52607）作为内嵌服务端口。
@@ -142,13 +155,24 @@ public abstract class CliAdapterBase : IAgentCliAdapter
             }
         }
 
+        // 现场可诊断性：把「CLI 实际收到的参数」落一条 INFO（截断 + 经运行日志统一脱敏）。
+        // 历史版本运行日志里完全没有参数可查，导致「实时输出流空白」只能靠外部猜（本次排障成本极高）。
+        Settings.Log?.Invoke($"[CLI] {exe} {TextTruncate.Truncate(arguments, 300, "…")}");
+
         // stream-json 渲染：把 CLI 的逐行 JSON 事件翻译成可读行喂给应用内实时流；
         // 同时记录最终回答（result 事件）供结果回写。原始 stdout/stderr 仍由 CliProcessRunner
         // 累积进 run.Output，鉴权/额度分类照常基于原始文本工作。
         var renderer = new StreamJsonRenderer();
         Action<string>? onOut = request.OnOutputChunk is null
             ? null
-            : raw => { foreach (var line in renderer.Feed(raw)) request.OnOutputChunk(line); };
+            : raw =>
+            {
+                foreach (var line in renderer.Feed(raw))
+                {
+                    request.OnOutputChunk(line);
+                    Settings.Logger?.WriteTaskOutput(line);
+                }
+            };
 
         var spec = new CliLaunchSpec(exe, arguments, request.WorkingDirectory, BuildEnvironment(request.Account))
         {
@@ -163,6 +187,7 @@ public abstract class CliAdapterBase : IAgentCliAdapter
             foreach (var line in renderer.Flush())
             {
                 request.OnOutputChunk(line);
+                Settings.Logger?.WriteTaskOutput(line);
             }
         }
 

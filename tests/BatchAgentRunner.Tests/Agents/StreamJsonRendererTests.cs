@@ -203,4 +203,107 @@ public class StreamJsonRendererTests
 
         Assert.Contains("会话已初始化", outLines);
     }
+
+    [Fact]
+    public void Feed_未知类型_无可抽取文本_原样透出整行避免空白()
+    {
+        // 协议演进/字段改名导致既识别不出 type 也抽不到文本时，原样透出整行，
+        // 保证实时流不整片静默空白（便于排障）。
+        var r = new StreamJsonRenderer();
+        var outLines = r.Feed("""{"type":"system","weird_field":[{"x":"不可读结构"}]}""");
+
+        Assert.Single(outLines);
+        Assert.Contains("weird_field", outLines[0]);
+    }
+
+    [Fact]
+    public void Feed_streamEvent_deltaContent数组_抽取文本()
+    {
+        // CLI 协议演进：增量正文放在 event.delta.content[] 而非 event.delta.text 时，
+        // 仍能抽取文本而非整片空白。
+        var r = new StreamJsonRenderer();
+        var outLines = r.Feed("""{"type":"stream_event","event":{"delta":{"content":[{"type":"text","text":"正在读取配置"}]}}}""");
+
+        Assert.Contains("正在读取配置", outLines);
+    }
+
+    [Fact]
+    public void Feed_streamEvent_无法抽取文本_原样透出整行()
+    {
+        // event 结构既非已知增量也抽不到任何文本：给出简短事件标签，而非把整行 JSON 甩给用户。
+        var r = new StreamJsonRenderer();
+        var outLines = r.Feed("""{"type":"stream_event","event":{"delta":{"type":"unknown_shape","payload":[1,2,3]}}}""");
+
+        Assert.Single(outLines);
+        Assert.Contains("unknown_shape", outLines[0]);
+        Assert.DoesNotContain("payload", outLines[0]);
+    }
+
+    [Fact]
+    public void Feed_inputJsonDelta_不外发原始Json()
+    {
+        // 2026-10-22 用户反馈回归：工具入参以 {"delta":{"type":"input_json_delta","partial_json":"..."}}
+        // 逐片推送，原先整行 JSON 原样进实时流，一屏全是 {"partial_json":...}，完全不可读。
+        var r = new StreamJsonRenderer();
+        var all = new List<string>();
+        all.AddRange(r.Feed("""{"type":"stream_event","event":{"type":"content_block_start","index":1,"content_block":{"type":"tool_use","id":"toolu_1","name":"Bash","input":{}}}}"""));
+        all.AddRange(r.Feed("""{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"{\"command\":\"cd e:/Src/CodeBak"}}}"""));
+        all.AddRange(r.Feed("""{"type":"stream_event","event":{"type":"content_block_delta","index":1,"delta":{"type":"input_json_delta","partial_json":"/WorkAgent && git log\"}"}}}"""));
+        all.AddRange(r.Feed("""{"type":"stream_event","event":{"type":"content_block_stop","index":1}}"""));
+        all.AddRange(r.Flush());
+
+        var joined = string.Join("\n", all);
+        Assert.DoesNotContain("partial_json", joined);
+        Assert.DoesNotContain("input_json_delta", joined);
+        Assert.DoesNotContain("content_block_", joined);
+        Assert.DoesNotContain("stream_event", joined);
+        Assert.Contains(all, l => l.StartsWith("[工具调用] Bash", StringComparison.Ordinal));
+        Assert.Contains(all, l => l.StartsWith("[工具参数]", StringComparison.Ordinal) && l.Contains("git log"));
+    }
+
+    [Fact]
+    public void Feed_完整流式工具调用_不重复输出()
+    {
+        // start/delta/stop 已实时输出过该工具调用，随后完整 assistant 事件到达时不得再输出一遍
+        var r = new StreamJsonRenderer();
+        var all = new List<string>();
+        all.AddRange(r.Feed("""{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_9","name":"Read","input":{}}}}"""));
+        all.AddRange(r.Feed("""{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta","partial_json":"{\"file_path\":\"e:/a.cs\"}"}}}"""));
+        all.AddRange(r.Feed("""{"type":"stream_event","event":{"type":"content_block_stop","index":0}}"""));
+        all.AddRange(r.Feed("""{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"toolu_9","name":"Read","input":{"file_path":"e:/a.cs"}}]}}"""));
+
+        Assert.Single(all, l => l.Contains("[工具调用]", StringComparison.Ordinal));
+        Assert.Single(all, l => l.Contains("[工具参数]", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Feed_控制事件与思考增量_不产生输出()
+    {
+        var r = new StreamJsonRenderer();
+        var all = new List<string>();
+        all.AddRange(r.Feed("""{"type":"stream_event","event":{"type":"message_start","message":{"id":"m1"}}}"""));
+        all.AddRange(r.Feed("""{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"thinking","thinking":""}}}"""));
+        all.AddRange(r.Feed("""{"type":"stream_event","event":{"type":"content_block_delta","index":0,"delta":{"type":"thinking_delta","thinking":"先想想"}}}"""));
+        all.AddRange(r.Feed("""{"type":"stream_event","event":{"type":"content_block_stop","index":0}}"""));
+        all.AddRange(r.Feed("""{"type":"stream_event","event":{"type":"message_delta","delta":{"stop_reason":"end_turn"}}}"""));
+        all.AddRange(r.Feed("""{"type":"stream_event","event":{"type":"message_stop"}}"""));
+        all.AddRange(r.Flush());
+
+        Assert.Empty(all);
+    }
+
+    [Fact]
+    public void Feed_工具入参超长_放弃累积但输出省略提示()
+    {
+        // Write 工具会把整份文件内容当入参：超限后不拼接（不占内存），仍给出可读提示
+        var r = new StreamJsonRenderer();
+        var all = new List<string>();
+        all.AddRange(r.Feed("""{"type":"stream_event","event":{"type":"content_block_start","index":0,"content_block":{"type":"tool_use","id":"toolu_big","name":"Write","input":{}}}}"""));
+        var huge = new string('x', 5000);
+        all.AddRange(r.Feed($"{{\"type\":\"stream_event\",\"event\":{{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{{\"type\":\"input_json_delta\",\"partial_json\":\"{huge}\"}}}}}}"));
+        all.AddRange(r.Feed("""{"type":"stream_event","event":{"type":"content_block_stop","index":0}}"""));
+
+        Assert.Contains(all, l => l.Contains("[工具参数]", StringComparison.Ordinal) && l.Contains("已省略"));
+        Assert.DoesNotContain(all, l => l.Contains(huge, StringComparison.Ordinal));
+    }
 }

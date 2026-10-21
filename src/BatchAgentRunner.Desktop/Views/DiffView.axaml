@@ -7,11 +7,7 @@
              x:Class="BatchAgentRunner.Desktop.Views.DiffView"
              Background="{DynamicResource BgAppBrush}">
 
-    <Design.DataContext>
-        <vm:DiffViewModel />
-    </Design.DataContext>
-
-    <Grid RowDefinitions="Auto,Auto,*,Auto" Margin="12">
+<Grid RowDefinitions="Auto,Auto,*,Auto" Margin="12">
 
         <!-- 标题 + 摘要 + 刷新 -->
         <Border Grid.Row="0" Padding="14" Theme="{StaticResource Card}" Margin="0,0,0,8">

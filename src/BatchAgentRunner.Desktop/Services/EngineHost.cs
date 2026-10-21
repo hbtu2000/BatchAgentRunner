@@ -7,6 +7,7 @@ using BatchAgentRunner.Core.Abstractions;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Engine;
 using BatchAgentRunner.Core.Events;
+using BatchAgentRunner.Core.Observability;
 using BatchAgentRunner.Core.Options;
 using BatchAgentRunner.Desktop.Composition;
 using BatchAgentRunner.Desktop.Views;
@@ -73,6 +74,9 @@ public sealed class EngineHost : ObservableObject, IEngineHost
     public BatchReport? LastReport { get; private set; }
 
     public string? LastReportPath { get; private set; }
+
+    /// <summary>最近一次批次的运行级指标文件路径（ARCH P-10 / A-8，给运维采集）。</summary>
+    public string? LastMetricsPath { get; private set; }
 
     /// <summary>最近一次「领取每日积分」报告的 Markdown 路径（本次会话内）。</summary>
     public string? LastCreditsClaimReportPath { get; private set; }
@@ -171,7 +175,7 @@ public sealed class EngineHost : ObservableObject, IEngineHost
         {
             // 加载失败必须落运行日志（2026-10-18 教训：任务文件格式错误只体现在界面一行状态文本里，
             // 日志无记录 → 用户看到的就是「点了没反应」）
-            _logger?.Write("ERROR", $"任务文件加载失败：{ex.GetType().Name}：{ex.Message}");
+            _logger?.Write(RunLogLevels.Error, $"任务文件加载失败：{ex.GetType().Name}：{ex.Message}");
             throw;
         }
     }
@@ -237,7 +241,7 @@ public sealed class EngineHost : ObservableObject, IEngineHost
                 }
                 catch (Exception ex)
                 {
-                    _logger?.Write("WARN", $"[积分领取] 批前自动领取未完成：{ex.Message}");
+                    _logger?.Write(RunLogLevels.Warn, $"[积分领取] 批前自动领取未完成：{ex.Message}");
                 }
             }
 
@@ -253,13 +257,26 @@ public sealed class EngineHost : ObservableObject, IEngineHost
             catch (Exception ex)
             {
                 // 引擎未预期异常必须落运行日志（2026-10-16 教训：仅 UI 状态栏展示，日志无记录无法排障）
-                _logger?.Write("ERROR", $"批处理执行异常终止：{ex.GetType().Name}：{ex.Message}");
+                _logger?.Write(RunLogLevels.Error, $"批处理执行异常终止：{ex.GetType().Name}：{ex.Message}");
                 throw;
             }
 
             LastReport = report;
             LastReportPath = await _factory.ReportWriter.WriteAsync(report, Options.TaskFilePath, cancellationToken)
                 .ConfigureAwait(false);
+            // P-10：指标与报告同批落盘（报告给用户、指标给运维）；失败不阻断批处理结果
+            try
+            {
+                LastMetricsPath = await _factory.MetricsWriter
+                    .WriteAsync(engine.Metrics.Snapshot(DateTimeOffset.Now), Options.TaskFilePath, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _logger?.Write(RunLogLevels.Warn, $"运行级指标落盘失败（不影响批处理结果）：{ex.GetType().Name}：{ex.Message}");
+                LastMetricsPath = null;
+            }
+
             Status = report.BatchStatus;
             await MaybeShutdownAsync(report).ConfigureAwait(false);
             return report;

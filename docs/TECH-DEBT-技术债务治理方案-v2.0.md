@@ -4,7 +4,7 @@
 > 盘点范围：`src/**`（117 文件 / 18,119 行）、`tests/**`（32 文件 / 5,845 行）、全部工程配置、git 历史（12 提交）  
 > 事实基线：net10.0 / Avalonia 12.1.4 / CommunityToolkit.Mvvm 8.4.2，**无 CI、无门禁、无 CPM**
 >
-> **当前进度（2026-10-19 晚）**：阶段 −1（B 组 5 项）、阶段 0（A 组 10 项 + P0-17）、阶段 1（建网 6 项）**均已完成**；P0 清单 17 项全部清偿，全量构建 0 警告 / 0 错误（`TreatWarningsAsErrors=true`）。**阶段 2 动骨已完成（2026-10-18 ~ 2026-10-19）**：P1-3（提 `IBatchEngine` + 窄化构造）、P1-9（`IProcessRunner`）、P1-10（`IFileSystem`）、P1-16（取消静态注册表）、P1-1（拆 6 协作者）、P1-2（状态机外置）均已提交；**P1-4/P1-5 已收口（2026-10-19）**——`Desktop/Composition/EngineFactory` 成为 Desktop 中唯一 `new` Infrastructure/Agents 具体类型的位置（原 `CredentialVaultHost.CreateDefault`、`EngineHost` 的 `ShutdownService`、`TemplateEditorViewModel` 的 `FileWorkflowTemplateStore` 三处残留装配全部收回组合根），§4.3「Desktop 不得直接 `new` Infrastructure 具体类型」IL 扫描断言落地（Desktop.Tests 3/3 通过）。**P1-1 已收口（2026-10-19 晚，提交 `39bdb14`）**：补齐拆分产物 ① `ITaskDispatcher` 白箱单测 19 项——该协作者随 REQ-020 功能提交落地时未同步协作者测试模式，是六个协作者中唯一的白箱覆盖缺口，补齐后 §3.4 全部产物均有直接契约测试；同轮 `chore(debt)` 清理 `BatchEngine` 拆分后残留的 3 个空节标题注释（`596c165`）。P1-19（Desktop 补测试 + 契约收敛）已于 2026-10-19 收口（Avalonia headless 测试基座 + `UiThread` 线程收敛契约 2 项 + churn 热点 `ConfigView`/`Login`/`Monitor`/`SetupWizard` VM 契约测试 13 项，Desktop.Tests 39→54）。P1-3 为本轮重点，配套 §4.3 断言与 `BatchEnginePhase2Tests` 契约测试已落地，详见 §5.5。**阶段 2 收尾补漏（2026-10-20）**：P1-6（异步初始化门消除同步阻塞 + IL 断言）、P1-7（事件订阅泄漏退订）、P1-11（Vault 根目录 ACL 加固 + `WriteManifest` 原子写）、P1-12（CLI 权限固化治理：作用域收窄 + 原子写 + 异步化）四项均为阶段 2 声明「完成」后追加的收口项，详见 §5.5 与 §4.8。**阶段 3 持续化补完（2026-10-20）**：P1-13（`CliProcessRunner.KillTree` 重写——原生 `Kill(entireProcessTree:true)` 取代外部 `taskkill` + 同步 `WaitForExit(3000)` 阻塞）为「重写」准入四项中最后一笔收口；P1-14（`LocalGitIntegration` 子进程执行加固——超时回收 + stdin 重定向 + 启动失败收敛）同步收口；**P1-15 高危盲区清零**——`CodeBuddyCreditsApiClient` / `BackupManager` / `ShutdownService` 三项阶段 1 顺延的高危零覆盖盲区补齐白箱测试（`CodeBuddyCreditsApiClientTests` 11 + `BackupManagerTests` 6 + `ShutdownServiceTests` 2），详见 §5.6。测试基线（2026-10-20 P1-15 收口轮实跑）：主测试项目 **475 用例**（快 448 / 慢 27）+ Desktop.Tests **58 用例** = **533 通过 / 0 失败**（主测试较 P1-14 收口轮 450 增加 25 例：P1-15 三个高危盲区白箱测试；本轮复跑未再现测试宿主退出崩溃，历史记录见 §5.5 边界）。**阶段 4 持续化（2026-10-20 ~ 2026-10-21）**：P2-26（误导性注释清算 + §4.7.1 计划性延期台账 + `CommentHygieneTests`，见 §5.7）、P2-27（评估维持「主动不偿还」，见 §5.8）、P2-29（`_harness/` 产物堆清理，见 §5.9）、P2-30（逃逸阀台账四要素补齐 + 未登记的生产代码豁免归位 + `EscapeValveHygieneTests`，见 §5.10）四项已收口；测试基线刷新为 **550 通过 / 0 失败**（2026-10-21 P2-30 收口轮实跑：主 492 + Desktop 58，较 P2-26 收口轮 545 +5）。**P2-31 已收口（2026-10-21）**：三份 `Json*Store` 的加载/原子写样板抽为 `JsonStoreBase<T>`，9 处 `"BatchAgentRunner"` 路径魔法串收口为 `AppPaths` 常量类，并新增 `AppPathsHygieneTests` 守卫；测试基线 **565 通过 / 0 失败**（主 507 + Desktop 58，+15）。
+> **当前进度（2026-10-19 晚）**：阶段 −1（B 组 5 项）、阶段 0（A 组 10 项 + P0-17）、阶段 1（建网 6 项）**均已完成**；P0 清单 17 项全部清偿，全量构建 0 警告 / 0 错误（`TreatWarningsAsErrors=true`）。**阶段 2 动骨已完成（2026-10-18 ~ 2026-10-19）**：P1-3（提 `IBatchEngine` + 窄化构造）、P1-9（`IProcessRunner`）、P1-10（`IFileSystem`）、P1-16（取消静态注册表）、P1-1（拆 6 协作者）、P1-2（状态机外置）均已提交；**P1-4/P1-5 已收口（2026-10-19）**——`Desktop/Composition/EngineFactory` 成为 Desktop 中唯一 `new` Infrastructure/Agents 具体类型的位置（原 `CredentialVaultHost.CreateDefault`、`EngineHost` 的 `ShutdownService`、`TemplateEditorViewModel` 的 `FileWorkflowTemplateStore` 三处残留装配全部收回组合根），§4.3「Desktop 不得直接 `new` Infrastructure 具体类型」IL 扫描断言落地（Desktop.Tests 3/3 通过）。**P1-1 已收口（2026-10-19 晚，提交 `39bdb14`）**：补齐拆分产物 ① `ITaskDispatcher` 白箱单测 19 项——该协作者随 REQ-020 功能提交落地时未同步协作者测试模式，是六个协作者中唯一的白箱覆盖缺口，补齐后 §3.4 全部产物均有直接契约测试；同轮 `chore(debt)` 清理 `BatchEngine` 拆分后残留的 3 个空节标题注释（`596c165`）。P1-19（Desktop 补测试 + 契约收敛）已于 2026-10-19 收口（Avalonia headless 测试基座 + `UiThread` 线程收敛契约 2 项 + churn 热点 `ConfigView`/`Login`/`Monitor`/`SetupWizard` VM 契约测试 13 项，Desktop.Tests 39→54）。P1-3 为本轮重点，配套 §4.3 断言与 `BatchEnginePhase2Tests` 契约测试已落地，详见 §5.5。**阶段 2 收尾补漏（2026-10-20）**：P1-6（异步初始化门消除同步阻塞 + IL 断言）、P1-7（事件订阅泄漏退订）、P1-11（Vault 根目录 ACL 加固 + `WriteManifest` 原子写）、P1-12（CLI 权限固化治理：作用域收窄 + 原子写 + 异步化）四项均为阶段 2 声明「完成」后追加的收口项，详见 §5.5 与 §4.8。**阶段 3 持续化补完（2026-10-20）**：P1-13（`CliProcessRunner.KillTree` 重写——原生 `Kill(entireProcessTree:true)` 取代外部 `taskkill` + 同步 `WaitForExit(3000)` 阻塞）为「重写」准入四项中最后一笔收口；P1-14（`LocalGitIntegration` 子进程执行加固——超时回收 + stdin 重定向 + 启动失败收敛）同步收口；**P1-15 高危盲区清零**——`CodeBuddyCreditsApiClient` / `BackupManager` / `ShutdownService` 三项阶段 1 顺延的高危零覆盖盲区补齐白箱测试（`CodeBuddyCreditsApiClientTests` 11 + `BackupManagerTests` 6 + `ShutdownServiceTests` 2），详见 §5.6。测试基线（2026-10-20 P1-15 收口轮实跑）：主测试项目 **475 用例**（快 448 / 慢 27）+ Desktop.Tests **58 用例** = **533 通过 / 0 失败**（主测试较 P1-14 收口轮 450 增加 25 例：P1-15 三个高危盲区白箱测试；本轮复跑未再现测试宿主退出崩溃，历史记录见 §5.5 边界）。**阶段 4 持续化（2026-10-20 ~ 2026-10-21）**：P2-26（误导性注释清算 + §4.7.1 计划性延期台账 + `CommentHygieneTests`，见 §5.7）、P2-27（评估维持「主动不偿还」，见 §5.8）、P2-29（`_harness/` 产物堆清理，见 §5.9）、P2-30（逃逸阀台账四要素补齐 + 未登记的生产代码豁免归位 + `EscapeValveHygieneTests`，见 §5.10）四项已收口；测试基线刷新为 **550 通过 / 0 失败**（2026-10-21 P2-30 收口轮实跑：主 492 + Desktop 58，较 P2-26 收口轮 545 +5）。**P2-31 已收口（2026-10-21）**：三份 `Json*Store` 的加载/原子写样板抽为 `JsonStoreBase<T>`，9 处 `"BatchAgentRunner"` 路径魔法串收口为 `AppPaths` 常量类，并新增 `AppPathsHygieneTests` 守卫；测试基线 **565 通过 / 0 失败**（主 507 + Desktop 58，+15）。**ARCH 架构重构阶段收口轮（2026-10-21，执行记录见 ARCH §6.2）**：P-01（`WaitCoordinator` 抽取）、P-02（`BatchEngine` facade 953→400 行 + 依赖方向 IL 断言固化 + facade 行数守卫）、P-03（`TaskRunner` 策略对象化，903→76 行薄 facade + 4 个 Policy 单测）、P-04（`ConfigViewModel` 1065→366 行，11 子编辑器 + 共享校验）、P-05（`TemplateEditorViewModel` 674→240 行，3 Coordinator + 4 行 VM）、P-06（`MonitorViewModel` 983→388 行 + `LoginViewModel` 751→280 行，Monitor 8 协作者 + Login 5 协作者 + 3 行 VM 独立文件 + headless 契约测试 29 项 + XAML 绑定守卫）依次收口；测试基线 **734 通过 / 0 失败**（主 572 + Desktop 162，2026-10-21 P-06 收口轮实跑）。**P-07 已收口（2026-10-21）**：`JsonStoreBase<T>` + `AppPaths` 去重（A-4）复核真值并加固守卫——`AppPathsHygieneTests` 3→4 项（新增「Infrastructure 内 `Json*Store` 具体类型必须继承 `JsonStoreBase<T>`」类型扫描，防第 4 份同构仓储回潮，负测试实测可捕获）；代码本体同 P2-31 轮未变；测试基线 **735 通过 / 0 失败**（主 573 + Desktop 162，ARCH §6.2 P-07 执行记录）。**P-08 已收口（2026-10-21）**：领域原语去重（A-5，承接 P2-1~P2-6）——残留内联截断 3 处并入 `TextTruncate`、修掉 `TaskItem.Clone()` 对 `StageResults` 的浅拷贝缺陷（`StageResult` 记录化 + 逐元素 `Clone`，原「快照与原型共享阶段结果元素」会污染原型），新增 `DomainPrimitivesHygieneTests` 5 项 + `TaskItemCloneTests` 4 项守卫；同轮清偿 P2-25 遗留的 `BatchEngine` 死私有 `Truncate` 别名（`BatchEngine` facade 400→**397 行**，见 §5.14 步骤 ⑤）；测试基线 **744 通过 / 0 失败**（主 582 + Desktop 162，见 §5.14 / ARCH §6.2 P-08 执行记录）。**P-09 已收口（2026-10-21）**：配置契约去重（A-6，承接 P2-9 / P2-15）——`RunOptions` 由 363 行单一大类按 12 配置域横向切片为 `RunOptions.01~11-*.cs`（本体 369→18 行，切片各 ≤49 行，**JSON 形状与落盘字节逐字不变**，原 §4.7.1 计划性延期 **#D5 结项**），JSON 往返克隆由守卫禁复现；`ConfigEditors` 解析字段全量收敛 `FieldEditor<T>` + `FieldParsers` 单一解析来源（时段起止一并泛型化 + 删掉 `StartText`/`EndText` 裸字符串桥接 + 修掉「非法输入静默抹掉用户已配置免费时段」缺陷），视图侧 7 个缺反馈的输入框补齐校验反馈、错误文本样式收为单一来源；新增 `RunOptionsContractTests` 5 项 + `RunOptionsHygieneTests` 3 项 + `ConfigEditorsHygieneTests` 3 项守卫（负测试实测均可捕获）；测试基线 **758 通过 / 0 失败**（主 590 + Desktop 168，见 §5.15 / ARCH §6.2 P-09 执行记录）。 **P-10 已收口（2026-10-21）**：可观测性（A-8，工程化新增缺口）——结构化日志接线：`IRunLogger` 增 `Write(RunLogEntry)` 作为唯一落盘点，`FileRunLogger` 十余个 `Write*` 全部转条目后经此渲染（文本 `run-*.log` 正文逐字不变 + 新增 `run-*.jsonl` 结构化流）；`RunId` 贯穿事件 / 日志 / 指标（`BatchEvent.RunId` 由 `BatchEngine.Raise` 统一填充）；`RunMetrics` 七类运行级指标埋点（吞吐 / 平均耗时 / 降级次数 / 兜底触发 / 冷却·时段跳过 / 失败率 / 误切换率）+ `metrics-<run_id>.json` 落盘；`SecretMasker` 脱敏在渲染入口统一生效（原「凭证不落日志」零基础设施）。同轮收口 20 处裸级别字面量（改为 `RunLogLevels` 常量）、`BatchEngine.ResolveWorkspacePath` 下沉 `WorkspaceResolver`（facade 维持 399 行 ≤400）、`NullRunLogger` 拆为独立文件。新增 `ObservabilityHygieneTests` 6 项守卫 + `SecretMaskerTests` 20 项 / `RunMetricsTests` 8 项 / `RunMetricsInstrumentationTests` 4 项 / `RunMetricsWriterTests` 2 项 / `FileRunLoggerTests` +3 项（负测试实测三项可捕获）；测试基线 **801 通过 / 0 失败**（主 633 + Desktop 168，见 ARCH §6.2 P-10 执行记录）。
 
 ---
 
@@ -17,7 +17,7 @@
 | **批准日期**   | 2026-10-18                                                                           |
 | **批准范围**   | 全文：阶段 −1 / 0 / 1 执行记录、阶段 2 / 3 路线图、§3 偿还策略、§4 防新增六道墙与逃逸阀台账、附录 A/B                    |
 | **效力说明**   | 自批准日起，本方案为 BatchAgentRunner 技术债务治理的**权威基线**；任何后续变更须按 §4.6 债务预算与 §4.7 逃逸阀规则登记，不得口头覆盖。 |
-| **当前进度基线** | 阶段 −1 / 0 / 1 已完成，P0 清单 17 项全部清偿；阶段 2 动骨全部完成（P1-3/4/5/9/10/16、P1-1 拆 6 协作者、P1-2、P1-19 均已完成，详见 §2 / §5.5）。P1-4/P1-5 于 2026-10-19 收口：组合根 `EngineFactory` 为 Desktop 唯一 `new` 点，§4.3 对应 IL 断言落地。阶段 3 持续化补完（P1-13/14/15/21）、阶段 4 P2 第一批（P2-26/P2-27/P2-29/P2-30/P2-31）已完成（§5.6 ~ §5.11）；测试基线 **565 通过 / 0 失败**（2026-10-21 P2-31 收口轮）。 |
+| **当前进度基线** | 阶段 −1 / 0 / 1 已完成，P0 清单 17 项全部清偿；阶段 2 动骨全部完成（P1-3/4/5/9/10/16、P1-1 拆 6 协作者、P1-2、P1-19 均已完成，详见 §2 / §5.5）。P1-4/P1-5 于 2026-10-19 收口：组合根 `EngineFactory` 为 Desktop 唯一 `new` 点，§4.3 对应 IL 断言落地。阶段 3 持续化补完（P1-13/14/15/21）、阶段 4 P2 第一批（P2-26/P2-27/P2-29/P2-30/P2-31）已完成（§5.6 ~ §5.11）。**P-04（2026-10-21 ✅ 收口）**：`ConfigViewModel` 由 1065 行分解为 11 个子编辑器 VM（账号卡/任务/调度/关机/安全/降级/兜底/通知/Git/工作流/通用）+ 共享校验器（`ConfigFieldRules`/`ConfigStatus`/`ModelCatalogFiller`）+ `ConfigSaveCoordinator`，facade 收口至 **366 行**（≤400 守卫测试锁死，见 ARCH §6.2）；全量测试 **701 通过 / 0 失败**（主 569 + Desktop 132，较 P2-31 收口轮 565 → 701：Desktop 58→132 含 P-04 headless 契约测试 + facade 行数守卫；ARCH P-01~P-04 全部 ✅ 收口）。 |
 
 ---
 
@@ -152,15 +152,15 @@ P2-28（samples 降级为只读示例，测试契约改读嵌入式副本，内�
 
 **P2-30 随阶段 4「持续化」偿还（2026-10-21，见 §5.10）**：逃逸阀台账四要素补齐 + 未登记的生产代码豁免归位（偿还 2 项）+ `EscapeValveHygieneTests` 守卫。
 
-**P2-31 随阶段 4「持续化」偿还（2026-10-21，见 §5.11）**：三份 `Json*Store` 抽 `JsonStoreBase<T>` + 9 处路径魔法串收口 `AppPaths` + `AppPathsHygieneTests` 守卫。
+**P2-31 随阶段 4「持续化」偿还（2026-10-21，见 §5.11）＝ ARCH P-07 ✅ 收口**：三份 `Json*Store` 抽 `JsonStoreBase<T>` + 9 处路径魔法串收口 `AppPaths` + `AppPathsHygieneTests` 守卫（P-07 收口轮扩为 4 项）。
 
 **P2 持续化偿还第二批（2026-10-21 后 ~ 本次，补记 + 收口）**：
 
-- **P2-1~P2-8 / P2-13 / P2-15（2026-10-21 后提交，本文档滞后补记，见 §5.12）**：重复实现收敛——P2-1~P2-6 手写 `Clone` → `record with`、依赖判定 / 文本截断 / 终态集合各收单一事实来源；P2-7 `INotifyPropertyChanged` 解耦、P2-8 `FakeClock` 迁出生产；P2-13 按枚举着色；P2-15 五编辑器 → `FieldEditor<T>`。
+- **P2-1~P2-8 / P2-13 / P2-15（2026-10-21 后提交，本文档滞后补记，见 §5.12）**：重复实现收敛——P2-1~P2-6 手写 `Clone` → `record with`、依赖判定 / 文本截断 / 终态集合各收单一事实来源；P2-7 `INotifyPropertyChanged` 解耦、P2-8 `FakeClock` 迁出生产；P2-13 按枚举着色；P2-15 五编辑器 → `FieldEditor<T>`（P-09 收口轮补齐：时段起止一并泛型化 + 删掉 `StartText`/`EndText` 裸字符串桥接 + 视图侧统一呈现校验反馈，见 §5.14）。
 - **P2-23 / P2-24 / P2-25（2026-10-21 后提交，见 §5.12）**：仓库卫生（`*.xlsx` 标 binary）/ 性能（日志批量落盘、O(n²) Tail 消除）/ 死代码删除。
 - **P2-10 / P2-11（本次收口，见 §5.13）**：硬编码字面色全部经 `AppBrushes` 单一入口 + `AppStyles.xaml` 双主题 token（`DynamicResource`）；代码侧 11 处 + XAML 侧 41 处清零。
 - **P2-12（本次增量，见 §5.13）**：`LoginView` / `SetupWizardView` 根节点加 `x:CompileBindings` + `x:DataType`（**不翻转全局默认**）；全量翻转待所有视图补齐 `x:DataType` 后单独排期。
-- **P2-9（调整口径）**：v1.0 记载的 `RunOptions.Clone()`「JSON 往返」已在 v2.0 重构中**消除**（当前 `RunOptions` 无 `Clone` 方法）；剩余「God Config 40+ 配置项分组」属宽爆炸半径域重构，列入 §4.7.1 计划性延期 **#D5**。
+- **P2-9（✅ 已偿还，2026-10-21，见 §5.15）＝ ARCH P-09 ✅ 收口**：v1.0 记载的 `RunOptions.Clone()`「JSON 往返」已在 v2.0 重构中**消除**（当前 `RunOptions` 无 `Clone` 方法）；剩余「God Config 40+ 配置项分组」（原 §4.7.1 计划性延期 **#D5**）本轮收口——`RunOptions` 由 363 行单一大类按 12 配置域横向切片为 `Core/Options/RunOptions.01~11-*.cs`（本体 369→18 行，切片各 ≤49 行），**类型面 / 属性名 / `[JsonPropertyName]` 键名 / 落盘字节全部不变**（切片文件名两位序号 = JSON 落盘属性顺序）。防回潮由 `RunOptionsContractTests` 5 项（顺序 / 往返 / 前向兼容 / snake_case 命名 / 派生属性只读）+ `RunOptionsHygieneTests` 3 项（须按配置域切片不得回缩 / 切片行数上限 / 禁 `Clone`·`Copy`·`Snapshot` 成员复现）锁死。**#D5 已结项**。
 - **P2-22（已解决）**：`models.yaml` 已于 P0-14 `git rm --cached` + gitignore，当前零代码引用，本地 0 字节残骸已随本轮清理。
 
 ---
@@ -231,7 +231,7 @@ P1-16 取消 CredentialLocationRegistry 静态覆写                            
    ↓
 P1-1  BatchEngine 按 6 协作者拆分（strangler fig，见 §3.4）              ✅ 已完成并收口（2026-10-19；同日晚补齐产物① ITaskDispatcher 白箱单测 19 项，六个协作者均有白箱覆盖）
    ↓
-P1-2  状态机外置 + 内拆（1790708）                                         ✅ 已完成（2026-10-19 外置 e7c9eb9；2026-10-19 内拆）
+P1-2  状态机外置 + 内拆（1790708）                                         ✅ 已完成（2026-10-19 外置 e7c9eb9；2026-10-19 内拆；其后 ARCH P-03 于 2026-10-21 在其上完成策略对象化——`TaskRunner` 的降级/冷却/兜底/免费时段判定下沉为 `DegradationPolicy`/`CooldownPolicy`/`FallbackPolicy`/`FreeTimeWindowPolicy` 四个纯函数式策略对象、状态机本体移入 `TaskStepExecutor`，`TaskRunner` 收口至 76 行薄 facade，见 ARCH §6.2）
    ↓
 P1-19 Desktop 补测试 + 契约收敛                                            ✅ 已完成（2026-10-19，见 §5.5）
 ```
@@ -259,16 +259,18 @@ P2-26 误导性注释清算 + 计划性延期台账（§4.7.1）+ CommentHygiene
 P2-27 中文测试方法名 评估：维持「主动不偿还」，升级触发器已写入 §5.8          ✅ 2026-10-20（§5.8）
 P2-29 _harness/ publish 产物堆清理 + .gitignore 显式规则防复发                ✅ 2026-10-20（§5.9）
 P2-30 逃逸阀台账四要素补齐 + 未登记的生产代码豁免归位 + EscapeValveHygieneTests ✅ 2026-10-21（§5.10）
-P2-31 三份 Json*Store 抽 JsonStoreBase<T> + 9 处路径魔法串收口 AppPaths + AppPathsHygieneTests ✅ 2026-10-21（§5.11）
+P2-31 三份 Json*Store 抽 JsonStoreBase<T> + 9 处路径魔法串收口 AppPaths + AppPathsHygieneTests ✅ 2026-10-21（§5.11；= ARCH P-07 收口，守卫 3→4 项）
 P2-1~P2-8 / P2-13 / P2-15 重复实现收敛（Clone/依赖判定/截断/终态/INotifyPropertyChanged/FakeClock/枚举着色/编辑器） ✅ 2026-10-21 后提交（§5.12）
 P2-23 / P2-24 / P2-25 仓库卫生 / 性能 / 死代码                                  ✅ 2026-10-21 后提交（§5.12）
 P2-10 / P2-11 硬编码字面色经 AppBrushes + AppStyles token 双主题化               ✅ 本次（§5.13）
 P2-12 LoginView/SetupWizardView 增量编译绑定（x:CompileBindings + x:DataType）     ✅ 本次（§5.13，全量翻转待排期）
 P2-22 models.yaml 残骸清理（P0-14 已 gitignore + 零引用）                        ✅ 本次（§5.13）
-P2-9 God Config 分组 → 计划性延期 #D5（Clone 子项已于 v2.0 消除）；P2-14 维持主动不偿还
+P2-9 God Config 分组 按 12 配置域横向切片（369→18 行，JSON 契约零变化）+ 禁 JSON 往返克隆守卫    ✅ 本次（§5.15；= ARCH P-09 收口，#D5 结项）
+P2-15 编辑器泛型化收口：时段起止收敛 FieldEditor<T> + 删裸字符串桥接 + 视图校验反馈统一           ✅ 本次（§5.15；= ARCH P-09 收口）
+P2-14 维持主动不偿还
 ```
 
-> 下一批候选：P2-9（God Config 分组，#D5）、P2-12 全量编译绑定翻转（待所有视图补齐 `x:DataType`）、D5（`git filter-repo` 历史净化，高风险单独评审）。
+> 下一批候选：P2-12 全量编译绑定翻转（待所有视图补齐 `x:DataType`）、D5（`git filter-repo` 历史净化，高风险单独评审）。
 
 ---
 
@@ -417,7 +419,7 @@ P2-9 God Config 分组 → 计划性延期 #D5（Clone 子项已于 v2.0 消除�
 
 | 指标     | 建议阈值（含宽容量） | 当前最坏值                   | 拦截目标            |
 | ------ | ---------- | ----------------------- | --------------- |
-| 单文件行数  | ≤ 800      | 1960（`BatchEngine.cs`）  | 防下一个 God Object |
+| 单文件行数  | ≤ 800      | <800（原 **1065 行 `ConfigViewModel.cs`** 已随 **P-04 ✅ 收口** 分解为 11 个子编辑器 VM + 共享校验器 + `ConfigSaveCoordinator`，facade 收口至 **366 行**（守卫测试锁死，见 ARCH §6.2）；原 **983 行 `MonitorViewModel.cs`** 与 **751 行 `LoginViewModel.cs`** 已随 **P-06 ✅ 收口**（2026-10-21）分解为 Monitor/Login 两组协作者 + 行视图模型独立文件，facade 分别收口至 **388/280 行**（守卫测试锁死，见 ARCH §6.2）；`BatchEngine.cs` 经 P1-1/P-01/P-02 收口至 400 行；最大 VM 均远低于 ≤800 阈值，上帝类行数风险暂时解除） | 防下一个 God Object |
 | 单方法行数  | ≤ 60       | 249（`ExecuteTaskAsync`，P1-2 内拆前；2026-10-19 内拆 1790708 后压至 ≤60，该异常已关闭） | 防超长方法           |
 | 圈复杂度   | ≤ 15       | >35（`ExecuteTaskAsync`，P1-2 内拆前；内拆后 ≤15，该异常已关闭）               | 防不可测分支          |
 | 构造参数个数 | ≤ 7        | 14（`BatchEngine`）       | 防依赖爆炸           |
@@ -472,8 +474,8 @@ P2-9 God Config 分组 → 计划性延期 #D5（Clone 子项已于 v2.0 消除�
 | 6  | `NoWarn CA1861`（常量数组提 static readonly）                      | 两个测试 csproj                                                                                                   | 测试项目专用：该规则针对生产热路径的重复分配；测试期望值数组一次性使用且内容各异，提字段损害可读性且无性能收益                                                                                                                               | 2026-10-18    | 工程  | 2027-01-20    | 同 #3（约定型豁免）：由守卫锁死登记完整性与到期日                                                                                            |
 | 7  | `[SuppressMessage] CA1720`（`ExpertKind.Single` 含类型名）        | `Core/Domain/ExpertRef.cs`（`ExpertKind.Single` 枚举成员）                                                          | 持久化兼容：`ExpertKind` 经 `JsonStringEnumConverter` 以字符串形式随用户模板落盘，重命名破坏既有模板（同 `RunOptions` 契约保护原则）                                                                                                   | 2026-10-18    | 工程  | 2027-01-20    | 模板兼容测试锁死 `ExpertKind` 字符串序列化契约；重命名成员即失败                                                                                 |
 | 8  | `[SuppressMessage] CA1859`（接口字段 / 返回改具体类型）                 | `Core/Engine/BatchEngine.cs`（6 处协作者字段）+ `Desktop/Composition/EngineFactory.cs`（1 处组合根返回类型）                    | 架构方向：接口类型是 P1-4/P1-5「UI 只依赖 Core 抽象 + DI 化」的目标形态，也是六协作者的**测试注入缝**，拒绝为微性能向具体类型回退                                                                                                            | 2026-10-19    | 工程  | 2027-01-20    | 六协作者白箱单测（`TaskDispatcherTests` 19 / `TaskRunnerTests` 10 / `FallbackBillingTests` 10 / `GitWorkflowTests` 10 / `BatchCollaboratorTests` 12 / `PreflightTests` 7）依赖接口注入替身；改具体类型即不可替换                 |
-| 9  | `dotnet format` CHARSET 类诊断过滤（pre-commit 钩）                 | `.githooks/pre-commit`（`grep -v 'error CHARSET'`）                                                               | SDK 10.0.401 回归：`Directory.Build.props` 的 `CodePage=65001`（中文源码跨代码页编译所需，保留）触发 CharsetFixer 对全部 .cs 文件误报，且修复器为空操作（最小复现：同内容去掉 CodePage 即 0 误报）。钩子改用显式 `iconv` UTF-8 有效性校验补偿   | 2026-10-18    | 工程  | 2026-12-31    | 每次升级 SDK 复测：最小复现仍误报则保留过滤、否则移除；钩子负测试（注入 GBK 字节文件被拒）必须保持有效                                                    |
 | 10 | `NoWarn AVLN3001`（XAML 资源无公开无参构造，运行时加载器不可达）           | `src/BatchAgentRunner.Desktop/BatchAgentRunner.Desktop.csproj`（`ShutdownCountdownWindow`）                       | 该窗口只由 `EngineHost` 以 `ShutdownCountdownWindow(int)` 构造、从不经 XAML URI 加载，AVLN3001 对其是**假阳性**；为消告警补无参构造会平白扩大公开面（2026-10-21 P2-30 盘点发现，此前从未登记）                                          | 2026-10-21    | 工程  | 2026-12-31    | 守卫断言「`src` 内不得出现 `new ShutdownCountdownWindow()`」：一旦新增无参构造，豁免前提消失，须先删豁免再改代码                                     |
+| 11 | `[SuppressMessage] CA1001`（可释放字段类型未实现 IDisposable）               | `Core/Engine/BatchLifecycle.cs`（`BatchRunState.RunCts: CancellationTokenSource`）                                  | `BatchRunState` 持有 `RunCts`（非托管资源），但 Dispose 责任在宿主 `BatchEngine`（统一释放 `_runState.RunCts` 与 `_writeGate` 等），类型本身不应实现 IDisposable 以免双重释放；P-02 拆分产物，此前未登记                                        | 2026-10-21    | 工程  | 2027-01-20    | 白箱单测锁死 `BatchEngine.Dispose` 释放 `RunCts`；`BatchLifecycleTests` 验证生命周期内 `RunCts` 由引擎统一处置，类型不实现 IDisposable                      |
 
 > 说明：P2-30 原登记的两项（`.editorconfig` CA1002、`#pragma` SYSLIB0014）已由本表 #2 / #1 **完整登记**（含发现日 / 责任人 / 到期日 / 不变量断言）。
 > P2-30 盘点另发现 1 项**从未登记的生产代码豁免**（Desktop `NoWarn` 中的 `AVLN5001` / `AVLN3001` / `CA2007`）——其中
@@ -491,10 +493,10 @@ P2-26 清算结论：**计划性延期一律进本台账，代码注释只描述
 | D2 | 真实 CLI 适配器声明支持会话恢复（方案 b 启用）                                        | `IAgentCliAdapter.CanResume` 默认 `false`；`SessionResumePolicy` 默认关、全条件回退方案 a   | 前置验证 M0 V-8（CLI 是否支持 resume）未实测；不阻塞主线（DESIGN §13 E4 / §14 开放问题 1） | 2026-10-20 / 工程 / M0 实测轮            | `SessionResumePolicyTests` 5 项（默认关 / 无句柄 / CLI 不支持 / 跨 adapter 均回退；仅全条件满足才 Resume） |
 | D3 | WorkBuddy CLI 登录态存储位置与形态确认（V-4b/V-4e）                                 | `CredentialLocationRegistry` 中 WorkBuddy 无文件型位置登记；一键登录/积分领取对 WorkBuddy 拒绝执行 | 桌面主登录态存储方式未知，需实机确认；确认前拒绝执行好过盲猜路径           | 2026-10-20 / 工程 / M0 实测轮            | `GuidedLoginFlowTests` / `VaultSwitchTests` 既有「未登记 CLIId 拒绝并提示」用例保持绿 |
 | D4 | 专家参数降级：CLI 不支持专家参数时以 `ExpertRef.RolePrompt` 注入角色描述         | `RolePrompt` 字段存在但引擎未消费（预留位）                                   | 前置验证 M0 V-5（CLI 专家参数支持面）未实测；DESIGN §13.3 V-5 在册   | 2026-10-20 / 工程 / M0 实测轮            | 字段序列化契约由既有模板兼容测试锁死；启用时补「不支持 → prompt 注入」用例 |
-| D5 | `RunOptions` God Config 分组（40+ 扁平配置项拆分为子选项组）                | `Options/RunOptions.cs` 单一大类承载 9 大配置域；v1.0 记载的 `Clone()`「JSON 往返」已于 v2.0 重构中消除（当前无 `Clone`），本项仅剩结构分组 | 宽爆炸半径域重构：RunOptions 被广泛引用（引擎/CLI 适配/序列化契约），分组需同步迁移所有读写点与 config.json 契约，须专项评审 + 回归 | 2026-10-21 / 工程 / God Config 专项迭代 | 分组后既有序列化契约测试 + `Options` 读写点白箱测试全绿；`config.json` 前后兼容 |
+| ~~D5~~ ✅ **已结项（2026-10-21，见 §5.15）＝ ARCH P-09 收口** | ~~`RunOptions` God Config 分组（40+ 扁平配置项拆分为子选项组）~~ | 以 `partial class` **横向切片**收口：本体 `Options/RunOptions.cs` 369→18 行，12 配置域各占 `Options/RunOptions.NN-*.cs`（≤49 行）；**不嵌套分组**故类型面 / 属性名 / `[JsonPropertyName]` 键名 / 落盘字节全部不变，既有读写点与 `config.json` 契约零迁移 | 原判「宽爆炸半径」的规避路径：嵌套分组会改 `config.json` 形状（用户配置迁移风险），横向切片则零契约变化，等价达成「God Config 不再是一坨」 | 2026-10-21 / 工程 / ~~God Config 专项迭代~~ **已结项** | 切片形态由 `RunOptionsHygieneTests` 3 项锁死（不得回缩为单一大类 / 切片行数上限 / 禁 JSON 往返克隆复现），契约由 `RunOptionsContractTests` 5 项锁死（落盘属性顺序 · 往返逐字节稳定 · 未知字段宽容 · snake_case · 派生属性只读） |
 | D6 | XAML 全量编译绑定翻转（`AvaloniaUseCompiledBindingsByDefault=true`）          | `Desktop.csproj` 当前 `false`；本次（§5.13）仅对 `LoginView`/`SetupWizardView` 增量加 `x:CompileBindings` + `x:DataType` | 翻转全局默认会让所有未带 `x:DataType` 的绑定失效，回归风险极高；须先为全部视图补齐 `x:DataType`（含 `DataTemplate` 子类型） | 2026-10-21 / 工程 / 全视图 x:DataType 补齐后 | 每新增/修改视图须带 `x:CompileBindings` + `x:DataType`；既有 `LayeringRulesTests`/视图契约测试全绿 |
 
-> 到期未推进的延期，按 §4.7 规则自动升级为该迭代 P1。D2/D3/D4 共享同一前置（M0 实测轮），建议同轮清零。D5/D6 为本次收口轮新登记。
+> 到期未推进的延期，按 §4.7 规则自动升级为该迭代 P1。D2/D3/D4 共享同一前置（M0 实测轮），建议同轮清零。D6 为 2026-10-21 收口轮新登记；**D5 已于 2026-10-21 结项（ARCH P-09 收口，见 §5.15）**，当前仅余 D1~D4 + D6。
 
 ### 4.8 度量与趋势看板
 
@@ -502,21 +504,25 @@ P2-26 清算结论：**计划性延期一律进本台账，代码注释只描述
 
 | 指标                     | 当前基线（实测）                                                                                                                                                                   | 目标方向     |
 | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| 最大文件行数                 | **1065**（`ConfigViewModel.cs`，Desktop；2026-10-19 晚复测——`BatchEngine.cs` 经 P1-1 拆分降至 1030，2026-10-21 P-01 再下沉 `WaitCoordinator` 后降至 **953**（等待循环/唤醒/可用性轮询已迁出，剩余 facade ≤400 收口见 ARCH P-02），Desktop 长文件仍是最大文件头部）                                                                                          | ↓        |
+| 最大文件行数                 | **<800**（2026-10-21 **P-04 ✅ 收口**：原最大文件 `ConfigViewModel.cs` 由 1065 行分解为 11 个子编辑器 VM + 共享校验器 + `ConfigSaveCoordinator`，facade 收口至 **366 行**，由 `LayeringRulesTests.ConfigViewModel_facade文件不得超过400行_防上帝类回潮` 守卫锁死；2026-10-21 **P-06 ✅ 收口**：原 983 行 `MonitorViewModel.cs` / 751 行 `LoginViewModel.cs` 分解为 Monitor 8 协作者 + Login 5 协作者 + 行 VM 独立文件，facade 分别收口至 **388/280 行**，由 `MonitorViewModel_facade文件不得超过400行_防上帝类回潮` / `LoginViewModel_facade文件不得超过400行_防上帝类回潮` 守卫锁死；`BatchEngine.cs` 经 P1-1 拆分降至 1030，P-01 下沉 `WaitCoordinator` 后降至 953，P-02 下沉三个协作者后收口至 400 行（≤400 收口达标，守卫测试锁死，见 ARCH §6.2）；Desktop 破 800 行阈值的高危 God Object 已全部消除）                                                                                          | ↓        |
 | 最大方法行数                 | **≤60**（P1-2 内拆 1790708 已完成：原 287 行 `TaskRunner.ExecuteTaskAsync` 显式状态机化，拆为 `TaskExecutionState` 状态对象 + 8 个 ≤60 行 / CC≤15 子方法，§4.4 单方法阈值达标；全局最大方法随 §4.4 季度复测重定基线，该异常已关闭）                                                                                     | ↓        |
 | 全量构建警告数                | **0**（2026-10-18 阶段 1 清零：P0-12 完成，`TreatWarningsAsErrors=true` 生效，任何新增警告即构建失败；2026-10-19 P1-4/P1-5 收口后复测仍 0）                                                                             | → 0 并保持  |
 | `catch (Exception)` 占比 | **src 44 处**（2026-10-19 复测，较阶段 1 的 42 略升；占比分母随 P1-1 拆分变化，待精确复算）                                                                                  | ↓        |
 | 高危模块零覆盖数               | **0**（2026-10-20 P1-15 收口：阶段 1 补齐 XlsxTaskParser/Writer、CliCommandBuilder、DangerousOperationGuard；P1-14 补齐 LocalGitIntegration 子进程执行契约测试；2026-10-20 补齐最后三项 CodeBuddyCreditsApiClient / BackupManager / ShutdownService，见 §5.6） | → 0 并保持  |
-| Desktop 测试数            | **112 用例**（2026-10-21 后 P2 机会主义偿还批次累计新增：P2-1~P2-8/P2-13/P2-15/P2-23~P2-25 收口轮 + 本次 P2-10/11/12 收口轮；含 `AppBrushesTests` 27 / `OnboardingViewTests` 2 / 各 VM 白箱等；headless 基座 + 视图契约 + 架构断言持续扩展）                                                              | ↑        |
+| Desktop 测试数            | **168 用例**（2026-10-21 后 P2 机会主义偿还批次累计新增：P2-1~P2-8/P2-13/P2-15/P2-23~P2-25 收口轮 + P2-10/11/12 收口轮；含 `AppBrushesTests` 27 / `OnboardingViewTests` 2 / 各 VM 白箱等；ARCH P-04/P-05/P-06 收口轮新增 headless 契约测试 + XAML 绑定守卫 + facade 行数守卫；**ARCH P-09 收口轮 +6**：`ConfigEditorsHygieneTests` 3 项 + 时段行为契约 3 项；headless 基座 + 视图契约 + 架构断言持续扩展）                                                              | ↑        |
 | 空提交信息数 / 迭代            | 10/12 历史；阶段 −1 起由 commit-msg 钩强制「非空 + 含改了什么/为什么」                                                                                                                           | → 0 并保持  |
 | 误提交产物数                 | 10；阶段 −1 已 `git rm --cached` 并 ignore，当前 0                                                                                                                                 | → 0 并保持  |
 | 已 ignore 产物堆（P2-29）    | 曾 `_harness/` 1.2G / 214 文件（publish+bin+obj，从未跟踪、无人清理）；2026-10-20 整堆清理 + `/_harness/` 显式 ignore 规则                                                                    | → 0 并保持  |
 | P0 未偿数                 | 17 → 阶段 −1 完成 5 项、阶段 0 完成 11 项、阶段 1 完成最后 1 项（P0-12），当前 **0**                                                                                                               | → 0 并保持  |
 | 每迭代**新增**债务数           | 未采集（阶段 −1 起采集）                                                                                                                                                             | → 趋 0    |
-| churn 热点 Top3          | `BatchEngine.cs`(4)、`RunOptions.cs`(4)、`ConfigView.axaml`(4)                                                                                                               | 热点应随拆分下降 |
+| churn 热点 Top3          | `BatchEngine.cs`(4)、`RunOptions.cs`(4)、`ConfigView.axaml`(4)（**2026-10-21 ARCH P-09 收口**：后两者已由「配置域切片 / 编辑器泛型化 + 校验反馈统一 + 错误样式单一来源」拆分，热点成因消除，待下次复测重排）                                                                                                               | 热点应随拆分下降 |
 | 同步阻塞调用数（P1-6 类）      | **0**（2026-10-20 归零：原 2 处 `GetAwaiter().GetResult()`——`MainViewModel.cs:20`、`EngineHost.cs:136`——经异步初始化门消除；新增 IL 架构断言 `Desktop程序集_不得存在同步阻塞异步结果的调用` 持续锁住，任何新增 `.GetAwaiter().GetResult()` / `Task.Result` / `Task.Wait()` 即构建/测试失败） | → 0 并保持  |
-| 测试总数                   | **650 用例通过 / 0 失败**（2026-10-21 后 ~ 本次实跑：主测试项目 538 + Desktop.Tests 112；较 P2-31 收口轮 565 +85：P2-1~P2-8/P2-13/P2-15/P2-23~P2-25 收口轮 + 本次 P2-10/11/12 收口轮新增 `AppBrushesTests` 27 / `OnboardingViewTests` 2 等，全绿）                                                                     | ↑        |
+| 测试总数                   | **801 用例通过 / 0 失败**（2026-10-21 后 ~ 本次实跑：主测试项目 633 + Desktop.Tests 168；较 P2-31 收口轮 565 起，P2 机会主义偿还批次 + ARCH P-04/P-05/P-06 收口轮累计新增 169；**ARCH P-07 收口轮 +1**：`AppPathsHygieneTests` 第 4 项「第 4 份同构仓储」拦截守卫；**ARCH P-08 收口轮 +9**：`DomainPrimitivesHygieneTests` 5 项 + `TaskItemCloneTests` 4 项；**ARCH P-09 收口轮 +14**：主 `RunOptionsContractTests` 5 项 + `RunOptionsHygieneTests` 3 项、Desktop `ConfigEditorsHygieneTests` 3 项 + 时段行为契约 3 项；**ARCH P-10 收口轮 +43**：主 `SecretMaskerTests` 20 项 + `RunMetricsTests` 8 项 + `RunMetricsInstrumentationTests` 4 项 + `RunMetricsWriterTests` 2 项 + `FileRunLoggerTests` 3 项 + `ObservabilityHygieneTests` 6 项，全绿）                                                                     | ↑        |
 | 误导性自述注释数（P2-26）      | **0**（2026-10-20 收口：v2.0 盘点 147 处「二期/暂不支持/遗留/尚未」逐条核对——台账点名的脱节注释前序轮次已清、`RetrieveSecret` 一处本轮修正、~100 处「二期」为已交付功能历史标签如实保留；真实延期 4 项进 §4.7.1 台账。`CommentHygieneTests` 源码扫描锁死，新增即失败）                                                                     | → 0 并保持  |
+| 应用路径魔法串处数（P2-31/P-07） | **0**（2026-10-21 收口：`src` 内 `"BatchAgentRunner"` 字面量仅剩 `AppPaths.cs` 一处声明、`Environment.SpecialFolder.LocalApplicationData` 亦仅此一处，原 9 处全部改为常量引用；三份仓储样板（建目录/`JsonSerializer`/`AtomicFileWriter`）清零、一律继承 `JsonStoreBase<T>`。`AppPathsHygieneTests` **4 项**机器锁死：① 魔法串清零 ② 派生仓储样板清零且继承基类 ③ 目录常量不脱根 ④ **新增「第 4 份同构仓储」类型扫描拦截**（P-07 收口轮新增，负测试实测可捕获）） | → 0 并保持  |
+| 领域原语重复处数（P2-1~P2-6 / ARCH P-08） | **0**（2026-10-21 收口：`Truncate` → `Core/Text/TextTruncate`（残留内联 3 处并入：`StreamJsonRenderer`×2 / `TemplateFlowNodeViewModel`×1）、终态集合 → `TaskStatusExtensions.IsTerminal`、深拷贝 → `WorkflowTypeClones`（`record with`）+ `TaskItem` 唯一手写点、依赖失败分派 → `DagScheduler.EvaluateDependency`。`DomainPrimitivesHygieneTests` **5 项**机器锁死：① 除 `TextTruncate.cs` 外不得内联截断 ② 终态成员须委派单一事实来源 ③ 终态成员对全部枚举值与单一事实来源判定一致 ④ 深拷贝入口仅允许 `WorkflowTypeClones` / `TaskItem` ⑤ 依赖分派公开入口唯一且 `TaskDispatcher` 保持委派（负测试实测四项可捕获）；`TaskItemCloneTests` **4 项**反射锁死「新增字段必同步 `Clone()`」；同轮删除 `BatchEngine` 无调用点死私有 `Truncate` 别名后，`src` 内 `Truncate` 声明点只剩「单一事实来源 + 4 个保留调用点的薄后缀适配器」两类） | → 0 并保持  |
+| God Config 与编辑器手写重复处数（P2-9/P2-15 / ARCH P-09） | **0**（2026-10-21 收口：`RunOptions` 由 363 行单一大类按 12 配置域横向切片为 `RunOptions.01~11-*.cs`（本体 369→18 行，切片各 ≤49 行），**JSON 形状与落盘字节逐字不变**；`ConfigEditors` 解析字段全量 `FieldEditor<T>`（`FieldParsers` 为唯一解析来源，含本轮收口的时段起止），并删掉 `StartText`/`EndText` 裸字符串桥接、修掉「非法输入静默抹掉已配置时段」缺陷，视图侧 7 个缺反馈输入框补齐校验反馈、错误文本样式收为 `TextBlock.field-error` 单一来源。机器锁死：`RunOptionsHygieneTests` **3 项**（须按配置域切片不得回缩 / 切片行数上限 / 禁 `Clone`·`Copy`·`Snapshot` 成员复现）+ `RunOptionsContractTests` **5 项**（落盘属性顺序 / 往返逐字节稳定 / 未知字段宽容 / snake_case / 派生属性只读）+ `ConfigEditorsHygieneTests` **3 项**（Desktop 内 `TryParse` 只出现在 `FieldParsers` / 声明的字段必须被 `Apply()` 读取 / 凡绑 `X.Text` 必呈 `X.Error`）（负测试实测三项均可捕获）） | → 0 并保持  |
+| 可观测性回潮风险点（ARCH P-10 / A-8） | **0**（2026-10-21 收口：脱敏实现仅 `SecretMasker` 一处（原零基础设施，「凭证不落日志」全靠写入点自觉）、日志级别字面量仅 `RunLogLevels` 一处（原 20 处裸字面量散落 7 个文件）、日志落盘点仅 `IRunLogger.Write(RunLogEntry)` 一处（原十余个 `Write*` 各自拼文本直写）、运行级指标仅 `RunMetrics` 一处（原只能从日志文本人肉数）；`RunId` 贯穿事件 / 文本日志 / `run-*.jsonl` / `metrics-<run_id>.json`。`ObservabilityHygieneTests` **6 项**机器锁死：脱敏实现唯一 / 写日志点不得出现裸级别字面量 / 实现须带结构化通道与 RunId / 不得绕过统一落盘点 / 指标字段全集与比率边界 / 事件携带 RunId（负测试实测三项可捕获）） | → 0 并保持 |
 | 逃逸阀台账条目数（P2-30）       | **10 条**（2026-10-21 收口：全仓盘点去重后登记——`#pragma` 1 + `[SuppressMessage]` 8 + `.editorconfig` `none` 1 + `NoWarn` 规则 5 + 钩子过滤 1；**无到期日条目 0**（原 #1「二期换 MailKit 时」/ #2「待评估」/ #5-#8「长期有效」全部折算为具体复核日）；同轮发现并偿还 2 项**从未登记**的生产代码豁免：`AVLN5001` 10 处过时 API（`Watermark`→`PlaceholderText`、`SystemDecorations`→`WindowDecorations`）+ Desktop `CA2007` 1 处（`ConfigureAwait` 缺失），豁免随之删除） | ↓（新增须登记，到期须清理） |
 
 > **台账登记改用不变量描述，不用行号**。例：P0-1 登记为「`TryFallbackAsync` 中 `cost` 必须被 `MaxCostPerTask` 截断」并配断言测试。理由：既有审查报告记录 `:1011`，实测已漂移到 `:1406`，行号型台账必然失效。
@@ -709,8 +715,12 @@ A 组 10 项互不耦合，与 P0-17 并行完成。代码改动均随既有工�
 
 > 阶段 4 边界（交接必读）：① **保留的 #10（AVLN3001）是假阳性豁免**：`ShutdownCountdownWindow` 只由 `EngineHost` 带参构造、从不经 XAML URI 加载，为消告警补无参构造反而扩大公开面——故豁免保留、并由守卫第 4 项锁死「不得新增无参构造」，前提消失时须先删豁免再改代码。② **CA1002 豁免是承重结构**：实测开启即 96 处违规，全部是 JSON 契约类型的 `List<T>` 公开属性（`BatchReport` 18 / `RunOptions` 16 / `WorkflowTypes` 12 …），改抽象集合类型破坏用户 config 与模板兼容——偿还它的正确时机是「契约版本化」，不是顺手改。③ 到期日是**复核日**而非「必须修完日」：到期只要求当轮给出「续期并说明理由」或「清理」，两者都要在台账留痕；守卫只判过期与否，不代做决策。④ 守卫解析 `docs/TECH-DEBT-技术债务治理方案-v2.0.md` 的 §4.7 表格（列序耦合），改动表结构须同步更新 `EscapeValveHygieneTests.ReadLedger`。
 
-### 5.11 阶段 4：P2-31 路径常量与 JSON 仓储收口（2026-10-21）
+### 5.11 阶段 4：P2-31 路径常量与 JSON 仓储收口（2026-10-21）＝ ARCH P-07
 
+> **本项对应 ARCH 架构重构阶段 `P-07`（A-4 去重，见 ARCH §6.2 P-07 执行记录）**：代码本体于本轮偿还，
+> 2026-10-21 **P-07 收口轮**复核真值（三份仓储仍继承基类、样板仍清零、魔法串仍仅 `AppPaths.cs` 一处）并加固守卫
+> （`AppPathsHygieneTests` 3→4 项），阶段随之收口。
+>
 > **本轮重点：P2-31（三份 `Json*Store` 逐行同构 + `"BatchAgentRunner"` 路径魔法串 9 处）**。
 > 与 P2-26 / P2-30 不同，这一项是**纯重复代码**：三份仓储的构造、默认目录、`LoadAsync` 的两条 catch、
 > `AtomicFileWriter` 调用逐行同构，路径前缀再散落 9 处——任改一处要同步改三处。
@@ -729,9 +739,15 @@ A 组 10 项互不耦合，与 P0-17 并行完成。代码改动均随既有工�
 
 | 仓储                     | `CreateEmpty()`        | `NormalizeAsync()`                                        | 行数变化         |
 | ---------------------- | ---------------------- | --------------------------------------------------------- | ------------ |
-| `JsonCooldownStore`    | `new List<…>()`        | **自愈**：超长 `RawValue` 截断 + 确有变化时原子重写（原 2026-10-18 现场逻辑原样保留）   | 71 → 57      |
-| `JsonCreditsClaimStore` | `new CreditsClaimLedger()` | 无（默认钩子）                                                  | 51 → 24      |
-| `JsonConfigStore`      | `CreateSample()`       | **迁移**：`CreditsClaimMigrator.Migrate` 在反序列化成功后就地执行 | 191 → 165    |
+| `JsonCooldownStore`    | `new List<…>()`        | **自愈**：超长 `RawValue` 截断 + 确有变化时原子重写（原 2026-10-18 现场逻辑原样保留）   | 70 → 51      |
+| `JsonCreditsClaimStore` | `new CreditsClaimLedger()` | 无（默认钩子）                                                  | 50 → 19      |
+| `JsonConfigStore`      | `CreateSample()`       | **迁移**：`CreditsClaimMigrator.Migrate` 在反序列化成功后就地执行 | 191 → 167    |
+
+> 行数按提交 `adace61` 前后实测更正（原记 71→57 / 51→24 / 191→165 与 git 真值不符，P-07 收口轮按 `git show adace61^:<file> | wc -l` 复核后修正）。
+> **P-07 收口轮（2026-10-21）加固**：`AppPathsHygieneTests` 由 3 项扩为 4 项——新增
+> `Infrastructure内Json仓储具体类型_均须继承JsonStoreBase_防第四份同构仓储`（扫描 Infrastructure 程序集内所有 `Json*Store` 具体类型，
+> 不继承 `JsonStoreBase<T>` 即失败），补齐原第 ② 项「按文件名清单核对、新增第 4 份仓储静默漏网」的盲区；
+> 负测试实测：临时注入 `JsonNegativeProbeStore`（不继承基类）→ 守卫报「JsonNegativeProbeStore（基类：Object）」，探针已删除不入库。
 
 > 阶段 4 边界（交接必读）：① **`AppPaths` 落在 Infrastructure 而非 Core**：路径布局是「文件存放在哪」的基础设施事实，Core 不消费它；Desktop 已直接引用 Infrastructure（`EngineFactory` 是组合根，本就 `new` 具体类型），故不违反 §4.3 分层断言（该断言只约束 `new` 具体类型，`AppPaths` 无实例）。② **`ConfigDirectory` 语义保持不变**：历史原因 `config.json` 与另两个 JSON 直接落在应用根而非子目录，收口时**刻意不改目录结构**——改了会让既有用户的配置/冷却/台账「凭空消失」，属数据丢失类风险，收益却不对称。③ **仅收口「路径」魔法串**：`NotificationDispatchers` 里的 `[BatchAgentRunner]` 是通知标题的品牌前缀，不是路径，不在本项范围内，保持原样未动。④ `JsonStoreBase<T>` 的 `NormalizeAsync` 默认同步返回原值；如需在加载后回写（冷却自愈），派生类须自行 `await SaveAsync`，基类不隐式回写——避免「只读加载」意外产生磁盘写入。
 
@@ -752,6 +768,8 @@ A 组 10 项互不耦合，与 P0-17 并行完成。代码改动均随既有工�
 
 **验证统一口径（2026-10-21 后累计实跑）**：全量 `--no-incremental` 构建 **0 警告 / 0 错误**；测试总数由 P2-31 轮 565 增至 **650**（主 538 + Desktop 112，较 P2-31 +85）；`dotnet format`（CHARSET 假阳性按 §4.7 #9 过滤）0 问题。
 
+> **后续收口轮（2026-10-21，见 §5.14）**：本批 P2-1~P2-6 的收敛结果由 ARCH **P-08 收口轮**加固——残留内联截断清零、`TaskItem.Clone()` 阶段结果浅拷贝缺陷修复、新增 `DomainPrimitivesHygieneTests`（5 项）+ `TaskItemCloneTests`（4 项）防回潮闸门。即：本表是「债务本体偿还」记录，§5.14 是「单一事实来源机器化」记录。
+
 ### 5.13 阶段 4：P2-10 / P2-11 / P2-12 增量 / P2-22 收口（本次）
 
 > **本轮重点：P2-10 / P2-11（硬编码字面色双主题化）+ P2-12（编译绑定增量）+ P2-22（残骸清理）**。
@@ -770,13 +788,48 @@ A 组 10 项互不耦合，与 P0-17 并行完成。代码改动均随既有工�
 
 > **文档同步补记（本次收口轮）**：依 §4.5「PR 评审清单/硬规则落在 CODE-REVIEW」，本轮同步 `docs/CODE-REVIEW-代码审查标准与流程.md`（§3.5 可维护性与架构清单补「硬编码色值/魔法数字须经 token/常量（P2-10/11）」「XAML 绑定须带 x:DataType 编译绑定（P2-12 增量）」条、§4 硬规则表补 H17/H18、§9 反模式表补对应行）；同步 `docs/架构重构与工程化治理方案.md`（token 化结论 + P2 进度）；`README.md` 含他人未提交改动，本轮不碰。
 
+### 5.14 阶段 4：ARCH P-08 领域原语收口轮（本次，承接 P2-1~P2-6）
+
+> **本项对应 ARCH 架构重构阶段 `P-08`（A-5 去重，见 ARCH §6.2 P-08 执行记录）**：债务本体（`Truncate`×3、终态集合×3、`Clone`×6、失败分派状态机逐字重复）已于 2026-10-21 由 `518103a` / `9a1c782` / `f0dc708` 偿还（见 §5.12）；本轮为**收口轮**——清零残留副本、修复收口过程中暴露的真实缺陷、把「单一事实来源」升级为机器可校验的闸门。
+
+| 步骤 | 落地内容 | 验证 |
+| ---- | ------- | ---- |
+| ① 残留内联截断清零 | `Agents/Internal/StreamJsonRenderer.cs` 2 处 `s[..120] + "…"` → `TextTruncate.Truncate(s, 120, "…")`；`Desktop/ViewModels/TemplateEditor/TemplateFlowNodeViewModel.cs` 的 `Shorten` 内联 → `TextTruncate.Truncate(flat, max, "…")` | 行为逐字等价（后缀与上限不变）；`grep -nE '\[\.\.[^]]+\]\s*\+\s*"' src` **0 命中**；由守卫 ① 锁死 |
+| ② 修 `TaskItem.Clone()` 浅拷贝缺陷 | 原 `StageResults = new List<StageResult>(StageResults)` 只拷容器、元素共享——改快照的阶段摘要会污染原型；改 `StageResult` 为 `sealed record` + `WorkflowTypeClones.Clone(this StageResult)`（`with { }`）+ `TaskItem.Clone()` 逐元素 `s.Clone()` | `TaskItemCloneTests` 4 项（反射遍历全部可写属性注入非默认样本值 → 值等价 + 引用不共享 + JSON 形状一致 + 可空语义）+ `WorkflowTypeCloneTests` 7 项全绿 |
+| ③ 防回潮闸门 | 新增 `tests/BatchAgentRunner.Tests/Architecture/DomainPrimitivesHygieneTests.cs`（**5 项**）：内联截断拦截 / 终态成员须委派 + 全枚举值行为等价 / 深拷贝入口仅 `WorkflowTypeClones` 与 `TaskItem` / 依赖分派公开入口唯一且 `TaskDispatcher` 保持委派；新增 `tests/BatchAgentRunner.Tests/Domain/TaskItemCloneTests.cs`（**4 项**） | **负测试实测**：临时注入 `P08Probe`（内联 `Cut` + 自造 `IsTerminal => true` + 自造 `Clone()` + 公开 `DependencyVerdict Eval()`）→ ①②③⑤ 四项按预期报错；探针已删除、不入库 |
+| ④ 文档同步 | `ARCH-架构重构与工程化治理方案.md`（头部更新 / §1.2 A-5 / §3.4 第 4 条 / §4.3 / §6.1 / §6.2 P-08 执行记录 / 附录 A / 附录 B）、`架构重构与工程化治理方案.md`（§1.2 B2 / §4.3）、本文档（头部进度 / §4.8 度量 2 行 / §5.14） | 三份文档口径一致：P-08 ✅ 已收口，测试基线 744 |
+| ⑤ 死代码清偿（P2-25 遗留项） | `Core/Engine/BatchEngine.cs` 的**无调用点死私有 `Truncate` 别名**（P-02 facade 收口时未一并清掉）及其后失效的 `using BatchAgentRunner.Core.Text;` 删除，facade 400→**397 行** | 严格构建 0 警告/0 错误（失效 `using` 会触发 IDE0005 打成错误）；`DomainPrimitivesHygieneTests` 5 项仍全绿；删除后 `src` 内 `Truncate` 声明点只剩「单一事实来源 `TextTruncate` + 4 个保留调用点的薄后缀适配器」两类，均不含截断运算 |
+
+**验证统一口径（本次实跑，含 ⑤ 死代码清偿后复跑）**：`dotnet build BatchAgentRunner.slnx --no-incremental`（严格模式，不带 fast 参数）= **0 警告 / 0 错误**；`dotnet test` 全量 = **744 通过 / 0 失败**（主 582 + Desktop 162，较 P-07 收口轮 735 +9）；`dotnet format --verify-no-changes` 除 §4.7 #9 已登记的 CHARSET 假阳性 304 条外 **0 问题**；hygiene 守卫（主 28 + Desktop 4 = 32 项：`CommentHygieneTests` / `EscapeValveHygieneTests` / `AppPathsHygieneTests` / `DomainPrimitivesHygieneTests` / 两工程 `LayeringRulesTests`）全绿。
+
+> 阶段 4 边界（交接必读）：① **保留调用点的薄后缀适配器**：`WorkflowExecutor` / `GateEvaluator` / `ReportWriter` / `CodeBuddyCreditsApiClient` 各有一处 `private static Truncate(...) => TextTruncate…`，仅「固定后缀 + 单一入参」的本地简写，不含截断逻辑，不属重复实现。② **`QuotaErrorClassifier` / `JsonCooldownStore` 的 `text[^MaxRawChars..]` 取尾语义**与 `TextTruncate`「保头 + 后置后缀」相反，形态不同不强行统一。③ **`StageResult` 记录化**仅新增编译器生成的 `Equals`/`GetHashCode`/`ToString`（值语义），JSON 契约与构造方式零变化，全仓无依赖其引用相等的用法。④ **Desktop 未纳入深拷贝反射扫描**：主测试工程不引用 Desktop（组合根隔离），Desktop 侧回潮由 `Desktop.Tests` 的 XAML/VM 契约守卫覆盖。⑤ **`BatchEngine` 死私有 `Truncate` 已于本轮清偿（原单列登记的 P2-25 遗留项）**：无调用点别名 `private static string? Truncate(...) => TextTruncate.Result(...)` 及其后失效的 `using BatchAgentRunner.Core.Text;` 已删除，facade 400→**397 行**；失效 `using` 若不同步删除会被 IDE0005 在严格模式打成错误。**提交切片注意**：该文件在本轮提交时点仍可能承载 P-02 facade 收口（953→400 行）的未提交改动，须先切 P-02 提交再提本轮，否则会把数百行 P-02 重构裹进 P-08 提交、违反 §7「单步 ≤400 行」护栏。
+
+---
+
+### 5.15 阶段 4：ARCH P-09 配置契约收口轮（本次，承接 P2-9 / P2-15）
+
+> **本项对应 ARCH 架构重构阶段 `P-09`（A-6 去重，见 ARCH §6.2 P-09 执行记录）**：债务本体（P2-15 五编辑器 → `FieldEditor<T>`）已于 2026-10-21 后由 `91fb700` 偿还（见 §5.12），P2-9 的 `RunOptions.Clone()` JSON 往返已在 v2.0 重构中消除；本轮为**收口轮**——清零编辑器残留桥接、修掉收口过程中暴露的真实缺陷、把 #D5「God Config 分组」以零契约变化的方式结项、并为三者上防回潮闸门。
+
+| 步骤 | 落地内容 | 验证 |
+| ---- | ------- | ---- |
+| ① 编辑器泛型化残留清零 | `Desktop/Models/ConfigEditors.cs` 510→**505 行**：时段起止由「手写 `TimeOnly.TryParse` + 裸字符串属性」收敛为 `FieldEditor<TimeOnly?>`（`FieldParsers.TimeOnlyOrNull`），**修掉「非法输入 → `BuildWindow()` 返回 null → `Apply()` 静默抹掉用户已配置免费时段」的真实缺陷**（现对错误态保留原时段）；同时删掉 `StartText`/`EndText` 裸字符串桥接（`FieldEditor<T>` 新增可选 `onTextChanged` 回调驱动 `Preview` 刷新，视图直绑 `{Binding StartTime.Text}`） | 行为契约 3 项（非法保留原时段 + 错误可见 / 合法按输入回写 / 关时段回写为空）；`Desktop/Models/FieldEditor.cs` 65→82 行 |
+| ② 视图侧统一校验反馈 | `Desktop/Views/ConfigView.axaml` 767→**795 行**：原本只有共享候选模型池的单价/折扣有 P2-15 反馈块，**时段起止（共享池 + 每账号两处视图共 4 个）/ 每账号候选模型的单价·折扣（2 个）/ 兜底模型单价（1 个）共 7 个输入框**虽已是 `FieldEditor<T>` 却完全不呈现错误。现全部补齐 `ToolTip.Tip="{Binding X.Error}"` + 同模板内 `X.Error`/`X.HasError` 错误文本；错误文本样式收为 `UserControl.Styles` 的 `TextBlock.field-error` 单一来源 | 由守卫 ③ 锁死；`ConfigViewBindingContractTests` 全绿（新增绑定路径均可解析） |
+| ③ #D5 God Config 结项 | `Core/Options/RunOptions.cs` 369→**18 行**，按 12 配置域横向切片为 `RunOptions.01~11-*.cs`（各 ≤49 行）。**不嵌套分组** → 类型面 / 属性名 / `[JsonPropertyName]` 键名 / 落盘字节全部不变，既有读写点与 `config.json` 契约零迁移 | `RunOptionsContractTests` 5 项全绿（含「落盘属性顺序与切片前逐项一致」——39 个持久化键） |
+| ④ 防回潮闸门 | 新增 `tests/BatchAgentRunner.Tests/Options/RunOptionsContractTests.cs`（**5 项**）+ `tests/BatchAgentRunner.Tests/Architecture/RunOptionsHygieneTests.cs`（**3 项**）+ `tests/BatchAgentRunner.Desktop.Tests/Architecture/ConfigEditorsHygieneTests.cs`（**3 项**） | **负测试实测**：编辑器侧注入 `Desktop/Models/P09Probe.cs`（手写 `int.TryParse` + 声明后从不读取的 `FieldEditor<int?> ProberPort`）→ 守卫 ①③ 报错；删掉「每账号候选模型」视图 4 个反馈绑定 → 守卫 ② 报错（**3/3 可捕获**）。配置侧注入 `Core/Options/RunOptions.12-Probe.cs`（219 行超限切片 + `camelCase` 键名 + 可写属性挂 `[JsonIgnore]` + `public RunOptions Snapshot()`）→ `RunOptionsHygieneTests` ②③ + `RunOptionsContractTests` ①②④⑤ 共 **5 项报错**。全部探针已删除、不入库 |
+| ④b 修守卫自身盲区 | `RunOptionsContractTests` 的 `Populator` 对 `int?` 等**可空基元**填成 `null` → 被 `WhenWritingNull` 忽略后属性不进 JSON，「全部持久化属性参与序列化」的往返断言漏检。改 `Nullable.GetUnderlyingType(type) ?? type` 拆到基元再填值 | 修复后重注可空基元探针 → ① 顺序契约 + ② 往返契约**均按预期报错**（当前 `RunOptions` 无可空基元字段，故此前盲区未暴露） |
+| ⑤ 文档同步 | `ARCH-架构重构与工程化治理方案.md`（头部更新 / §1.2 A-6 / §3.4 断言清单 + 第 4 条 / §4.3 / §5.7 / §6.1 / §6.2 P-09 执行记录 / 附录 A / 附录 B / 附录 C）、`架构重构与工程化治理方案.md`（§1.2 B2 / §4.3）、本文档（§1.3 P2-9 与 P2-15 / §4.7.1 #D5 结项 / §4.8 看板 2 处 / 附录 A） | 三份文档口径一致：P-09 ✅ 已收口，测试基线 758 |
+
+**验证统一口径（本次实跑）**：`dotnet build BatchAgentRunner.slnx --no-incremental`（严格模式，不带 fast 参数）= **0 警告 / 0 错误**；`dotnet test` 全量 = **758 通过 / 0 失败**（主 590 + Desktop 168，较 P-08 收口轮 744 +14）；`dotnet format --verify-no-changes` 除 §4.7 #9 已登记的 CHARSET 假阳性（本次实测 322 条）外 **0 问题**（本轮顺带修掉 `Options/RunOptions.09-Phase2.cs` 的 IMPORTS 排序）；架构守卫 `Architecture` 命名空间实测 主 **27** 项（`LayeringRulesTests` 9 / `EscapeValveHygieneTests` 5 / `DomainPrimitivesHygieneTests` 5 / `AppPathsHygieneTests` 4 / `RunOptionsHygieneTests` 3 / `CommentHygieneTests` 1）+ Desktop **11** 项（`LayeringRulesTests` 4 / `ConfigEditorsHygieneTests` 3 / `DesktopBindingRulesTests` 2 / 两视图绑定契约 2）全绿，另有配置契约 `RunOptionsContractTests` 5 项全绿；`RunOptions` 落盘字节与切片前**逐字节等价**（顺序契约 + 往返契约双锁）。
+
+> 阶段 4 边界（交接必读）：① **`RunOptions` 不改 `record`、不嵌套分组**——它是用户配置的产品契约（ARCH §2.2 不动清单），嵌套分组会改 `config.json` 形状；横向切片是 #D5 唯一零迁移的收口形态，代价是**切片顺序即 JSON 落盘顺序**（调整/新增切片须同步 `RunOptionsContractTests` 的顺序契约）。② **SMTP 端口非法仍回落 587 属刻意保留**：587 是协议默认端口，回落才能让规则可用；与「保留原值」的差异在于端口有明确默认值而时段没有——但错误态同样对用户显式呈现（不静默）。③ **保留的非 `FieldEditor<T>` 字段**：`NotificationRuleEditor.SmtpToText`（逗号/换行分隔的多值文本，非解析回写字段）、`QuietHours`（原样透传文本，由通知侧解析）均非泛型编辑器适用场景，不强行统一。④ **视图 XAML 守卫只校验「有反馈绑定」**：不校验反馈的位置/文案形式（各视图布局差异大，机器判定形态弊大于利）。⑤ **提交切片注意**：本轮涉及的 `ConfigEditors.cs` / `ConfigView.axaml` / `ConfigEditorsTests.cs` 三个文件在提交时点仍承载 P-04 配置页分解与 P2-15 编辑器泛型化的未提交改动，须**先切出 P-04 + P2-15 提交、再提本轮**，否则会违反 §7「单步 ≤400 行」护栏。
+
 ---
 
 ## 附录 A：台账索引（按偿还方式分组）
 
 | 方式            | ID                                                                                                                                               |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **重构**        | P0-1, P0-3~~P0-10, P0-12~~P0-15, P0-17, P1-1~~P1-5, P1-7, P1-9~~P1-12, P1-14~~P1-21, P2-1~P2-8, P2-10~P2-15, P2-16~P2-21, P2-23, P2-24, P2-26, P2-30 ✅（2026-10-21 已完成，见 §5.10）, P2-31 ✅（2026-10-21 已完成，见 §5.11）, P2-12 ✅（本次增量，见 §5.13）【P2-9 仅 Clone 子项已随 v2.0 消除，God Config 分组列入 #D5；P2-22 已解决（P0-14 gitignore + 零引用）】 |
+| **重构**        | P0-1, P0-3~~P0-10, P0-12~~P0-15, P0-17, P1-1~~P1-5, P1-7, P1-9~~P1-12, P1-14~~P1-21, P2-1~P2-8, P2-10~P2-15, P2-16~P2-21, P2-23, P2-24, P2-26, P2-30 ✅（2026-10-21 已完成，见 §5.10）, P2-31 ✅（2026-10-21 已完成，见 §5.11）, P2-12 ✅（本次增量，见 §5.13）, **P2-9 ✅（本次，见 §5.15；＝ ARCH P-09 收口，#D5 结项）**【P2-22 已解决（P0-14 gitignore + 零引用）】 |
 | **重写**（仅 4 项） | P0-2(局部), P1-13, P2-6, P2-15                                                                                                                     |
 | **隔离**        | P0-11(钩), P1-1(过渡), P1-9, P1-16(守卫过渡), P2-7, P2-10/P2-11, P2-19/P2-28                                                                            |
 | **主动不偿还**     | P2-24(部分), P2-14, P2-25(部分), P2-27（2026-10-20 评估维持，升级触发器见 §5.8）                                                                                                               |

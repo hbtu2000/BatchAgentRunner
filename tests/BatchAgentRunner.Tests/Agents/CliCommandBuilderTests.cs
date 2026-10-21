@@ -90,6 +90,35 @@ public class CliCommandBuilderTests
     }
 
     [Fact]
+    public void Build_指令含换行_折叠为单行且后续参数完整()
+    {
+        // 2026-10-22 事故回归：指令来自 xlsx 单元格时可能自带 CR/LF。
+        // CLI 是 .cmd shim 时命令行经 cmd.exe 转交，而 cmd.exe 把换行当命令分隔符 →
+        // 换行后的 --model / --output-format / --include-partial-messages / --port 会被整体丢弃，
+        // CLI 退回交互模式、不产出 stream-json，实时输出流一片空白。
+        var request = MakeRequest() with { Instruction = "第一行\r\n  第二行\n第三行" };
+        var cmd = CliCommandBuilder.Build(CliCommandBuilder.CodeBuddyTemplate, request, extra: "--flag-tail");
+
+        Assert.DoesNotContain("\r", cmd);
+        Assert.DoesNotContain("\n", cmd);
+        Assert.Contains("第一行 第二行 第三行", cmd);
+        Assert.Contains("--output-format stream-json", cmd);
+        Assert.Contains("--include-partial-messages", cmd);
+        Assert.Contains("--model gpt-4", cmd);
+        Assert.EndsWith("--flag-tail", cmd.Trim());
+    }
+
+    [Fact]
+    public void NormalizeToSingleLine_控制字符与连续空白折叠为单空格_并去首尾空白()
+    {
+        Assert.Equal(string.Empty, CliCommandBuilder.NormalizeToSingleLine(null));
+        Assert.Equal(string.Empty, CliCommandBuilder.NormalizeToSingleLine("  \r\n\t "));
+        Assert.Equal("a b c", CliCommandBuilder.NormalizeToSingleLine("  a\r\n\tb    c  "));
+        // 中文引号等非空白字符必须逐字保留，不得影响指令语义
+        Assert.Equal("请根据“方案.md”完成 Phase R8 。", CliCommandBuilder.NormalizeToSingleLine("请根据“方案.md”完成\r\n Phase R8 \n。"));
+    }
+
+    [Fact]
     public void WorkBuddyTemplate_含stream_json()
     {
         var cmd = CliCommandBuilder.Build(CliCommandBuilder.WorkBuddyTemplate, MakeRequest());
