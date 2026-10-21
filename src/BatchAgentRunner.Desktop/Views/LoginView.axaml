@@ -4,7 +4,9 @@
              mc:Ignorable="d" d:DesignWidth="1000" d:DesignHeight="760"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             x:Class="BatchAgentRunner.Desktop.Views.LoginView">
+             x:Class="BatchAgentRunner.Desktop.Views.LoginView"
+             x:CompileBindings="True"
+             x:DataType="vm:LoginViewModel">
 
     <Design.DataContext>
         <vm:LoginViewModel />
@@ -13,16 +15,16 @@
     <StackPanel Margin="0" Spacing="12">
 
             <!-- 顶部欢迎横幅 -->
-            <Border Padding="16,12" CornerRadius="8" Background="#EAF3FF" BorderBrush="#BBD7F7" BorderThickness="1">
+            <Border Padding="16,12" CornerRadius="8" Background="{DynamicResource PrimarySoftBrush}" BorderBrush="{DynamicResource BorderStrongBrush}" BorderThickness="1">
                 <StackPanel Spacing="4">
                     <TextBlock Text="账号登录" FontSize="20" FontWeight="Bold" />
-                    <TextBlock FontSize="13" TextWrapping="Wrap" Foreground="#2B4A6F"
+                    <TextBlock FontSize="13" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"
                                Text="这一页只做一件事：把账号登录好。点下面的「开始登录」，会自动弹出登录窗口——你只需要在浏览器里完成登录（微信 / 手机号 / 邮箱），其余全部自动：检测 → 校验 → 备份 → 加入账号池。多账号就多点几次按钮。" />
                 </StackPanel>
             </Border>
 
             <!-- ① 一键登录 -->
-            <Border Padding="16" CornerRadius="8" BorderBrush="#DDDDDD" BorderThickness="1">
+            <Border Padding="16" CornerRadius="8" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
                 <StackPanel Spacing="10">
 
                     <TextBlock Text="① 登录一个账号" FontSize="16" FontWeight="Bold" />
@@ -40,7 +42,7 @@
 
                     <Button Content="开始登录"
                             Height="46" FontSize="17" FontWeight="Bold"
-                            Background="#2F6FED" Foreground="White" CornerRadius="6"
+                            Background="{DynamicResource PrimaryBrush}" Foreground="{DynamicResource OnPrimaryBrush}" CornerRadius="6"
                             Command="{Binding LoginCommand}" IsEnabled="{Binding IsIdle}"
                             HorizontalAlignment="Left" Padding="32,0"
                             ToolTip.Tip="点一下就行：自动弹出登录窗口，你在浏览器里完成登录，其余全自动。" />
@@ -49,24 +51,24 @@
                             IsVisible="{Binding IsBusy}" HorizontalAlignment="Left" />
 
                     <!-- 自动进度步骤条 -->
-                    <Border Padding="12" CornerRadius="6" Background="#FAFBFC" BorderBrush="#EEEEEE" BorderThickness="1">
+                    <Border Padding="12" CornerRadius="6" Background="{DynamicResource BgSurfaceBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
                         <ItemsControl ItemsSource="{Binding Steps}">
                             <ItemsControl.ItemTemplate>
-                                <DataTemplate>
+                                <DataTemplate x:DataType="vm:LoginStepItem">
                                     <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,3">
                                         <Panel Width="18">
-                                            <TextBlock Text="○" Foreground="#AAAAAA" IsVisible="{Binding IsPending}" />
-                                            <TextBlock Text="●" Foreground="#2F6FED" IsVisible="{Binding IsActive}" />
-                                            <TextBlock Text="✓" Foreground="#1E8E3E" FontWeight="Bold" IsVisible="{Binding IsDone}" />
-                                            <TextBlock Text="✗" Foreground="#D13438" FontWeight="Bold" IsVisible="{Binding IsFailed}" />
+                                            <TextBlock Text="○" Foreground="{DynamicResource TextMutedBrush}" IsVisible="{Binding IsPending}" />
+                                            <TextBlock Text="●" Foreground="{DynamicResource PrimaryBrush}" IsVisible="{Binding IsActive}" />
+                                            <TextBlock Text="✓" Foreground="{DynamicResource SuccessBrush}" FontWeight="Bold" IsVisible="{Binding IsDone}" />
+                                            <TextBlock Text="✗" Foreground="{DynamicResource ErrorBrush}" FontWeight="Bold" IsVisible="{Binding IsFailed}" />
                                         </Panel>
                                         <TextBlock Text="{Binding Title}" FontSize="13" Opacity="0.55"
                                                    IsVisible="{Binding IsPending}" />
-                                        <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="Bold" Foreground="#2F6FED"
+                                        <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="Bold" Foreground="{DynamicResource PrimaryBrush}"
                                                    IsVisible="{Binding IsActive}" />
-                                        <TextBlock Text="{Binding Title}" FontSize="13" Foreground="#1E8E3E"
+                                        <TextBlock Text="{Binding Title}" FontSize="13" Foreground="{DynamicResource SuccessBrush}"
                                                    IsVisible="{Binding IsDone}" />
-                                        <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="Bold" Foreground="#D13438"
+                                        <TextBlock Text="{Binding Title}" FontSize="13" FontWeight="Bold" Foreground="{DynamicResource ErrorBrush}"
                                                    IsVisible="{Binding IsFailed}" />
                                     </StackPanel>
                                 </DataTemplate>
@@ -79,20 +81,20 @@
                                IsVisible="{Binding IsBusy}" />
 
                     <!-- 结果横幅 -->
-                    <Border Padding="12" CornerRadius="6" Background="#EFFAF0" BorderBrush="#BFE3C4" BorderThickness="1"
+                    <Border Padding="12" CornerRadius="6" Background="{DynamicResource SuccessSoftBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1"
                             IsVisible="{Binding IsSuccess}">
-                        <TextBlock FontSize="13" TextWrapping="Wrap" Foreground="#1E6B2E" Text="{Binding ResultText}" />
+                        <TextBlock FontSize="13" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Text="{Binding ResultText}" />
                     </Border>
-                    <Border Padding="12" CornerRadius="6" Background="#FDEDED" BorderBrush="#F5C2C0" BorderThickness="1"
+                    <Border Padding="12" CornerRadius="6" Background="{DynamicResource ErrorSoftBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1"
                             IsVisible="{Binding IsError}">
-                        <TextBlock FontSize="13" TextWrapping="Wrap" Foreground="#A4262C" Text="{Binding ResultText}" />
+                        <TextBlock FontSize="13" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Text="{Binding ResultText}" />
                     </Border>
 
                 </StackPanel>
             </Border>
 
             <!-- ② 已登录账号 -->
-            <Border Padding="16" CornerRadius="8" BorderBrush="#DDDDDD" BorderThickness="1">
+            <Border Padding="16" CornerRadius="8" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
                 <StackPanel Spacing="8">
                     <Grid ColumnDefinitions="*,Auto">
                         <TextBlock Grid.Column="0" Text="② 已经登录好的账号" FontSize="16" FontWeight="Bold" />
@@ -104,10 +106,10 @@
                                Text="还没有账号。从上面「① 登录一个账号」开始，登录成功的账号会自动出现在这里。" />
                     <ListBox ItemsSource="{Binding Rows}" IsVisible="{Binding HasAccounts}" MaxHeight="320">
                         <ListBox.ItemTemplate>
-                            <DataTemplate>
+                            <DataTemplate x:DataType="vm:LoginAccountRow">
                                 <Grid ColumnDefinitions="*,Auto,Auto,Auto" Margin="0,2">
                                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
-                                        <TextBlock Text="★" Foreground="#E8A100" FontWeight="Bold" VerticalAlignment="Center"
+                                        <TextBlock Text="★" Foreground="{DynamicResource WarningBrush}" FontWeight="Bold" VerticalAlignment="Center"
                                                    ToolTip.Tip="CLI 当前正在使用的账号"
                                                    IsVisible="{Binding IsCurrentLive}" />
                                         <TextBlock Text="{Binding DisplayName}" FontWeight="SemiBold" VerticalAlignment="Center" />
@@ -126,12 +128,12 @@
                                         <!-- 常态：删除（第一击，只进入确认状态） -->
                                         <Button Content="删除" IsVisible="{Binding IsNotConfirmingDelete}"
                                                 Command="{Binding DeleteCommand}"
-                                                Foreground="#D13438"
+                                                Foreground="{DynamicResource ErrorBrush}"
                                                 ToolTip.Tip="删除这个账号：备份凭证会一并清掉，点一下后需再点「确认删除」才真正删除。" />
                                         <!-- 确认态：确认删除 / 取消 -->
                                         <StackPanel Orientation="Horizontal" Spacing="4" IsVisible="{Binding IsConfirmingDelete}">
                                             <Button Content="确认删除" Command="{Binding DeleteCommand}"
-                                                    Background="#D13438" Foreground="White" FontWeight="Bold"
+                                                    Background="{DynamicResource ErrorBrush}" Foreground="{DynamicResource OnPrimaryBrush}" FontWeight="Bold"
                                                     ToolTip.Tip="再点一次，真的删除该账号及其备份凭证。" />
                                             <Button Content="取消" Command="{Binding CancelDeleteCommand}"
                                                     ToolTip.Tip="不删了，回到普通状态。" />
@@ -145,7 +147,7 @@
             </Border>
 
             <!-- ③ 每日积分 -->
-            <Border Padding="16" CornerRadius="8" BorderBrush="#DDDDDD" BorderThickness="1">
+            <Border Padding="16" CornerRadius="8" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
                 <StackPanel Spacing="8">
                     <TextBlock Text="③ 领取每日积分" FontSize="16" FontWeight="Bold" />
                     <TextBlock FontSize="12" Opacity="0.75" TextWrapping="Wrap"
@@ -155,7 +157,7 @@
                               ToolTip.Tip="勾选（默认）= 忽略台账去重，每次都去调领取接口，允许重复领取尝试。取消勾选 = 恢复「同账号每日一次」去重，今日已领过的账号自动跳过。" />
                     <Button Content="一键领取所有账号的今日积分"
                             Height="42" FontSize="15" FontWeight="Bold"
-                            Background="#1E8E3E" Foreground="White" CornerRadius="6"
+                            Background="{DynamicResource SuccessBrush}" Foreground="{DynamicResource OnPrimaryBrush}" CornerRadius="6"
                             Command="{Binding ClaimCreditsCommand}" IsEnabled="{Binding IsClaimIdle}"
                             HorizontalAlignment="Left" Padding="24,0"
                             ToolTip.Tip="自动切换每个账号的登录身份 → 读取领取前积分 → 领取 → 读取领取后积分，全程无需手动操作。" />
@@ -164,15 +166,15 @@
 
                     <ListBox ItemsSource="{Binding ClaimRows}" IsVisible="{Binding HasClaimRows}" MaxHeight="260">
                         <ListBox.ItemTemplate>
-                            <DataTemplate>
+                            <DataTemplate x:DataType="vm:CreditsClaimRow">
                                 <Grid ColumnDefinitions="Auto,90,80,80,70,*,Auto" Margin="0,2" VerticalAlignment="Center">
                                     <TextBlock Grid.Column="0" Text="{Binding AccountName}" FontWeight="SemiBold"
                                                VerticalAlignment="Center" />
                                     <TextBlock Grid.Column="1" Text="{Binding Status}" Margin="10,0,0,0" FontSize="12"
                                                VerticalAlignment="Center"
-                                               Foreground="#1E8E3E" IsVisible="{Binding IsClaimed}" />
+                                               Foreground="{DynamicResource SuccessBrush}" IsVisible="{Binding IsClaimed}" />
                                     <TextBlock Grid.Column="1" Text="{Binding Status}" Margin="10,0,0,0" FontSize="12"
-                                               VerticalAlignment="Center" Foreground="#D13438"
+                                               VerticalAlignment="Center" Foreground="{DynamicResource ErrorBrush}"
                                                IsVisible="{Binding IsFailed}" />
                                     <TextBlock Grid.Column="1" Text="{Binding Status}" Margin="10,0,0,0" FontSize="12"
                                                VerticalAlignment="Center" Opacity="0.7"
@@ -191,20 +193,20 @@
                     </ListBox>
 
                     <!-- 领取结果横幅 -->
-                    <Border Padding="12" CornerRadius="6" Background="#EFFAF0" BorderBrush="#BFE3C4" BorderThickness="1"
+                    <Border Padding="12" CornerRadius="6" Background="{DynamicResource SuccessSoftBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1"
                             IsVisible="{Binding IsSuccess}">
-                        <TextBlock FontSize="13" TextWrapping="Wrap" Foreground="#1E6B2E" Text="{Binding ResultText}" />
+                        <TextBlock FontSize="13" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Text="{Binding ResultText}" />
                     </Border>
-                    <Border Padding="12" CornerRadius="6" Background="#FDEDED" BorderBrush="#F5C2C0" BorderThickness="1"
+                    <Border Padding="12" CornerRadius="6" Background="{DynamicResource ErrorSoftBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1"
                             IsVisible="{Binding IsError}">
-                        <TextBlock FontSize="13" TextWrapping="Wrap" Foreground="#A4262C" Text="{Binding ResultText}" />
+                        <TextBlock FontSize="13" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}" Text="{Binding ResultText}" />
                     </Border>
                 </StackPanel>
             </Border>
 
             <!-- ⑤ 后续：模型不用手填 -->
-            <Border Padding="12" CornerRadius="6" Background="#F7F9FC" BorderBrush="#E2E8F0" BorderThickness="1">
-                <TextBlock FontSize="12" TextWrapping="Wrap" Foreground="#475569"
+            <Border Padding="12" CornerRadius="6" Background="{DynamicResource BgSurfaceBrush}" BorderBrush="{DynamicResource BorderSubtleBrush}" BorderThickness="1">
+                <TextBlock FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource TextSecondaryBrush}"
                            Text="登录成功后，模型不用手填：到「配置」或「配置向导」里点「拉取可用模型」，会按当前账号实时读取该 CLI 支持的模型名，直接下拉选择即可，避免输错。" />
             </Border>
 

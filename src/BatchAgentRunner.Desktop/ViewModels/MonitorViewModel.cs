@@ -3,6 +3,7 @@ using Avalonia.Media;
 using Avalonia.Threading;
 using BatchAgentRunner.Core.Domain;
 using BatchAgentRunner.Core.Events;
+using BatchAgentRunner.Desktop.Helpers;
 using BatchAgentRunner.Desktop.Models;
 using BatchAgentRunner.Desktop.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -283,15 +284,7 @@ public sealed class MonitorViewModel : ViewModelBase
         _ => Status.ToString()
     };
 
-    public IBrush StatusBrush => Status switch
-    {
-        BatchStatus.Running => new SolidColorBrush(Color.Parse("#2F6FED")),
-        BatchStatus.Waiting => new SolidColorBrush(Color.Parse("#B06000")),
-        BatchStatus.Blocked => new SolidColorBrush(Color.Parse("#D93025")),
-        BatchStatus.Completed => new SolidColorBrush(Color.Parse("#1F9D55")),
-        BatchStatus.Terminated => new SolidColorBrush(Color.Parse("#8A8F98")),
-        _ => new SolidColorBrush(Color.Parse("#8A8F98"))
-    };
+    public IBrush StatusBrush => AppBrushes.ForBatchStatus(Status);
 
     public bool IsWaiting => Status == BatchStatus.Waiting;
 

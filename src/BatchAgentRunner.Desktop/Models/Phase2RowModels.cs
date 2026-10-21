@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Media;
 using BatchAgentRunner.Core.Domain;
+using BatchAgentRunner.Desktop.Helpers;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace BatchAgentRunner.Desktop.Models;
@@ -39,17 +40,8 @@ public sealed class StageRowViewModel : ObservableObject
         _ => _stage.Status.ToString()
     };
 
-    public IBrush StatusBrush => _stage.Status switch
-    {
-        TaskStatus.Pending => new SolidColorBrush(Color.Parse("#8A95A3")),
-        TaskStatus.Running => new SolidColorBrush(Color.Parse("#2F6FED")),
-        TaskStatus.Done => new SolidColorBrush(Color.Parse("#1F9D55")),
-        TaskStatus.Failed => new SolidColorBrush(Color.Parse("#D93025")),
-        TaskStatus.Interrupted => new SolidColorBrush(Color.Parse("#B06000")),
-        TaskStatus.NeedsAttention => new SolidColorBrush(Color.Parse("#7C3AED")),
-        TaskStatus.Blocked => new SolidColorBrush(Color.Parse("#0E7490")),
-        _ => new SolidColorBrush(Color.Parse("#8A95A3"))
-    };
+    /// <summary>阶段状态色（P2-10/P2-11：经 AppBrushes 取主题 token，双主题自动切换）。</summary>
+    public IBrush StatusBrush => AppBrushes.ForTaskStatus(_stage.Status);
 
     /// <summary>门禁结果摘要（GateResultView 数据源）。</summary>
     public string GateText => _stage.Status == TaskStatus.Pending

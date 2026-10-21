@@ -36,6 +36,7 @@
 
             <SolidColorBrush x:Key="PrimaryBrush" Color="#2563EB" />
             <SolidColorBrush x:Key="PrimaryHoverBrush" Color="#1D4FD8" />
+            <SolidColorBrush x:Key="OnPrimaryBrush" Color="#FFFFFF" />
             <SolidColorBrush x:Key="PrimarySoftBrush" Color="#E8F0FE" />
             <SolidColorBrush x:Key="SuccessBrush" Color="#16A34A" />
             <SolidColorBrush x:Key="SuccessSoftBrush" Color="#E6F6EC" />
@@ -78,6 +79,7 @@
 
             <SolidColorBrush x:Key="PrimaryBrush" Color="#4C8DFF" />
             <SolidColorBrush x:Key="PrimaryHoverBrush" Color="#6BA0FF" />
+            <SolidColorBrush x:Key="OnPrimaryBrush" Color="#FFFFFF" />
             <SolidColorBrush x:Key="PrimarySoftBrush" Color="#1E2C44" />
             <SolidColorBrush x:Key="SuccessBrush" Color="#3FCB6E" />
             <SolidColorBrush x:Key="SuccessSoftBrush" Color="#15301F" />

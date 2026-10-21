@@ -2,17 +2,17 @@ using System;
 using System.Globalization;
 using Avalonia.Data;
 using Avalonia.Data.Converters;
-using Avalonia.Media;
+using BatchAgentRunner.Desktop.Helpers;
 
 namespace BatchAgentRunner.Desktop.Converters;
 
-/// <summary>配置中心：根据当前激活的子视图 key 返回按钮背景色（选中=蓝，未选=浅灰）。</summary>
+/// <summary>配置中心：根据当前激活的子视图 key 返回按钮背景色（选中=蓝，未选=浅灰；P2-10/P2-11：经 AppBrushes 取主题 token）。</summary>
 public sealed class ActiveTabBackgroundConverter : IValueConverter
 {
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         var isActive = string.Equals(value as string, parameter as string, StringComparison.Ordinal);
-        return new SolidColorBrush(isActive ? Color.Parse("#2F6FED") : Color.Parse("#E5E7EB"));
+        return isActive ? AppBrushes.NavActive() : AppBrushes.NavInactiveTrack();
     }
 
     // P1-20：原为 `throw new NotImplementedException()`——双向绑定一旦触发即崩溃。
@@ -22,13 +22,13 @@ public sealed class ActiveTabBackgroundConverter : IValueConverter
         => BindingOperations.DoNothing;
 }
 
-/// <summary>配置中心：根据当前激活的子视图 key 返回按钮文字色（选中=白，未选=深灰）。</summary>
+/// <summary>配置中心：根据当前激活的子视图 key 返回按钮文字色（选中=白，未选=深灰；P2-10/P2-11：经 AppBrushes 取主题 token）。</summary>
 public sealed class ActiveTabForegroundConverter : IValueConverter
 {
     public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         var isActive = string.Equals(value as string, parameter as string, StringComparison.Ordinal);
-        return new SolidColorBrush(isActive ? Colors.White : Color.Parse("#1F2937"));
+        return isActive ? AppBrushes.NavActiveText() : AppBrushes.NavInactiveText();
     }
 
     public object? ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)

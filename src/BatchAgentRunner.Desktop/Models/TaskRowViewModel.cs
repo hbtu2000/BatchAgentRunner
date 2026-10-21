@@ -1,6 +1,7 @@
 using System.ComponentModel;
 using Avalonia.Media;
 using BatchAgentRunner.Core.Domain;
+using BatchAgentRunner.Desktop.Helpers;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace BatchAgentRunner.Desktop.Models;
@@ -61,17 +62,8 @@ public sealed class TaskRowViewModel : ObservableObject, IDisposable
     /// <summary>任务状态枚举（供 StatusDotHelper.TaskStatus 附加属性按状态着色，双主题）。</summary>
     public TaskStatus Status => Item.Status;
 
-    public IBrush StatusBrush => Item.Status switch
-    {
-        TaskStatus.Pending => new SolidColorBrush(Color.Parse("#8A8F98")),
-        TaskStatus.Running => new SolidColorBrush(Color.Parse("#2F6FED")),
-        TaskStatus.Done => new SolidColorBrush(Color.Parse("#1F9D55")),
-        TaskStatus.Failed => new SolidColorBrush(Color.Parse("#D93025")),
-        TaskStatus.Interrupted => new SolidColorBrush(Color.Parse("#B06000")),
-        TaskStatus.NeedsAttention => new SolidColorBrush(Color.Parse("#7C3AED")),
-        TaskStatus.Blocked => new SolidColorBrush(Color.Parse("#0E7490")),
-        _ => new SolidColorBrush(Color.Parse("#8A8F98"))
-    };
+    /// <summary>任务状态色（P2-10/P2-11：经 AppBrushes 取主题 token，双主题自动切换）。</summary>
+    public IBrush StatusBrush => AppBrushes.ForTaskStatus(Item.Status);
 
     /// <summary>是否工作流任务（详情面板切换阶段树展示）。</summary>
     public bool IsWorkflow => Item.IsWorkflow;
@@ -142,10 +134,5 @@ public sealed class ToastItem
 
     public string TimeText => At.ToString("HH:mm:ss");
 
-    public IBrush LevelBrush => Level switch
-    {
-        "danger" => new SolidColorBrush(Color.Parse("#D93025")),
-        "warning" => new SolidColorBrush(Color.Parse("#B06000")),
-        _ => new SolidColorBrush(Color.Parse("#2F6FED"))
-    };
+    public IBrush LevelBrush => AppBrushes.ForLevel(Level);
 }

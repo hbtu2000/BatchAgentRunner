@@ -2,6 +2,7 @@ using System.Collections.ObjectModel;
 using System.Text.RegularExpressions;
 using Avalonia.Media;
 using BatchAgentRunner.Core.Domain;
+using BatchAgentRunner.Desktop.Helpers;
 using BatchAgentRunner.Desktop.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -183,12 +184,7 @@ public sealed class DiffRowViewModel : ObservableObject
         _ => "修改"
     };
 
-    public IBrush KindBrush => Source.Kind switch
-    {
-        DiffKind.Added => new SolidColorBrush(Color.Parse("#1F9D55")),
-        DiffKind.Deleted => new SolidColorBrush(Color.Parse("#D93025")),
-        _ => new SolidColorBrush(Color.Parse("#B06000"))
-    };
+    public IBrush KindBrush => AppBrushes.ForDiffKind(Source.Kind);
 
     public bool HasContent => !string.IsNullOrWhiteSpace(Source.UnifiedDiff);
 }
@@ -203,14 +199,14 @@ public sealed class DiffLineViewModel
     public IBrush Foreground { get; }
 
     public static DiffLineViewModel Added(string text) =>
-        new(text, new SolidColorBrush(Color.Parse("#1F9D55")));
+        new(text, AppBrushes.ForDiffKind(DiffKind.Added));
 
     public static DiffLineViewModel Removed(string text) =>
-        new(text, new SolidColorBrush(Color.Parse("#D93025")));
+        new(text, AppBrushes.ForDiffKind(DiffKind.Deleted));
 
     public static DiffLineViewModel Hunk(string text) =>
-        new(text, new SolidColorBrush(Color.Parse("#8A8F98")));
+        new(text, AppBrushes.DiffText(true));
 
     public static DiffLineViewModel Context(string text) =>
-        new(text, new SolidColorBrush(Color.Parse("#5A6675")));
+        new(text, AppBrushes.DiffText(false));
 }
