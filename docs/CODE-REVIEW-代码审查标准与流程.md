@@ -93,6 +93,8 @@
 - 🟡 **门禁例外先登记再落地（P2-30）**：`#pragma warning disable` / `[SuppressMessage]` / `.editorconfig` `severity = none` / csproj `NoWarn` / 钩子诊断过滤，一律先在 `TECH-DEBT-技术债务治理方案-v2.0.md` §4.7 逃逸阀台账登记四要素（发现日 / 责任人 / 到期日 / 不变量断言），再在就近注释写明「逃逸阀台账 #N / 到期日 YYYY-MM-DD / 责任人 X」；已由 `EscapeValveHygieneTests` 自动把关——未登记、无到期日、到期未清理、代码与台账不一致，任一即测试失败。
 - 🟡 **路径常量与 JSON 仓储样板（P2-31）**：应用本地数据目录（`%LOCALAPPDATA%` 下）一律走 `Infrastructure/AppPaths` 登记（`Root` / `ConfigDirectory` / `TemplatesDirectory` / `VaultDirectory` / `RunsDirectory` / `LogsDirectory` / `MockLiveDirectory`），`src` 内不得再内联应用名路径魔法串；新增单文件 `Json*Store` 须继承 `Infrastructure/Persistence/JsonStoreBase<T>`，只实现 `CreateEmpty()`（自愈/迁移走 `NormalizeAsync()` 钩子），不得自带「建目录 / `JsonSerializer` / `AtomicFileWriter`」样板；已由 `AppPathsHygieneTests` 自动把关——内联魔法串、样板回潮、`AppPaths` 派生目录脱根，任一即测试失败。
 - 🟡 **方法/类复杂度**：单方法超过 ~80 行或嵌套超过 4 层，建议拆分子方法（`ExecuteTaskAsync` 已按 P1-2 内拆 1790708 显式状态机化，全部子方法 ≤60 行 / 圈复杂度 ≤15；新增分支优先抽子方法而非继续膨胀）。
+- 🟡 **色值经 token / 单一入口（P2-10 / P2-11）**：UI 字面色（状态 / 级别 / diff / 导航）一律经 `Desktop/Helpers/AppBrushes` 按 token 名取色（`{DynamicResource XxxBrush}` 于 XAML、`AppBrushes.ForXxx` 于代码），不得再内联 `Color.Parse("#…")` / `#hex`；token 表在 `Styles/AppStyles.xaml`（Light/Dark 双字典），新增色须在该处登记而非散落。已由 `AppBrushesTests` 把关——`src` 内 `Color.Parse` 仅允许出现在 `AppBrushes` 的 fallback 字面量，`AppStyles.xaml` 之外不得出现字面色。
+- 🟡 **XAML 须带类型安全绑定（P2-12 增量）**：改 / 新增视图时根节点加 `x:CompileBindings="True"` + `x:DataType`，`DataTemplate` 也须标 `x:DataType`（子项类型）——把属性拼写错误从「运行时静默失效」升为编译错误；全局默认维持 `false`，不得为图省事翻转 `Desktop.csproj` 的 `AvaloniaUseCompiledBindingsByDefault`（会让未带类型的绑定失效）。
 - 💭 **`record` vs `class`**：值语义（组合键、结果）用 `record`；有可变状态/身份的对象用 `class`；当前 `AgentCombo`/`RestoreCandidate` 用 `record` 合理，新增时遵循此区分。
 
 ### 3.6 性能
@@ -136,6 +138,8 @@
 | H14 | 持 `IDisposable` 字段的类型自身须可释放（`SemaphoreSlim`/`CancellationTokenSource`/日志） | 🟡 | 分析器 `CA1001`（error） |
 | H15 | 门禁例外须登记 §4.7 逃逸阀台账四要素并就近标注台账 ID / 到期日 / 责任人 | 🔴 | `EscapeValveHygieneTests`（2026-10-21 P2-30 落地） |
 | H16 | 应用本地数据目录路径一律走 `AppPaths` 登记；单文件 JSON 仓储继承 `JsonStoreBase<T>`，不复制「建目录 / `JsonSerializer` / `AtomicFileWriter`」样板 | 🟡 | `AppPathsHygieneTests`（2026-10-21 P2-31 落地） |
+| H17 | UI 字面色经 token / 单一入口（P2-10 / P2-11）：状态 / 级别 / diff / 导航等字面色一律经 `Desktop/Helpers/AppBrushes` 按 token 名取色（`{DynamicResource XxxBrush}` 于 XAML、`AppBrushes.ForXxx` 于代码），不得内联 `Color.Parse("#…")` / `#hex`；token 表仅在 `Styles/AppStyles.xaml`（Light/Dark 双字典）登记 | 🟡 | `AppBrushesTests`（源码扫描：`src` 内 `Color.Parse` 仅允许出现在 `AppBrushes` 的 fallback 字面量；`AppStyles.xaml` 之外不得出现字面色） |
+| H18 | XAML 须带类型安全绑定（P2-12 增量）：改 / 新增视图时根节点加 `x:CompileBindings="True"` + `x:DataType`，`DataTemplate` 也须标 `x:DataType`（子项类型） | 🟡 | 人工 + 构建（编译绑定把属性拼写错误从「运行时静默失效」升为编译错误）；全局默认维持 `false`，不得翻转 `Desktop.csproj` 的 `AvaloniaUseCompiledBindingsByDefault` |
 
 ---
 
@@ -285,6 +289,8 @@ dotnet format BatchAgentRunner.slnx --verify-no-changes   # pre-commit 钩已强
 | 测试里起真实进程 | 注入 `IProcessLauncher` 假启动器 | P2-21 |
 | 持有 `SemaphoreSlim`/`CTS` 却不实现 `IDisposable` | 补 `IDisposable` 链并级联释放 | P0-12 / CA1001 |
 | 源码存成 GBK / 带 BOM / 行尾 CRLF 混用 | UTF-8 无 BOM + LF（`pre-commit` 钩强制，`iconv` + `end_of_line=lf`） | P0-12 格式门禁 / SDK 10.0.401 CHARSET 回归（治理方案 §4.7 #9） |
+| XAML 内联 `#hex` / 代码 `Color.Parse("#…")` 硬编码字面色 | 经 `AppBrushes` / `{DynamicResource XxxBrush}` 设计 token 单一入口（`AppStyles.xaml` Light/Dark 双字典登记），新增色在该处登记而非散落 | P2-10 / P2-11 / `AppBrushesTests` |
+| XAML 绑定无 `x:CompileBindings` + `x:DataType`（根节点 + `DataTemplate` 子类型） | 增量开启编译绑定，把属性拼写错误从运行时静默失效升为编译错误；不翻转全局默认 | P2-12 / `LoginView`·`SetupWizardView` |
 
 ---
 

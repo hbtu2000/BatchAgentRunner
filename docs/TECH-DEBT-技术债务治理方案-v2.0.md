@@ -154,6 +154,15 @@ P2-28（samples 降级为只读示例，测试契约改读嵌入式副本，内�
 
 **P2-31 随阶段 4「持续化」偿还（2026-10-21，见 §5.11）**：三份 `Json*Store` 抽 `JsonStoreBase<T>` + 9 处路径魔法串收口 `AppPaths` + `AppPathsHygieneTests` 守卫。
 
+**P2 持续化偿还第二批（2026-10-21 后 ~ 本次，补记 + 收口）**：
+
+- **P2-1~P2-8 / P2-13 / P2-15（2026-10-21 后提交，本文档滞后补记，见 §5.12）**：重复实现收敛——P2-1~P2-6 手写 `Clone` → `record with`、依赖判定 / 文本截断 / 终态集合各收单一事实来源；P2-7 `INotifyPropertyChanged` 解耦、P2-8 `FakeClock` 迁出生产；P2-13 按枚举着色；P2-15 五编辑器 → `FieldEditor<T>`。
+- **P2-23 / P2-24 / P2-25（2026-10-21 后提交，见 §5.12）**：仓库卫生（`*.xlsx` 标 binary）/ 性能（日志批量落盘、O(n²) Tail 消除）/ 死代码删除。
+- **P2-10 / P2-11（本次收口，见 §5.13）**：硬编码字面色全部经 `AppBrushes` 单一入口 + `AppStyles.xaml` 双主题 token（`DynamicResource`）；代码侧 11 处 + XAML 侧 41 处清零。
+- **P2-12（本次增量，见 §5.13）**：`LoginView` / `SetupWizardView` 根节点加 `x:CompileBindings` + `x:DataType`（**不翻转全局默认**）；全量翻转待所有视图补齐 `x:DataType` 后单独排期。
+- **P2-9（调整口径）**：v1.0 记载的 `RunOptions.Clone()`「JSON 往返」已在 v2.0 重构中**消除**（当前 `RunOptions` 无 `Clone` 方法）；剩余「God Config 40+ 配置项分组」属宽爆炸半径域重构，列入 §4.7.1 计划性延期 **#D5**。
+- **P2-22（已解决）**：`models.yaml` 已于 P0-14 `git rm --cached` + gitignore，当前零代码引用，本地 0 字节残骸已随本轮清理。
+
 ---
 
 ## 2. 治理路线图
@@ -251,9 +260,15 @@ P2-27 中文测试方法名 评估：维持「主动不偿还」，升级触发�
 P2-29 _harness/ publish 产物堆清理 + .gitignore 显式规则防复发                ✅ 2026-10-20（§5.9）
 P2-30 逃逸阀台账四要素补齐 + 未登记的生产代码豁免归位 + EscapeValveHygieneTests ✅ 2026-10-21（§5.10）
 P2-31 三份 Json*Store 抽 JsonStoreBase<T> + 9 处路径魔法串收口 AppPaths + AppPathsHygieneTests ✅ 2026-10-21（§5.11）
+P2-1~P2-8 / P2-13 / P2-15 重复实现收敛（Clone/依赖判定/截断/终态/INotifyPropertyChanged/FakeClock/枚举着色/编辑器） ✅ 2026-10-21 后提交（§5.12）
+P2-23 / P2-24 / P2-25 仓库卫生 / 性能 / 死代码                                  ✅ 2026-10-21 后提交（§5.12）
+P2-10 / P2-11 硬编码字面色经 AppBrushes + AppStyles token 双主题化               ✅ 本次（§5.13）
+P2-12 LoginView/SetupWizardView 增量编译绑定（x:CompileBindings + x:DataType）     ✅ 本次（§5.13，全量翻转待排期）
+P2-22 models.yaml 残骸清理（P0-14 已 gitignore + 零引用）                        ✅ 本次（§5.13）
+P2-9 God Config 分组 → 计划性延期 #D5（Clone 子项已于 v2.0 消除）；P2-14 维持主动不偿还
 ```
 
-> 下一批候选：P2-6（六个手写 `Clone` → `record with`）、P2-15（五个编辑器 → 泛型 `FieldEditor<T>`）。
+> 下一批候选：P2-9（God Config 分组，#D5）、P2-12 全量编译绑定翻转（待所有视图补齐 `x:DataType`）、D5（`git filter-repo` 历史净化，高风险单独评审）。
 
 ---
 
@@ -466,7 +481,7 @@ P2-31 三份 Json*Store 抽 JsonStoreBase<T> + 9 处路径魔法串收口 AppPat
 > `CA2007`（1 处缺 `ConfigureAwait`）本轮已**偿还并从 NoWarn 移除**，仅 `AVLN3001` 保留并登记为 #10。
 > 同轮纠正一处文档失真：§5.4 阶段 1 边界① 曾写「生产代码 0 豁免」，而 Desktop 生产项目实际存在 3 项 `NoWarn`（见 §5.10 与附录 B.3 #5）。
 
-#### 4.7.1 计划性延期台账（P2-26，2026-10-20 建立，共 4 项）
+#### 4.7.1 计划性延期台账（P2-26，2026-10-20 建立，共 6 项）
 
 P2-26 清算结论：**计划性延期一律进本台账，代码注释只描述当前实现**（自述延期即被 `CommentHygieneTests` 拦截）。字段遵循 §4.6 强制四项（发现日 / 责任人 / 到期日 / 不变量断言）。与上表逃逸阀的分界：逃逸阀是「门禁例外」（pragma/NoWarn），本表是「功能延期」（未做的能力）。
 
@@ -476,8 +491,10 @@ P2-26 清算结论：**计划性延期一律进本台账，代码注释只描述
 | D2 | 真实 CLI 适配器声明支持会话恢复（方案 b 启用）                                        | `IAgentCliAdapter.CanResume` 默认 `false`；`SessionResumePolicy` 默认关、全条件回退方案 a   | 前置验证 M0 V-8（CLI 是否支持 resume）未实测；不阻塞主线（DESIGN §13 E4 / §14 开放问题 1） | 2026-10-20 / 工程 / M0 实测轮            | `SessionResumePolicyTests` 5 项（默认关 / 无句柄 / CLI 不支持 / 跨 adapter 均回退；仅全条件满足才 Resume） |
 | D3 | WorkBuddy CLI 登录态存储位置与形态确认（V-4b/V-4e）                                 | `CredentialLocationRegistry` 中 WorkBuddy 无文件型位置登记；一键登录/积分领取对 WorkBuddy 拒绝执行 | 桌面主登录态存储方式未知，需实机确认；确认前拒绝执行好过盲猜路径           | 2026-10-20 / 工程 / M0 实测轮            | `GuidedLoginFlowTests` / `VaultSwitchTests` 既有「未登记 CLIId 拒绝并提示」用例保持绿 |
 | D4 | 专家参数降级：CLI 不支持专家参数时以 `ExpertRef.RolePrompt` 注入角色描述         | `RolePrompt` 字段存在但引擎未消费（预留位）                                   | 前置验证 M0 V-5（CLI 专家参数支持面）未实测；DESIGN §13.3 V-5 在册   | 2026-10-20 / 工程 / M0 实测轮            | 字段序列化契约由既有模板兼容测试锁死；启用时补「不支持 → prompt 注入」用例 |
+| D5 | `RunOptions` God Config 分组（40+ 扁平配置项拆分为子选项组）                | `Options/RunOptions.cs` 单一大类承载 9 大配置域；v1.0 记载的 `Clone()`「JSON 往返」已于 v2.0 重构中消除（当前无 `Clone`），本项仅剩结构分组 | 宽爆炸半径域重构：RunOptions 被广泛引用（引擎/CLI 适配/序列化契约），分组需同步迁移所有读写点与 config.json 契约，须专项评审 + 回归 | 2026-10-21 / 工程 / God Config 专项迭代 | 分组后既有序列化契约测试 + `Options` 读写点白箱测试全绿；`config.json` 前后兼容 |
+| D6 | XAML 全量编译绑定翻转（`AvaloniaUseCompiledBindingsByDefault=true`）          | `Desktop.csproj` 当前 `false`；本次（§5.13）仅对 `LoginView`/`SetupWizardView` 增量加 `x:CompileBindings` + `x:DataType` | 翻转全局默认会让所有未带 `x:DataType` 的绑定失效，回归风险极高；须先为全部视图补齐 `x:DataType`（含 `DataTemplate` 子类型） | 2026-10-21 / 工程 / 全视图 x:DataType 补齐后 | 每新增/修改视图须带 `x:CompileBindings` + `x:DataType`；既有 `LayeringRulesTests`/视图契约测试全绿 |
 
-> 到期未推进的延期，按 §4.7 规则自动升级为该迭代 P1。D2/D3/D4 共享同一前置（M0 实测轮），建议同轮清零。
+> 到期未推进的延期，按 §4.7 规则自动升级为该迭代 P1。D2/D3/D4 共享同一前置（M0 实测轮），建议同轮清零。D5/D6 为本次收口轮新登记。
 
 ### 4.8 度量与趋势看板
 
@@ -490,7 +507,7 @@ P2-26 清算结论：**计划性延期一律进本台账，代码注释只描述
 | 全量构建警告数                | **0**（2026-10-18 阶段 1 清零：P0-12 完成，`TreatWarningsAsErrors=true` 生效，任何新增警告即构建失败；2026-10-19 P1-4/P1-5 收口后复测仍 0）                                                                             | → 0 并保持  |
 | `catch (Exception)` 占比 | **src 44 处**（2026-10-19 复测，较阶段 1 的 42 略升；占比分母随 P1-1 拆分变化，待精确复算）                                                                                  | ↓        |
 | 高危模块零覆盖数               | **0**（2026-10-20 P1-15 收口：阶段 1 补齐 XlsxTaskParser/Writer、CliCommandBuilder、DangerousOperationGuard；P1-14 补齐 LocalGitIntegration 子进程执行契约测试；2026-10-20 补齐最后三项 CodeBuddyCreditsApiClient / BackupManager / ShutdownService，见 §5.6） | → 0 并保持  |
-| Desktop 测试数            | **55 用例**（2026-10-20 实跑 Desktop.Tests 全绿：架构断言 4（含 P1-6 新增「不得存在同步阻塞异步结果调用」IL 扫描）+ VM 白箱（Config/ConfigHub/Report/TemplateEditor/Login/Monitor/SetupWizard）+ ConfigView 视图契约 + `UiThread` 线程收敛契约 2 + 转换器 / 多值文本；P1-19 补 headless 基座与契约测试从 39 增长至 54，P1-6 再 +1）                                                              | ↑        |
+| Desktop 测试数            | **112 用例**（2026-10-21 后 P2 机会主义偿还批次累计新增：P2-1~P2-8/P2-13/P2-15/P2-23~P2-25 收口轮 + 本次 P2-10/11/12 收口轮；含 `AppBrushesTests` 27 / `OnboardingViewTests` 2 / 各 VM 白箱等；headless 基座 + 视图契约 + 架构断言持续扩展）                                                              | ↑        |
 | 空提交信息数 / 迭代            | 10/12 历史；阶段 −1 起由 commit-msg 钩强制「非空 + 含改了什么/为什么」                                                                                                                           | → 0 并保持  |
 | 误提交产物数                 | 10；阶段 −1 已 `git rm --cached` 并 ignore，当前 0                                                                                                                                 | → 0 并保持  |
 | 已 ignore 产物堆（P2-29）    | 曾 `_harness/` 1.2G / 214 文件（publish+bin+obj，从未跟踪、无人清理）；2026-10-20 整堆清理 + `/_harness/` 显式 ignore 规则                                                                    | → 0 并保持  |
@@ -498,7 +515,7 @@ P2-26 清算结论：**计划性延期一律进本台账，代码注释只描述
 | 每迭代**新增**债务数           | 未采集（阶段 −1 起采集）                                                                                                                                                             | → 趋 0    |
 | churn 热点 Top3          | `BatchEngine.cs`(4)、`RunOptions.cs`(4)、`ConfigView.axaml`(4)                                                                                                               | 热点应随拆分下降 |
 | 同步阻塞调用数（P1-6 类）      | **0**（2026-10-20 归零：原 2 处 `GetAwaiter().GetResult()`——`MainViewModel.cs:20`、`EngineHost.cs:136`——经异步初始化门消除；新增 IL 架构断言 `Desktop程序集_不得存在同步阻塞异步结果的调用` 持续锁住，任何新增 `.GetAwaiter().GetResult()` / `Task.Result` / `Task.Wait()` 即构建/测试失败） | → 0 并保持  |
-| 测试总数                   | **565 用例通过 / 0 失败**（2026-10-21 P2-31 收口轮实跑：主测试项目 507 + Desktop.Tests 58；较 P2-30 收口轮 550 +15：新增 `AppPathsHygieneTests` 3 项 + `JsonStoreBaseTests` 12 项，全绿）                                                                     | ↑        |
+| 测试总数                   | **650 用例通过 / 0 失败**（2026-10-21 后 ~ 本次实跑：主测试项目 538 + Desktop.Tests 112；较 P2-31 收口轮 565 +85：P2-1~P2-8/P2-13/P2-15/P2-23~P2-25 收口轮 + 本次 P2-10/11/12 收口轮新增 `AppBrushesTests` 27 / `OnboardingViewTests` 2 等，全绿）                                                                     | ↑        |
 | 误导性自述注释数（P2-26）      | **0**（2026-10-20 收口：v2.0 盘点 147 处「二期/暂不支持/遗留/尚未」逐条核对——台账点名的脱节注释前序轮次已清、`RetrieveSecret` 一处本轮修正、~100 处「二期」为已交付功能历史标签如实保留；真实延期 4 项进 §4.7.1 台账。`CommentHygieneTests` 源码扫描锁死，新增即失败）                                                                     | → 0 并保持  |
 | 逃逸阀台账条目数（P2-30）       | **10 条**（2026-10-21 收口：全仓盘点去重后登记——`#pragma` 1 + `[SuppressMessage]` 8 + `.editorconfig` `none` 1 + `NoWarn` 规则 5 + 钩子过滤 1；**无到期日条目 0**（原 #1「二期换 MailKit 时」/ #2「待评估」/ #5-#8「长期有效」全部折算为具体复核日）；同轮发现并偿还 2 项**从未登记**的生产代码豁免：`AVLN5001` 10 处过时 API（`Watermark`→`PlaceholderText`、`SystemDecorations`→`WindowDecorations`）+ Desktop `CA2007` 1 处（`ConfigureAwait` 缺失），豁免随之删除） | ↓（新增须登记，到期须清理） |
 
@@ -720,13 +737,46 @@ A 组 10 项互不耦合，与 P0-17 并行完成。代码改动均随既有工�
 
 > **文档同步补记（2026-10-21 收口复核轮）**：P2-31 代码与台账提交（`adace61` / `43a10ea`）时漏同步 `docs/CODE-REVIEW-代码审查标准与流程.md`，本轮补齐三处——§3.5 可维护性与架构清单补「路径常量与 JSON 仓储样板（P2-31）」条、§4 硬规则表补 H16、§9 反模式表补对应行，使 §4.5「PR 评审清单落在 CODE-REVIEW」的口径在该文档侧闭环（对照：P2-30 轮同步了 §3.5 条目 + H15）。代码与测试真值未变（565 通过 / 0 失败），本轮为纯文档补同步。
 
+### 5.12 阶段 4：P2-1~P2-8 / P2-13 / P2-15 / P2-23~P2-25 回填执行记录（2026-10-21 后提交，本文档滞后补记）
+
+> 下述 P2 项已在 **2026-10-21 后**提交（提交号见下），但当时未同步本文档；本轮据 git 历史与实际代码真值补记，避免台账与代码漂移。
+
+| 批次 | ID | 落地内容（摘要） | 提交 |
+| ---- | -- | --------------- | ---- |
+| 重复实现收敛 | P2-1 / P2-2 | 工作流执行器复用引擎等待与工作空间解析——消除双实现语义分叉 | `518103a` |
+| 重复实现收敛 | P2-3 / P2-4 / P2-5 | Core 重复实现收敛——依赖判定 / 文本截断 / 终态集合各收单一事实来源 | `9a1c782` |
+| 重复实现收敛 | P2-6 | 工作流域 8 个手写 `Clone` 改 `record with` 表达式——改字段必漏改的样板清零 | `f0dc708` |
+| Desktop 契约隔离 | P2-7 / P2-8 / P2-13 | 行 VM 透传 / `FakeClock` 迁出生产 / 状态点着色改枚举 | `0bf025e` |
+| 配置编辑器 | P2-15 | 五手写 DTO 编辑器收敛 `FieldEditor<T>`——解析失败从静默置 null 改为显式校验反馈 | `91fb700` |
+| 仓库卫生 / 性能 / 死代码 | P2-23 / P2-24 / P2-25 | `*.xlsx` 标 binary / 日志批量落盘 / O(n²) Tail 消除 / 四项死代码删除 | `56fcddc` |
+
+**验证统一口径（2026-10-21 后累计实跑）**：全量 `--no-incremental` 构建 **0 警告 / 0 错误**；测试总数由 P2-31 轮 565 增至 **650**（主 538 + Desktop 112，较 P2-31 +85）；`dotnet format`（CHARSET 假阳性按 §4.7 #9 过滤）0 问题。
+
+### 5.13 阶段 4：P2-10 / P2-11 / P2-12 增量 / P2-22 收口（本次）
+
+> **本轮重点：P2-10 / P2-11（硬编码字面色双主题化）+ P2-12（编译绑定增量）+ P2-22（残骸清理）**。
+> 与 P2-26/P2-30 不同，这是「代码侧 + XAML 侧」的色值债务：原 status/level/diff/nav 调色板散落 `TaskRowViewModel` / `Phase2RowModels` / `DiffViewModel` / `MonitorViewModel` / `ConfigHubConverters`（代码侧 11 处 `Color.Parse`）与 `LoginView.axaml`（30 处）/ `SetupWizardView.axaml`（11 处），与 `AppStyles.xaml` 的 token 表并存冲突——深色主题下这些硬编码色完全失效（P2-10），且两份调色板数值互不一致（P2-11）。
+
+**验证统一口径（本次实跑）**：`dotnet build --no-incremental` = **0 警告 / 0 错误**；`dotnet test BatchAgentRunner.slnx` = **650 通过 / 0 失败**（含新增 `AppBrushesTests` 27 / `OnboardingViewTests` 2）；`dotnet format`（CHARSET 假阳性按 §4.7 #9 过滤）0 问题。
+
+| 步骤 | 落地内容 | 验证 / 提交 |
+| ---- | ------- | ---------- |
+| ① 抽入口（P2-11） | 新增 `Desktop/Helpers/AppBrushes.cs`：原 5 处 `Color.Parse("#…")` 调色板统一经本类按 token 名取色——运行时宿主可用取主题 token（双主题自动切换），无宿主（单测/无 Application）回落浅色 token 值（与 `AppStyles.xaml` Light 逐字一致）。`StatusRunningBrush` 等 token 已于 `Styles/AppStyles.xaml` 双字典就位；新增 `OnPrimaryBrush`（主色背景反白字）。代码侧 11 处硬编码色（`DiffViewModel` 6 / `MonitorViewModel` 6 / `ConfigHubConverters` 2 → 经 `ForDiffKind`/`ForBatchStatus`/`NavActive`/`NavActiveText` 等收敛）；既有 `TaskRowViewModel`/`Phase2RowModels` 的 `StatusBrush` 在飞改造（前序会话）一并收口 | `AppBrushesTests`（27 项）锁死：各方法产出色值 = 预期浅色 token / 键不存在确定回落 / 宿主可用可取；负测试实测可捕获回落 |
+| ② XAML 双主题化（P2-10） | `LoginView.axaml`（30 处）+ `SetupWizardView.axaml`（11 处）`#hex` 全部改 `DynamicResource` 既有 token：状态/级别色→语义 Brush（`Primary`/`Success`/`Error`/`Warning`）、软盒背景→`*SoftBrush`、边框→`BorderSubtle`/`BorderStrong`、描述文本→`TextSecondary`、主色背景反白字→`OnPrimaryBrush` | `grep -niE '#[0-9A-Fa-f]{6}'` 在两份视图 0 命中；`OnboardingViewTests`（2 项）锁死视图可构造 + 接线；`src` 内 `Color.Parse` 仅剩 `AppBrushes` fallback |
+| ③ 编译绑定增量（P2-12） | `LoginView` / `SetupWizardView` 根节点加 `x:CompileBindings="True"` + `x:DataType`（视图 + 各 `DataTemplate` 子类型 `LoginStepItem`/`LoginAccountRow`/`CreditsClaimRow`）；**不翻转** `Desktop.csproj` 全局默认（避免未带 `x:DataType` 的绑定失效） | 全量 `--no-incremental` 构建 0 警告 / 0 错误（编译绑定把属性拼写错误从「静默失效」升为编译错误）；全量测试 650 通过 |
+| ④ 残骸清理（P2-22） | `models.yaml` 已于 P0-14 `git rm --cached` + gitignore，当前零代码引用；删除本地 0 字节残骸 | `git check-ignore -v models.yaml` 命中 `/models.yaml`；代码侧 `grep -rn 'models.yaml'` 0 引用 |
+
+> 阶段 4 边界（交接必读）：① **不在翻转全局编译绑定**：`AvaloniaUseCompiledBindingsByDefault` 维持 `false`，仅对本次两视图增量开启；全量翻转（#D6）须先为所有视图补齐 `x:DataType`（含 `DataTemplate` 子类型）再单独排期，否则会让未带类型的绑定在运行时失效。② **token 键与浅色 fallback 逐字一致**：`AppBrushes` 的 fallback hex 必须随 `AppStyles.xaml` Light token 同步调整（由 `AppBrushesTests` 锁死），否则无宿主环境（单测）会出现色偏差。③ **仅收敛既有色值、不改布局/文案**：P2-10/11 行为零变化，纯双主题修复。
+
+> **文档同步补记（本次收口轮）**：依 §4.5「PR 评审清单/硬规则落在 CODE-REVIEW」，本轮同步 `docs/CODE-REVIEW-代码审查标准与流程.md`（§3.5 可维护性与架构清单补「硬编码色值/魔法数字须经 token/常量（P2-10/11）」「XAML 绑定须带 x:DataType 编译绑定（P2-12 增量）」条、§4 硬规则表补 H17/H18、§9 反模式表补对应行）；同步 `docs/架构重构与工程化治理方案.md`（token 化结论 + P2 进度）；`README.md` 含他人未提交改动，本轮不碰。
+
 ---
 
 ## 附录 A：台账索引（按偿还方式分组）
 
 | 方式            | ID                                                                                                                                               |
 | ------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
-| **重构**        | P0-1, P0-3~~P0-10, P0-12~~P0-15, P0-17, P1-1~~P1-5, P1-7, P1-9~~P1-12, P1-14~~P1-21, P2-1~~P2-14, P2-16~P2-21, P2-23, P2-24, P2-26, P2-30 ✅（2026-10-21 已完成，见 §5.10）, P2-31 ✅（2026-10-21 已完成，见 §5.11） |
+| **重构**        | P0-1, P0-3~~P0-10, P0-12~~P0-15, P0-17, P1-1~~P1-5, P1-7, P1-9~~P1-12, P1-14~~P1-21, P2-1~P2-8, P2-10~P2-15, P2-16~P2-21, P2-23, P2-24, P2-26, P2-30 ✅（2026-10-21 已完成，见 §5.10）, P2-31 ✅（2026-10-21 已完成，见 §5.11）, P2-12 ✅（本次增量，见 §5.13）【P2-9 仅 Clone 子项已随 v2.0 消除，God Config 分组列入 #D5；P2-22 已解决（P0-14 gitignore + 零引用）】 |
 | **重写**（仅 4 项） | P0-2(局部), P1-13, P2-6, P2-15                                                                                                                     |
 | **隔离**        | P0-11(钩), P1-1(过渡), P1-9, P1-16(守卫过渡), P2-7, P2-10/P2-11, P2-19/P2-28                                                                            |
 | **主动不偿还**     | P2-24(部分), P2-14, P2-25(部分), P2-27（2026-10-20 评估维持，升级触发器见 §5.8）                                                                                                               |
