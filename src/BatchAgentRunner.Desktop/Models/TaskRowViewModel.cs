@@ -43,6 +43,9 @@ public sealed class TaskRowViewModel : ObservableObject, IDisposable
 
     public string Id => Item.Id;
 
+    /// <summary>任务指令（P2-7：详情面板经行 VM 读取，XAML 不得直绑领域对象 <see cref="Item"/>）。</summary>
+    public string Instruction => Item.Instruction;
+
     public string StatusText => Item.Status switch
     {
         TaskStatus.Pending => Item.DependsOn is { Count: > 0 } ? "待命（等依赖）" : "待处理",
@@ -104,6 +107,7 @@ public sealed class TaskRowViewModel : ObservableObject, IDisposable
     public void Refresh()
     {
         OnPropertyChanged(nameof(Id));
+        OnPropertyChanged(nameof(Instruction));
         OnPropertyChanged(nameof(StatusText));
         OnPropertyChanged(nameof(Status));
         OnPropertyChanged(nameof(StatusBrush));

@@ -10,6 +10,13 @@ namespace BatchAgentRunner.Core.Domain;
 /// 工作流（workflow）、依赖（depends_on）、模板变量（template_vars）、项目关联（project_ref）、
 /// 门禁修订循环上限（max_loops）等扩展字段由工作流执行与 DAG 派发使用；反序列化时忽略未知字段以保证前向兼容。
 /// </summary>
+/// <remarks>
+/// P2-7 隔离边界：<see cref="INotifyPropertyChanged"/> 是 Desktop 适配契约（行 VM 订阅本对象的属性变更驱动刷新，
+/// 见 <c>TaskRowViewModel</c>），不是领域语义。防腐规则：① Desktop 侧一律经行 VM 暴露展示属性，
+/// XAML 不得直绑 <c>TaskItem.{Binding Item.…}</c>（由 Desktop.Tests 源码守卫断言）；② 引擎在后台线程写本对象，
+/// 事件仅在行 VM 内消费，不承诺跨线程安全语义。彻底移除该契约需先把行刷新改推模型（事件驱动），
+/// 属结构级改造，当前以「接口隔离 + 守卫」形态冻结扩散。
+/// </remarks>
 public sealed class TaskItem : INotifyPropertyChanged
 {
     private string _id = string.Empty;

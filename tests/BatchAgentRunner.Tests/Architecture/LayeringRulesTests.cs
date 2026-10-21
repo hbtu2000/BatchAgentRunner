@@ -10,6 +10,29 @@ namespace BatchAgentRunner.Tests.Architecture;
 /// </summary>
 public class LayeringRulesTests
 {
+    /// <summary>主测试项目可扫描的生产程序集（Core / Infrastructure / Agents；Desktop 由 Desktop.Tests 侧同等断言覆盖）。</summary>
+    private static Assembly[] ProductionAssemblies() => new[]
+    {
+        typeof(BatchAgentRunner.Core.Engine.BatchEngine).Assembly,
+        typeof(BatchAgentRunner.Infrastructure.Logging.FileRunLogger).Assembly,
+        typeof(BatchAgentRunner.Agents.Internal.CliProcessRunner).Assembly
+    };
+
+    [Fact]
+    public void 生产程序集_不得出现_Fake测试替身类型()
+    {
+        // §4.3 / P2-8：测试替身不得进生产程序集——随生产分发的测试代码既污染依赖图，
+        // 又暗示「生产路径可用假实现」。替身一律居测试项目（Helpers）。
+        // 范围说明：仅禁 Fake* —— MockAdapter / MockCreditsApiClient 是生产有意的
+        // AgentKind.Mock 演示适配器与本地模拟 API（用户可选），非测试替身。
+        var leaked = ProductionAssemblies()
+            .SelectMany(a => a.GetTypes())
+            .Where(t => t.Name.StartsWith("Fake", StringComparison.Ordinal))
+            .Select(t => t.FullName)
+            .ToArray();
+        Assert.Empty(leaked);
+    }
+
     [Fact]
     public void Core程序集_不得引用_Infrastructure_Agents_Desktop()
     {

@@ -31,7 +31,7 @@
                         Background="{DynamicResource BgSurface2Brush}" VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal" Spacing="6">
                         <Ellipse Width="8" Height="8" VerticalAlignment="Center"
-                                 conv:StatusDotHelper.BatchStatusText="{Binding StatusText}" />
+                                 conv:StatusDotHelper.BatchStatus="{Binding Status}" />
                         <TextBlock Text="{Binding StatusText}" FontWeight="SemiBold" VerticalAlignment="Center"
                                    Foreground="{DynamicResource TextPrimaryBrush}" />
                     </StackPanel>

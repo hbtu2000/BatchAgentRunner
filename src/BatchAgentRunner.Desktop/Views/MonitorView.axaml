@@ -320,9 +320,9 @@
                                     <Ellipse Grid.Column="0" Width="9" Height="9" VerticalAlignment="Center" Margin="0,0,8,0"
                                              conv:StatusDotHelper.TaskStatus="{Binding Status}" />
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Spacing="2" MinWidth="0">
-                                        <TextBlock Text="{Binding Item.Instruction}" FontSize="13" FontWeight="SemiBold"
+                                        <TextBlock Text="{Binding Instruction}" FontSize="13" FontWeight="SemiBold"
                                                    Foreground="{DynamicResource TextPrimaryBrush}" TextTrimming="CharacterEllipsis">
-                                            <ToolTip.Tip><TextBlock Text="{Binding Item.Instruction}" /></ToolTip.Tip>
+                                            <ToolTip.Tip><TextBlock Text="{Binding Instruction}" /></ToolTip.Tip>
                                         </TextBlock>
                                         <TextBlock FontSize="12" Foreground="{DynamicResource TextMutedBrush}"
                                                    FontFamily="{DynamicResource FontMono}" TextTrimming="CharacterEllipsis">
