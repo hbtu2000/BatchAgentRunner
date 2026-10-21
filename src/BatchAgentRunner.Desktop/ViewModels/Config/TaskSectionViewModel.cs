@@ -19,6 +19,7 @@ public sealed class TaskSectionViewModel : ViewModelBase
     private AgentKind _agentKind = AgentKind.WorkBuddy;
     private string _cliPath = string.Empty;
     private string _cliArgumentsTemplate = string.Empty;
+    private string _reasoningEffort = ReasoningEfforts.Default;
     private string _defaultWorkspace = string.Empty;
     private bool _showCliWindow;
     private int _maxWorkspaces = 10;
@@ -81,6 +82,16 @@ public sealed class TaskSectionViewModel : ViewModelBase
         set => SetProperty(ref _cliArgumentsTemplate, value);
     }
 
+    /// <summary>推理强度下拉可选项（CLI <c>--effort</c> 取值口径见 <see cref="ReasoningEfforts"/>）。</summary>
+    public IReadOnlyList<string> ReasoningEffortLevels { get; } = new List<string>(ReasoningEfforts.Levels);
+
+    /// <summary>推理强度（默认 medium：CLI 默认 high 会让单轮往返明显变慢）。</summary>
+    public string ReasoningEffort
+    {
+        get => _reasoningEffort;
+        set => SetProperty(ref _reasoningEffort, string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim());
+    }
+
     public string DefaultWorkspace
     {
         get => _defaultWorkspace;
@@ -121,6 +132,7 @@ public sealed class TaskSectionViewModel : ViewModelBase
         AgentKind = o.AgentKind;
         CliPath = o.CliPath ?? string.Empty;
         CliArgumentsTemplate = o.CliArgumentsTemplate ?? string.Empty;
+        ReasoningEffort = string.IsNullOrWhiteSpace(o.ReasoningEffort) ? string.Empty : o.ReasoningEffort!;
         DefaultWorkspace = o.DefaultWorkspace ?? string.Empty;
         ShowCliWindow = o.ShowCliWindow;
         MaxWorkspaces = o.MaxWorkspaces;
@@ -137,6 +149,7 @@ public sealed class TaskSectionViewModel : ViewModelBase
         o.AgentKind = AgentKind;
         o.CliPath = ConfigFieldRules.NullIfBlank(CliPath);
         o.CliArgumentsTemplate = ConfigFieldRules.NullIfBlank(CliArgumentsTemplate);
+        o.ReasoningEffort = ConfigFieldRules.NullIfBlank(ReasoningEffort);
         o.DefaultWorkspace = ConfigFieldRules.NullIfBlank(DefaultWorkspace);
         o.ShowCliWindow = ShowCliWindow;
         o.Workspaces = Workspaces.ToList();

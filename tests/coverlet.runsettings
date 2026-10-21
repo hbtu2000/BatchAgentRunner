@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  ARCH P-11 · 覆盖率采集配置（coverlet.collector，已在 Directory.Packages.props 中央管理版本）。
+
+  只被 CI / 本地覆盖率门禁使用（scripts/ci/Assert-Coverage.ps1），不参与常规 dotnet test。
+
+  关键约定：
+    · Format=cobertura —— 门禁脚本按 Cobertura 的 line-rate 判阈值（与 coverlet 控制台表同源）。
+    · SkipAutoProps=true —— 自动属性（get/set）不计入分母，避免"为了覆盖率给自动属性写测试"。
+    · Exclude —— 测试工程自身与 xunit 基础设施不计入分母（只测生产代码覆盖率）。
+    · 采集范围 = 快跑 bucket（排除 E2E/Usability/Process），保证门禁可重复、不受慢机器/真实进程影响。
+-->
+<RunSettings>
+  <DataCollectionRunSettings>
+    <DataCollectors>
+      <DataCollector friendlyName="XPlat code coverage">
+        <Configuration>
+          <Format>cobertura</Format>
+          <SkipAutoProps>true</SkipAutoProps>
+          <Exclude>[xunit*]*,[BatchAgentRunner.Tests]*,[BatchAgentRunner.Desktop.Tests]*,[Avalonia*]*,[CommunityToolkit*]*</Exclude>
+        </Configuration>
+      </DataCollector>
+    </DataCollectors>
+  </DataCollectionRunSettings>
+</RunSettings>

@@ -285,6 +285,8 @@ public sealed class ConfigViewModel : ViewModelBase
     public AgentKind AgentKind { get => _task.AgentKind; set => _task.AgentKind = value; }
     public string CliPath { get => _task.CliPath; set => _task.CliPath = value; }
     public string CliArgumentsTemplate { get => _task.CliArgumentsTemplate; set => _task.CliArgumentsTemplate = value; }
+    public string ReasoningEffort { get => _task.ReasoningEffort; set => _task.ReasoningEffort = value; }
+    public IReadOnlyList<string> ReasoningEffortLevels => _task.ReasoningEffortLevels;
     public string DefaultWorkspace { get => _task.DefaultWorkspace; set => _task.DefaultWorkspace = value; }
     public bool ShowCliWindow { get => _task.ShowCliWindow; set => _task.ShowCliWindow = value; }
     public int MaxWorkspaces { get => _task.MaxWorkspaces; set => _task.MaxWorkspaces = value; }

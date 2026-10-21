@@ -22,7 +22,8 @@ public class RunOptionsContractTests
     /// <summary>切分前 `RunOptions.cs`（363 行单一大类）中的持久化属性声明顺序，切片后必须逐项一致。</summary>
     private static readonly string[] ExpectedPropertyOrder =
     {
-        "task_file_path", "agent_kind", "cli_path", "cli_arguments_template", "show_cli_window",
+        // 2026-10-22 新增 reasoning_effort（推理强度默认 medium）：按 ① 配置域语义位置插入，不改变既有键相对顺序。
+        "task_file_path", "agent_kind", "cli_path", "cli_arguments_template", "reasoning_effort", "show_cli_window",
         "workspaces", "default_workspace", "max_workspaces",
         "accounts", "model_candidates", "degradation_strategy",
         "expert", "fallback",

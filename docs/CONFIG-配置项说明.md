@@ -58,6 +58,7 @@ Mock 用来验证调度逻辑（降级、时段跳过、冷却等待、兜底、
 | `agent_kind` | `WorkBuddy` | `WorkBuddy` / `CodeBuddy` / `Mock`。`Mock` 不调 CLI，用于自测与回归。 |
 | `cli_path` | `null` | CLI 可执行文件路径。`null` = 在系统 PATH 里按默认名找（`workbuddy` / `codebuddy`）。装了多版本时写绝对路径最稳。 |
 | `cli_arguments_template` | `null` | 参数模板。`null` = 用适配器内置模板。**2026-10-16 已实测校准**：内置 `WorkBuddy`/`CodeBuddy` 模板均为 `--output-format stream-json --include-partial-messages`（便于应用内实时输出流捕获逐行事件）。占位符：`{prompt}` `{model}` `{expert}` `{workspace}` `{extra}`。**切勿手写为 `--output-format text` 或纯 `--print`**——该模式下 CLI 全程不写 stdout，应用内实时流会空白（见 `CliCommandBuilder.cs` 注释）。 |
+| `reasoning_effort` | `medium` | 模型推理强度，作为 `--effort` 传给 CLI：`minimal` / `low` / `medium` / `high` / `xhigh` / `max`（`middle`/`mid`/`中`/`中等` 归一为 `medium`，未知值回落 `medium`；留空 = 不传该参数）。**CLI 不传时按 `high` 推理**——2026-10-22 实测单轮首字延迟中位 4.7s、生成约 6.6s，200+ 轮的大任务仅模型侧就 40 分钟以上，故默认降到 `medium`；架构判断类任务再调回 `high`。自定义模板里已手写 `--effort` 时以模板为准。 |
 
 ### ② 工作空间（决定 Agent 在哪个目录干活）
 

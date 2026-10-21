@@ -1,5 +1,6 @@
 using System.Text;
 using BatchAgentRunner.Core.Abstractions;
+using BatchAgentRunner.Core.Options;
 
 namespace BatchAgentRunner.Agents.Internal;
 
@@ -97,6 +98,26 @@ public static class CliCommandBuilder
     /// </summary>
     public static string CodeBuddyTemplate =>
         $"-p {PlaceholderPrompt} --model {PlaceholderModel} --output-format stream-json --include-partial-messages {PlaceholderExtra}";
+
+    /// <summary>
+    /// 追加 <c>--effort &lt;level&gt;</c>。命令行里已有 <c>--effort</c>（用户在自定义模板里手写）时以用户为准，不重复追加。
+    /// 取值口径见 <see cref="ReasoningEfforts"/>。
+    /// </summary>
+    public static string AppendEffort(string arguments, string? raw)
+    {
+        var effort = ReasoningEfforts.Normalize(raw);
+        if (effort is null)
+        {
+            return arguments;
+        }
+
+        if (arguments.Contains("--effort", StringComparison.Ordinal))
+        {
+            return arguments;
+        }
+
+        return arguments + " --effort " + effort;
+    }
 
     public static string Quote(string value)
     {

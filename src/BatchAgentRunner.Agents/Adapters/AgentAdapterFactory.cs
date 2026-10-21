@@ -15,6 +15,7 @@ public static class AgentAdapterFactory
         {
             ExecutablePath = options.CliPath,
             ArgumentsTemplate = options.CliArgumentsTemplate,
+            ReasoningEffort = options.ReasoningEffort,
             ShowWindow = options.ShowCliWindow,
             Log = log,
             Logger = logger

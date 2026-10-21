@@ -16,6 +16,12 @@ public sealed class CliAdapterSettings
 
     public string? ArgumentsTemplate { get; set; }
 
+    /// <summary>
+    /// 模型推理强度（<c>--effort</c>）：minimal / low / medium / high / xhigh / max（别名 middle → medium）。
+    /// 空 = 不追加参数（走 CLI 默认 high）。见 <see cref="CliCommandBuilder.NormalizeEffort"/>。
+    /// </summary>
+    public string? ReasoningEffort { get; set; }
+
     /// <summary>附加无人值守参数（如 --yes / --dangerously-skip-permissions）。</summary>
     public string? ExtraArguments { get; set; }
 
@@ -138,6 +144,13 @@ public abstract class CliAdapterBase : IAgentCliAdapter
         }
 
         var arguments = CliCommandBuilder.Build(template, request, Settings.ExtraArguments);
+
+        // 推理强度（2026-10-22）：CLI 默认 medium，实测单轮首字延迟中位 4.7s、生成约 6.6s；
+        // 200+ 轮的大任务光模型侧就 40 分钟以上，故默认降到 medium（可配）。用户模板里手写 --effort 时不覆盖。
+        if (Kind is AgentKind.CodeBuddy or AgentKind.WorkBuddy)
+        {
+            arguments = CliCommandBuilder.AppendEffort(arguments, Settings.ReasoningEffort);
+        }
 
         // codebuddy / WorkBuddy 启动时占用固定本地端口（默认 52607）作为内嵌服务端口。
         // 若该端口已被本机其它 codebuddy/WorkBuddy 进程（如桌面端）占用，CLI 会启动失败或长时间无输出，

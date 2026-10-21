@@ -24,6 +24,17 @@ public sealed partial class RunOptions
     public string? CliArgumentsTemplate { get; set; }
 
     /// <summary>
+    /// 模型推理强度（作为 <c>--effort</c> 传给 CLI）：<c>minimal</c> / <c>low</c> / <c>medium</c> / <c>high</c> / <c>xhigh</c> / <c>max</c>。
+    /// <para>背景（2026-10-22 实测 CLI 日志）：CLI 默认按 <c>high</c> 推理，单轮首字延迟中位 4.7s、生成约 6.6s，
+    /// 一个 200+ 轮的大任务仅模型侧就要 40 分钟以上。故默认取 <c>medium</c> 兼顾速度与质量；
+    /// 架构判断类任务可临时调回 <c>high</c>。</para>
+    /// <para>别名 <c>middle</c>/<c>mid</c>/<c>中</c>/<c>中等</c> 均按 <c>medium</c> 处理，未知值回落 <c>medium</c>；
+    /// 留空 = 不追加该参数（完全走 CLI 默认值）。取值口径见 <see cref="ReasoningEfforts"/>。</para>
+    /// </summary>
+    [JsonPropertyName("reasoning_effort")]
+    public string? ReasoningEffort { get; set; } = ReasoningEfforts.Default;
+
+    /// <summary>
     /// 执行任务时是否弹出 CLI 原生控制台窗口（默认 <c>false</c> = 后台无窗口运行）。
     /// <para>背景（2026-10-16）：CLI 调用形态为 <c>-p/--print --output-format stream-json</c>，
     /// 后台模式下应用能捕获 stdout 并渲染成实时可读进度（见 <c>StreamJsonRenderer</c>），

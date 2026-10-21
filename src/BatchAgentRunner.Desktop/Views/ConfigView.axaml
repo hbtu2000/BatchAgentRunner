@@ -410,6 +410,13 @@
                         <TextBox Text="{Binding CliArgumentsTemplate}"
                                  PlaceholderText="CLI 参数模板，占位符 {prompt} {model} {expert} {workspace} {extra}（M0 验证前留空即用默认）"
                                  ToolTip.Tip="留空 = 用适配器内置模板。该模板尚未经真实 CLI 实测（M0 V-1/V-2 待做），先用默认值。" />
+                        <StackPanel Orientation="Horizontal" Spacing="12">
+                            <TextBlock Text="推理强度" VerticalAlignment="Center"
+                                       ToolTip.Tip="传给 CLI 的 --effort。默认 medium。&#10;CLI 不传该参数时按 high 推理：实测单轮首字延迟中位 4.7s、生成约 6.6s，200+ 轮的大任务仅模型侧就要 40 分钟以上。&#10;机械性改动/补文档用 medium 或更低；架构判断类任务可调回 high。" />
+                            <ComboBox ItemsSource="{Binding ReasoningEffortLevels}" SelectedItem="{Binding ReasoningEffort}"
+                                      MinWidth="140"
+                                      ToolTip.Tip="minimal / low / medium / high / xhigh / max（--effort 取值）。&#10;留空 = 不追加该参数，完全走 CLI 默认（high）。" />
+                        </StackPanel>
                         <CheckBox IsChecked="{Binding ShowCliWindow}"
                                   Content="弹出 CLI 原生控制台窗口（默认不勾选：后台运行并实时回显进度；勾选仅排障用）"
                                   ToolTip.Tip="默认不勾选（推荐）：后台无窗口运行，CLI 输出以 stream-json 形式被应用实时捕获并渲染成可读进度，自动应答、危险拦截、结果回写与鉴权/额度分类全部正常。&#10;勾选（仅排障）：弹出 CLI 独立控制台窗口看原始 stream-json 文本（不再是纯黑），但应用侧读不到输出 —— 结果回写/鉴权/额度分类会失效、应用内实时区空白，需人工值守窗口。常规批量任务不建议开启。" />

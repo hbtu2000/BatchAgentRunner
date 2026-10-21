@@ -126,4 +126,55 @@ public class CliCommandBuilderTests
         Assert.Contains("--output-format stream-json", cmd);
         Assert.Contains("--include-partial-messages", cmd);
     }
+
+    [Fact]
+    public void AppendEffort_默认medium_追加到末尾()
+    {
+        var args = CliCommandBuilder.AppendEffort("-p \"x\" --model hy3", ReasoningEfforts.Default);
+
+        Assert.EndsWith("--effort medium", args);
+    }
+
+    [Fact]
+    public void AppendEffort_空白值_不追加()
+    {
+        const string origin = "-p \"x\" --model hy3";
+
+        Assert.Equal(origin, CliCommandBuilder.AppendEffort(origin, null));
+        Assert.Equal(origin, CliCommandBuilder.AppendEffort(origin, "   "));
+    }
+
+    [Fact]
+    public void AppendEffort_模板已手写effort_以用户为准不重复追加()
+    {
+        const string origin = "-p \"x\" --effort high";
+
+        Assert.Equal(origin, CliCommandBuilder.AppendEffort(origin, "medium"));
+    }
+
+    [Theory]
+    [InlineData("middle", "medium")]
+    [InlineData("MID", "medium")]
+    [InlineData("中等", "medium")]
+    [InlineData(" high ", "high")]
+    [InlineData("xhigh", "xhigh")]
+    [InlineData("拼错的值", "medium")]
+    public void ReasoningEfforts_Normalize_别名与未知值口径(string raw, string expected)
+    {
+        Assert.Equal(expected, ReasoningEfforts.Normalize(raw));
+    }
+
+    [Fact]
+    public void ReasoningEfforts_Normalize_空白返回null_默认值为medium()
+    {
+        Assert.Null(ReasoningEfforts.Normalize(""));
+        Assert.Null(ReasoningEfforts.Normalize(null));
+        Assert.Equal("medium", ReasoningEfforts.Default);
+    }
+
+    [Fact]
+    public void RunOptions_默认推理强度为medium()
+    {
+        Assert.Equal("medium", new RunOptions().ReasoningEffort);
+    }
 }
