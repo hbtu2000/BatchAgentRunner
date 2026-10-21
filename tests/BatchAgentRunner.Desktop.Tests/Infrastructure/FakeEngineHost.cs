@@ -21,6 +21,7 @@ public sealed class FakeEngineHost : IEngineHost
     private readonly CredentialVaultHost _vaultHost;
     private int _saveCount;
     private int _rebuildCount;
+    private IReadOnlyList<ModelCatalogEntry> _fetchModelsResult = Array.Empty<ModelCatalogEntry>();
 
     public FakeEngineHost(RunOptions? options = null)
     {
@@ -78,6 +79,9 @@ public sealed class FakeEngineHost : IEngineHost
     /// <summary>探针：RebuildEngineAsync 被调用次数。</summary>
     public int RebuildEngineCallCount => _rebuildCount;
 
+    /// <summary>探针：设置 FetchModelsAsync 返回的模型目录（默认空清单，保持零 IO 桩语义）。</summary>
+    public void SetFetchModelsResult(IReadOnlyList<ModelCatalogEntry> entries) => _fetchModelsResult = entries;
+
     public Task InitializeAsync() => Task.CompletedTask;
     public Task RebuildEngineAsync(CancellationToken cancellationToken = default)
     {
@@ -88,7 +92,7 @@ public sealed class FakeEngineHost : IEngineHost
 
     public Task<IReadOnlyList<ModelCatalogEntry>> FetchModelsAsync(AccountConfig? account = null,
         CancellationToken cancellationToken = default) =>
-        Task.FromResult<IReadOnlyList<ModelCatalogEntry>>(Array.Empty<ModelCatalogEntry>());
+        Task.FromResult(_fetchModelsResult);
 
     public Task<IReadOnlyList<TaskItem>> LoadTasksAsync() =>
         Task.FromResult<IReadOnlyList<TaskItem>>(Array.Empty<TaskItem>());
