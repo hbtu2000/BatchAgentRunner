@@ -7,7 +7,9 @@
   关键约定：
     · Format=cobertura —— 门禁脚本按 Cobertura 的 line-rate 判阈值（与 coverlet 控制台表同源）。
     · SkipAutoProps=true —— 自动属性（get/set）不计入分母，避免"为了覆盖率给自动属性写测试"。
-    · Exclude —— 测试工程自身与 xunit 基础设施不计入分母（只测生产代码覆盖率）。
+    · 不在此处做 Exclude（coverlet.collector v6 对 [Asm*]* 通配式会误伤、导致整份 0 采集）；
+      门禁脚本只评估生产程序集（Core/Infrastructure/Agents/Desktop），测试工程与 Avalonia 等
+      第三方程序集不在阈值表内，自然不参与分母。
     · 采集范围 = 快跑 bucket（排除 E2E/Usability/Process），保证门禁可重复、不受慢机器/真实进程影响。
 -->
 <RunSettings>
@@ -17,7 +19,6 @@
         <Configuration>
           <Format>cobertura</Format>
           <SkipAutoProps>true</SkipAutoProps>
-          <Exclude>[xunit*]*,[BatchAgentRunner.Tests]*,[BatchAgentRunner.Desktop.Tests]*,[Avalonia*]*,[CommunityToolkit*]*</Exclude>
         </Configuration>
       </DataCollector>
     </DataCollectors>

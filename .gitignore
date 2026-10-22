@@ -147,6 +147,9 @@ coverage*.json
 coverage*.xml
 coverage*.info
 
+# ARCH P-11: dotnet test 覆盖率采集产物（coverlet.collector cobertura）
+TestResults/
+
 # Visual Studio code coverage results
 *.coverage
 *.coveragexml
