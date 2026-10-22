@@ -78,6 +78,7 @@
 - 🟡 **枚举序列化**：枚举一律走字符串（`JsonDefaults` 已配 `JsonStringEnumConverter`），新增枚举类型确认不会被序列化成数字。
 - 🟡 **解析宽容度**：`JsonDefaults` 允许注释 + 尾随逗号 + 忽略未知字段（前向兼容）；新增配置读取点确认沿用 `JsonDefaults.Options`，不要自起 `new JsonSerializerOptions`。
 - 💭 **`DefaultIgnoreCondition.WhenWritingNull`**：确认 null 字段不写入 JSON，避免配置文件噪声——新增 DTO 时不必特意改，但别覆盖全局配置。
+- 🟡 **配置 schema 必须同步（ARCH P-14 / A-12）**：改 / 增 `RunOptions` 或其引用的领域类型（`WorkspaceConfig`/`AccountConfig`/`FreeTimeWindow` 等）的 `[JsonPropertyName]` 字段时，必须同步 `docs/config.schema.json`（顶层 properties 与对应 `$defs`）与 `docs/CONFIG-配置项说明.md`；漏同步即 `ConfigSchemaTests` 红（键集合逐字等值断言）。schema 校验由 `scripts/ci/Assert-ConfigSchema.ps1` 进 CI，**不得另写第二份校验器**。
 
 ### 3.4 数据可靠性（批处理工具的核心承诺）
 - 🔴 **原子写回**：任何「覆盖式」写入任务文件 / 配置 / 冷却记录，必须走 `AtomicFileWriter`（临时文件 + `Flush(flushToDisk:true)` + `File.Move(overwrite)`）。禁止直接 `File.WriteAllText` 覆盖原位——强杀/断电会损坏任务文件。
@@ -97,6 +98,7 @@
 - 🟡 **XAML 须带类型安全绑定（P2-12 增量）**：改 / 新增视图时根节点加 `x:CompileBindings="True"` + `x:DataType`，`DataTemplate` 也须标 `x:DataType`（子项类型）——把属性拼写错误从「运行时静默失效」升为编译错误；全局默认维持 `false`，不得为图省事翻转 `Desktop.csproj` 的 `AvaloniaUseCompiledBindingsByDefault`（会让未带类型的绑定失效）。
 - 🟡 **领域原语走单一事实来源（P2-1~P2-6 / ARCH P-08）**：① 文本截断一律 `Core/Text/TextTruncate`（`Result` 结果截断 / `Truncate` 通用截断），不得再写 `s[..N] + "…"` 之类的内联截断；② 终态判定一律 `TaskStatusExtensions.IsTerminal`，新增终态状态只改该扩展方法，其他类型的 `IsTerminal` 须委派它；③ 深拷贝只走 `WorkflowTypeClones`（`record with`）与 `TaskItem.Clone()`（唯一手写点，新增字段须同步拷贝）；④ 依赖三态判定只走 `DagScheduler.EvaluateDependency`（`TaskDispatcher` 保持委派）。已由 `DomainPrimitivesHygieneTests`（**5 项**）+ `TaskItemCloneTests`（**4 项**，反射遍历可写属性）自动把关——内联截断、终态成员不委派或判定分叉、深拷贝入口扩散、依赖分派第二份公开入口，任一即测试失败。
 - 🟡 **配置契约与编辑器泛型化（P2-9 / P2-15 / ARCH P-09）**：① 新增运行配置落到所属配置域切片 `Core/Options/RunOptions.NN-*.cs`（两位序号即 JSON 落盘属性顺序），不得堆回 `RunOptions.cs`；`RunOptions` 不得再加 `Clone`/`Copy`/`Snapshot` 之类的深拷贝成员（历史「JSON 往返克隆」已消除）；② 编辑器里的解析型字段一律 `FieldEditor<TValue>` + `FieldParsers`（不得在编辑器内手写 `X.TryParse`），`Apply()` 对错误态保留原值；③ 视图里凡绑 `{Binding X.Text}` 的解析字段，同一 `DataTemplate` 内必须呈现 `X.Error`/`X.HasError`（错误文本用 `Classes="field-error"` 样式，不各写一遍字号/颜色）；④ 新增 `FieldEditor<T>` 字段必须在 `Apply()` 里被读取，否则用户输入永不落盘。已由 `ConfigEditorsHygieneTests`（**3 项**）+ `RunOptionsHygieneTests`（**3 项**）+ `RunOptionsContractTests`（**5 项**）自动把关——手写解析、声明不回写、输入框缺反馈、配置回缩为单一大类、切片超长、克隆复现、落盘属性顺序漂移，任一即测试失败。
+- 🟡 **重大决策留痕（ARCH P-14 / A-12）**：改模块边界 / 依赖方向 / 对外契约（config 形状、CLI 参数、sidecar、报告结构）/ 工程门禁 / 发布方式，或推翻既有决策时，必须新增或取代 `docs/adr/` 下的 ADR 并登记索引；ADR 接受后不可改写。已由 `AdrHygieneTests`（**4 项**）自动把关——编号断档、必备章节缺失、索引漏登记或悬挂链接，任一即测试失败。
 - 🟡 **可观测性契约（ARCH P-10 / A-8）**：① 新增日志写入一律先落成 `RunLogEntry`（事件名取 `LogEventNames`、级别取 `RunLogLevels`），经 `IRunLogger.Write(RunLogEntry)` 这一唯一落盘点渲染，不得在日志实现里直接 `writer.WriteLine`（会绕过脱敏与结构化）；② 写日志点不得出现 `Write("WARN", …)` 这类裸级别字面量，一律 `RunLogLevels.Warn`（`Write("WARNING")` 会静默退化为普通级别并丢掉即时刷盘）；③ 脱敏一律 `SecretMasker.Mask`，不得再写第二套 `Mask/Redact/Sanitize`（新增敏感形态只改 `SecretMasker` 的正则清单）；④ 运行级指标只加在 `RunMetrics`（新增/改名须同步 `ObservabilityHygieneTests` 的字段清单），不得在别处另记一份计数；⑤ 口径不得随意改：失败率分母只含真终态（待人工 / 依赖阻断不计失败），时段外与冷却跳过只计跳过不计失败，误切换率的分子是「切换后第一次尝试仍失败」。已由 `ObservabilityHygieneTests`（**6 项**）自动把关——第二套脱敏实现、裸级别字面量、实现缺结构化通道或 RunId、绕过统一落盘点、指标字段缺失或比率越界，任一即测试失败。
 - 💭 **`record` vs `class`**：值语义（组合键、结果）用 `record`；有可变状态/身份的对象用 `class`；当前 `AgentCombo`/`RestoreCandidate` 用 `record` 合理，新增时遵循此区分。
 
@@ -264,12 +266,13 @@ dotnet test tests/BatchAgentRunner.Desktop.Tests/BatchAgentRunner.Desktop.Tests.
 pwsh -File scripts/ci/Assert-Coverage.ps1
 ```
 
-### 7.5 CI 门禁（已落地并转阻断，`.github/workflows/ci.yml`，ARCH P-11 2026-10-22）
-- 触发：push/PR 到 `master` → `windows-latest` + .NET 10；job `build-and-test` 依次执行四道门禁，**任一步骤失败即 job 失败（红 CI）**：
+### 7.5 CI 门禁（已落地并转阻断，`.github/workflows/ci.yml`，ARCH P-11 + P-14 2026-10-22）
+- 触发：push/PR 到 `master` → `windows-latest` + .NET 10；job `build-and-test` 依次执行五道门禁，**任一步骤失败即 job 失败（红 CI）**：
   1. `dotnet build --no-incremental`（必须全量重建，否则复现 P0-12 的 0 警告假象；`TreatWarningsAsErrors=true` 下任何分析器警告即失败）；
   2. 格式门禁 `scripts/ci/Assert-Format.ps1`（`dotnet format --verify-no-changes`，CHARSET 假阳性按治理方案 §4.7 #9 口径过滤）；
   3. 分层单测（快跑单元 + Desktop，经 `tests/coverlet.runsettings` 采集 `coverlet` cobertura 覆盖率；慢跑 E2E·Usability·Process 不采覆盖率）；
-  4. 覆盖率门禁 `scripts/ci/Assert-Coverage.ps1`（生产程序集行覆盖率 ≥ 锁定基线 Core 44% / Infra 39% / Agents 23% / Desktop 50%，阈值只升不降）。
+  4. 配置 Schema 门禁 `scripts/ci/Assert-ConfigSchema.ps1`（`config.schema.json` 键集合须与 `RunOptions` 逐字一致、示例配置通过校验、畸形配置被拦截；校验实现唯一，见 `ConfigSchemaTests`）；
+  5. 覆盖率门禁 `scripts/ci/Assert-Coverage.ps1`（生产程序集行覆盖率 ≥ 锁定基线 Core 44% / Infra 39% / Agents 23% / Desktop 50%，阈值只升不降）。
 - 核心模块（路径 `src/BatchAgentRunner.Core/**`、`src/BatchAgentRunner.Agents/**`、`src/BatchAgentRunner.Infrastructure/**`）要求 2 审批。
 - **required status check（待仓库管理员配置）**：分支保护属 GitHub 仓库管理设置——Settings → Branches → `master` 规则 → Require status checks to pass before merging → 勾选 **`build-and-test`**。勾选后红 CI 即阻止合并（此前「CI 红不阻止合并」的边界解除，治理方案 §5.3 边界 2 闭环）。
 

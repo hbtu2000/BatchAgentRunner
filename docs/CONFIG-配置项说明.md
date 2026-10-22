@@ -2,6 +2,9 @@
 
 > 面向「打开配置页/配置文件看不懂每一项」的场合。
 > 全字段带注释模板见 [`samples/config.example.json`](../samples/config.example.json)。
+> **机器可校验的字段契约见 [`config.schema.json`](config.schema.json)**（JSON Schema 2020-12）：
+> 字段名、类型、枚举、取值范围以 schema 为准；schema 与 `RunOptions` 的键集合由 `ConfigSchemaTests`
+> 强制逐字一致，CI 门禁 `scripts/ci/Assert-ConfigSchema.ps1` 校验——**本表与 schema 冲突时以 schema 为准并修文档**。
 > 字段口径的原始出处见 [PRD 第 9 章](PRD-BatchAgentRunner-v2.0.md)、[技术设计](DESIGN-BatchAgentRunner-v2.0.md)。
 
 ---

@@ -1,7 +1,7 @@
 # BatchAgentRunner 架构重构与工程化治理方案（ARCH）
 
 > 版本：v1.0 ｜ 日期：2026-10-21 ｜ 角色：资深软件架构师  
-> 更新：P-01（WaitCoordinator 抽取）、P-02（facade 收口 ≤400 行 + 依赖方向 IL 断言固化）、P-03（`TaskRunner` 策略对象化 + facade 收口 ≤400 行）、P-04（`ConfigViewModel` 分解为账号卡/降级/通知/Git/通用子编辑器 + 共享校验，facade 收口 366 行）、P-05（`TemplateEditorViewModel` 按 VM→Coordinator/Presenter 分解为模板加载/变量展开/流程示意三个 Coordinator + 4 个行视图模型独立文件，facade 收口 240 行）、P-06（`MonitorViewModel` 983→388 行 + `LoginViewModel` 751→280 行：按「状态持有 + 绑定转发 + 流程编排」分解为 Monitor/Login 两组协作者 + 行视图模型独立文件，均收口 ≤400 行）、P-07（`JsonStoreBase<T>` + `AppPaths` 去重：三份同构仓储退化为 `CreateEmpty()`/`NormalizeAsync()`、9 处路径魔法串收口，守卫扩为 4 项含「第 4 份同构仓储」拦截）、P-08（领域原语收口：截断/终态集合/`Clone`/依赖失败分派各自单一事实来源，新增 `DomainPrimitivesHygieneTests` 5 项守卫 + `TaskItemCloneTests` 4 项字段完整性契约，修掉 `TaskItem.Clone()` 阶段结果浅拷贝缺陷，并清偿 P-02 遗留的 `BatchEngine` 死私有 `Truncate` 别名使 facade 400→397 行）、P-09（配置契约收口：`RunOptions` 363 行 God Config 按 12 配置域横向切片为 `RunOptions.01~11-*.cs`（本体 369→18 行，切片各 ≤49 行，JSON 形状与落盘字节逐字不变；原 #D5 计划性延期结项）+ 禁 JSON 往返克隆守卫；`ConfigEditors` 解析字段全量 `FieldEditor<T>`（时段起止一并泛型化、`StartText`/`EndText` 裸字符串桥接删除、修掉「非法输入静默抹掉已配置时段」缺陷）+ 视图侧校验反馈统一（7 个缺反馈输入框补齐、错误文本样式单一来源）；新增 `RunOptionsContractTests` 5 项 + `RunOptionsHygieneTests` 3 项 + `ConfigEditorsHygieneTests` 3 项守卫）、P-10（可观测性：结构化日志接线——`IRunLogger` 增 `Write(RunLogEntry)` 唯一落盘点 + `run-*.jsonl` 结构化流 + `RunId` 贯穿事件/日志/指标；`RunMetrics` 运行级指标埋点（吞吐 / 平均耗时 / 降级次数 / 兜底触发 / 冷却·时段跳过 / 失败率 / 误切换率）+ `metrics-<run_id>.json` 落盘；`SecretMasker` 脱敏单一事实来源在渲染入口统一生效；新增 `ObservabilityHygieneTests` 6 项守卫 + `SecretMaskerTests` 20 项 / `RunMetricsTests` 8 项 / `RunMetricsInstrumentationTests` 4 项 / `RunMetricsWriterTests` 2 项 / `FileRunLoggerTests` +3 项；同轮把 20 处裸级别字面量收为 `RunLogLevels` 常量、`BatchEngine` 的 `ResolveWorkspacePath` 下沉 `WorkspaceResolver` 使 facade 维持 399 行）均已收口，见 §6.2 执行记录。
+> 更新：P-01（WaitCoordinator 抽取）、P-02（facade 收口 ≤400 行 + 依赖方向 IL 断言固化）、P-03（`TaskRunner` 策略对象化 + facade 收口 ≤400 行）、P-04（`ConfigViewModel` 分解为账号卡/降级/通知/Git/通用子编辑器 + 共享校验，facade 收口 366 行）、P-05（`TemplateEditorViewModel` 按 VM→Coordinator/Presenter 分解为模板加载/变量展开/流程示意三个 Coordinator + 4 个行视图模型独立文件，facade 收口 240 行）、P-06（`MonitorViewModel` 983→388 行 + `LoginViewModel` 751→280 行：按「状态持有 + 绑定转发 + 流程编排」分解为 Monitor/Login 两组协作者 + 行视图模型独立文件，均收口 ≤400 行）、P-07（`JsonStoreBase<T>` + `AppPaths` 去重：三份同构仓储退化为 `CreateEmpty()`/`NormalizeAsync()`、9 处路径魔法串收口，守卫扩为 4 项含「第 4 份同构仓储」拦截）、P-08（领域原语收口：截断/终态集合/`Clone`/依赖失败分派各自单一事实来源，新增 `DomainPrimitivesHygieneTests` 5 项守卫 + `TaskItemCloneTests` 4 项字段完整性契约，修掉 `TaskItem.Clone()` 阶段结果浅拷贝缺陷，并清偿 P-02 遗留的 `BatchEngine` 死私有 `Truncate` 别名使 facade 400→397 行）、P-09（配置契约收口：`RunOptions` 363 行 God Config 按 12 配置域横向切片为 `RunOptions.01~11-*.cs`（本体 369→18 行，切片各 ≤49 行，JSON 形状与落盘字节逐字不变；原 #D5 计划性延期结项）+ 禁 JSON 往返克隆守卫；`ConfigEditors` 解析字段全量 `FieldEditor<T>`（时段起止一并泛型化、`StartText`/`EndText` 裸字符串桥接删除、修掉「非法输入静默抹掉已配置时段」缺陷）+ 视图侧校验反馈统一（7 个缺反馈输入框补齐、错误文本样式单一来源）；新增 `RunOptionsContractTests` 5 项 + `RunOptionsHygieneTests` 3 项 + `ConfigEditorsHygieneTests` 3 项守卫）、P-10（可观测性：结构化日志接线——`IRunLogger` 增 `Write(RunLogEntry)` 唯一落盘点 + `run-*.jsonl` 结构化流 + `RunId` 贯穿事件/日志/指标；`RunMetrics` 运行级指标埋点（吞吐 / 平均耗时 / 降级次数 / 兜底触发 / 冷却·时段跳过 / 失败率 / 误切换率）+ `metrics-<run_id>.json` 落盘；`SecretMasker` 脱敏单一事实来源在渲染入口统一生效；新增 `ObservabilityHygieneTests` 6 项守卫 + `SecretMaskerTests` 20 项 / `RunMetricsTests` 8 项 / `RunMetricsInstrumentationTests` 4 项 / `RunMetricsWriterTests` 2 项 / `FileRunLoggerTests` +3 项；同轮把 20 处裸级别字面量收为 `RunLogLevels` 常量、`BatchEngine` 的 `ResolveWorkspacePath` 下沉 `WorkspaceResolver` 使 facade 维持 399 行）、P-14（ADR 机制 + 配置 Schema 单一事实来源：`docs/adr/` 建立不可变决策记录 11 篇 + `AdrHygieneTests` 4 项索引/结构守卫；`docs/config.schema.json` 由 `RunOptions` 派生，`ConfigSchemaTests` 4 项锁死「schema 键集合 == 代码键集合」并校验示例/畸形配置，`scripts/ci/Assert-ConfigSchema.ps1` 进 CI 门禁）均已收口，见 §6.2 执行记录。
 > 关联文档：`docs/TECH-DEBT-技术债务治理方案-v2.0.md`（战术台账，本方案的落地清单来源）、`docs/DESIGN-BatchAgentRunner-v2.0.md`（单一设计权威源）、`docs/PRD-BatchAgentRunner-v2.0.md`、`docs/CONFIG-配置项说明.md`
 
 ## 文档定位（必读）
@@ -27,7 +27,7 @@
 | 构建/分析 | `TreatWarningsAsErrors=true`、`AnalysisLevel=latest-recommended`、`Nullable`/`ImplicitUsings` 开 | 良好                           |
 | 依赖管理  | `Directory.Packages.props`（CPM）已上                                                             | 良好                           |
 | 测试    | 494 个测试方法，已分快/慢 bucket                                                                        | 数量足，**缺覆盖率量化与门禁**            |
-| CI    | `.github/workflows/ci.yml` 已建，全量重建 + 分层测试 + **P-11 ✅ 已收口（2026-10-22）：格式门禁 + 覆盖率门禁 + 阻断语义**（required status check 待管理员在分支保护配置）；**P-13 ✅ 已收口（2026-10-22）：多平台矩阵（win/mac/linux，非阻断）+ 架构测试独立桶 + Release 流水线**（`ci-platforms.yml` / `release.yml` / `GitVersion.yml`） | 门禁已阻断（本地与 CI 均生效）；多平台矩阵非阻断跑（R-6 先晒缺陷）；静态扫描余 P-12；ADR/Schema 余 P-14 |
+| CI    | `.github/workflows/ci.yml` 已建，全量重建 + 分层测试 + **P-11 ✅ 已收口（2026-10-22）：格式门禁 + 覆盖率门禁 + 阻断语义**（required status check 待管理员在分支保护配置）；**P-13 ✅ 已收口（2026-10-22）：多平台矩阵（win/mac/linux，非阻断）+ 架构测试独立桶 + Release 流水线**（`ci-platforms.yml` / `release.yml` / `GitVersion.yml`） | 门禁已阻断（本地与 CI 均生效）；多平台矩阵非阻断跑（R-6 先晒缺陷）；静态扫描余 P-12；**ADR/Schema ✅ P-14 已收口（2026-10-22）：`docs/adr/` 11 篇决策记录 + 索引守卫，`config.schema.json` 键集合契约 + CI 校验** |
 
 ### 1.2 架构问题清单（待治理，带代码证据）
 
@@ -46,7 +46,7 @@
 | A-9  | 工程·CI      | CI 门禁转阻断 **① ✅ 已收口（P-11，2026-10-22）**：`build`+分层单测+格式门禁（`dotnet format --verify-no-changes`，CHARSET 假阳性按脚本过滤）+ 覆盖率门禁（`scripts/ci/Assert-Coverage.ps1` 逐生产程序集按锁定基线断言）全部进 CI 且失败即红；required status check（`build-and-test`）待仓库管理员在分支保护勾选。**② 仍待**：单平台（windows-latest，Avalonia 跨平台却只验 Windows）、无静态安全扫描、无 Release 流水线 | `ci.yml`／`scripts/ci/Assert-Format.ps1`／`scripts/ci/Assert-Coverage.ps1` | 高   | P0-16 / P4.9；① = **P-11 ✅ 已收口**；② = P-13（多平台矩阵 + Release） |
 | A-10 | 工程·规范      | `.editorconfig` 仅 28 行，团队级关键规则（命名/CA/IDExxxx）未成集；`CS1591` 已关，公共 API 文档无约束                                                 | `Directory.Build.props:NoWarn CS1591` 已移除                             | 中   | P0-15                  |
 | A-11 | 风险·安全      | `CliCommandBuilder`/`CliAdapterBase` 392/470 行是命令构造安全敏感区；凭证格式兼容面（`FileCredentialVault` 671 行）                             | `Agents/*`、`CredentialVault/*`                                        | 中   | P0-3（已修注入，需守卫防回潮）      |
-| A-12 | 文档·同步      | 无 ADR 记录重大架构决策；设计文档与代码靠人工同步；配置 schema 无机器可校验的单一事实来源                                                                       | 无 `docs/adr/`                                                         | 低   | P2-26（注释已清，决策未留痕）      |
+| A-12 | 文档·同步      | ~~无 ADR 记录重大架构决策；设计文档与代码靠人工同步；配置 schema 无机器可校验的单一事实来源~~ **P-14 ✅ 已收口（2026-10-22）**：`docs/adr/` 不可变决策记录 11 篇（分层/策略/facade/VM/去重/配置契约/可观测性/CI/发布/构建 SOP/ADR 机制）+ 索引与结构由 `AdrHygieneTests` 机器校验；`docs/config.schema.json`（JSON Schema 2020-12）由 `RunOptions` 派生，键集合与代码逐字相等由 `ConfigSchemaTests` 锁死，并被 `scripts/ci/Assert-ConfigSchema.ps1` 纳入 CI 阻断门禁 | `docs/adr/`（11 篇 + README 索引 + 模板）／`docs/config.schema.json`／`scripts/ci/Assert-ConfigSchema.ps1` | 低   | **P-14 ✅ 已收口**（§6.2 执行记录） |
 
 > 诊断口径：严重度 = 对"正确性/可演进性/可运维性"三者的综合冲击，非仅看行数。A-1/A-2/A-3/A-8/A-9 为本期重点。
 
@@ -249,6 +249,7 @@
 1. **门禁转阻断** ✅：`build`（全量 `--no-incremental`）+ 分层单测 + 两道新门禁同属 job `build-and-test`，任一步骤失败即 job 失败；将该 job 名配为 master 分支保护的 required status check 后即阻止合并（分支保护属 GitHub 仓库管理设置，由管理员执行，操作步骤见 §6.2 P-11 执行记录）。
 2. **覆盖率采集 + 门禁** ✅：`coverlet.collector` 采集（`tests/coverlet.runsettings`，cobertura + SkipAutoProps，采集范围锁定快跑 bucket），`scripts/ci/Assert-Coverage.ps1` 按锁定基线（Core 44% / Infrastructure 39% / Agents 23% / Desktop 50%）逐生产程序集断言，低于阈值即失败。
 3. **格式门禁** ✅：`dotnet format --verify-no-changes` 进 CI（`scripts/ci/Assert-Format.ps1`，过滤 SDK 10.0.401 CHARSET 假阳性），与 pre-commit 钩同口径。
+3b. **配置契约门禁** ✅（P-14，2026-10-22）：`scripts/ci/Assert-ConfigSchema.ps1` 进 `build-and-test`，校验 `docs/config.schema.json` 与 `RunOptions` 键集合逐字一致、示例配置合法、畸形配置被拦截（校验实现唯一，见 `ConfigSchemaTests`）。
 4. **架构测试桶** ✅（P-13，2026-10-22）：§3.4 的 IL 扫描断言已从 `ci.yml` 快跑 bucket 抽离，独立成 `ci-platforms.yml` 的 `architecture-tests` job 隔离跑（与 `ci.yml` 快跑 bucket 的架构断言等价、互不依赖），提升可见性。
 5. **静态安全扫描**：Roslyn 分析器分级 + 安全扫描（命令注入/路径遍历/凭证硬编码），重点 `CliCommandBuilder`/`CliAdapterBase`/`FileCredentialVault`（P-12）。
 6. **多平台矩阵** ✅（P-13，2026-10-22）：`windows / macOS / linux` 三平台原生 runner 矩阵已建（`ci-platforms.yml` 的 `platform-matrix`，`continue-on-error` **先非阻断**，对应 R-6 缓解——先晒隐蔽缺陷、稳定后转阻断）；`src/BatchAgentRunner.Desktop/BatchAgentRunner.Desktop.csproj` 已按宿主 OS 条件化 `OutputType`（Windows=WinExe，其余=Exe）并剔除 Windows 专有 `app.manifest` / `.ico`，关闭「只验 Windows 是缺口」。升级路径：观察三平台全绿后去 `continue-on-error` + 加入 required status checks（详见 workflow 文件尾部注释）。
@@ -272,14 +273,17 @@
 
 ### 5.7 配置治理（A-6/A-12）
 
-- **schema 单一事实来源**：由 `RunOptions` 生成 JSON Schema，CI 校验 `config.json`。
+- **schema 单一事实来源** ✅（P-14，2026-10-22）：`docs/config.schema.json`（JSON Schema 2020-12）由 `RunOptions` 及其引用的领域类型派生；`ConfigSchemaTests` 断言 schema 顶层与各 `$defs` 键集合**逐字等于** C# 类型的 `[JsonPropertyName]` 键集合、`samples/config.example.json` 通过校验、畸形配置被拦截；`scripts/ci/Assert-ConfigSchema.ps1` 将其纳入 CI 阻断门禁（§5.4）。决策背景见 [ADR-0007](adr/ADR-0007-config-contract-and-schema.md)。
+- **前向兼容口径**：schema 对所有对象设 `additionalProperties: true`——旧版本 `config.json`（含已废弃字段）仍可校验通过；「漂移」由键集合等值断言拦截，而非靠 `additionalProperties:false` 误伤兼容字段。
 - **迁移框架**：版本化迁移器，新增字段默认兼容；破坏性变更走主版本。
 - **约定固化**：snake_case + 派生属性 `[JsonIgnore]`（已实现；**P-09 已由 `RunOptionsContractTests` 的「命名契约」/「派生契约」断言守卫**，不再依赖人肉 review）。
 - **密钥隔离**：凭证不入 config（已由 Vault 处理），配置仅存非敏感项。
 
 ### 5.8 文档与决策留痕
 
-- `DESIGN` 维持单一设计权威源；重大架构决策写 **ADR**（`docs/adr/`，含状态/上下文/决策/后果）。
+- `DESIGN` 维持单一设计权威源；重大架构决策写 **ADR** ✅（P-14，2026-10-22）：`docs/adr/` 已建，含 [README](adr/README.md)（写入时机/状态机/索引）、[模板](adr/template.md) 与 **11 篇已接受决策**（分层、策略对象化、facade 上限、VM 分解、单一事实来源、配置契约、可观测性、CI 门禁、多平台发布、构建 SOP、ADR 机制本身）。
+- **ADR 不可变**：决策接受后不修改，演进靠新 ADR 标注取代关系；索引与本目录文件双向一一对应。
+- **机器同步机制** ✅：`AdrHygieneTests`（4 项）校验编号连续/格式合规、必备章节与状态取值、索引双向一致、模板存在；`ConfigSchemaTests`（4 项）校验配置契约与 schema 同步——「文档漂移」在 CI 单测桶内即红，不再依赖人肉 review。
 - 对外契约（CLI 参数、config schema、sidecar 格式、报告结构）半自动生成文档。
 - 代码↔文档同步靠 PR 评审清单 + 架构测试守卫，而非人肉。
 
@@ -289,7 +293,7 @@
 
 > **节奏校准（用户确认）**：每阶段 ≈ **5 人天**，小批量增量交付。每个阶段必须**独立可编译、全量测试绿、不破坏对外契约**，并可单独回滚。阶段间按依赖顺序串行，主题内可并行。
 >
-> 基线（已完成，2026-10-17~20）= TECH-DEBT 阶段 −1/0/1/2：止血、建网、动骨（BatchEngine 拆 6 协作者、提接口、DI、端口抽离、Desktop 测试基座）。以下为**剩余 14 个 5 人天阶段**（合计 ≈ 70 人天），分主题 A/B/C；主题 D 为长期持续化，不计入固定阶段。**进度（2026-10-22）**：P-01~P-11、P-13 共 **12 个阶段已收口**；P-12（规范集 + 静态安全扫描）进行中；余 **P-14**（ADR + 配置 Schema）一个工程化阶段。
+> 基线（已完成，2026-10-17~20）= TECH-DEBT 阶段 −1/0/1/2：止血、建网、动骨（BatchEngine 拆 6 协作者、提接口、DI、端口抽离、Desktop 测试基座）。以下为**剩余 14 个 5 人天阶段**（合计 ≈ 70 人天），分主题 A/B/C；主题 D 为长期持续化，不计入固定阶段。**进度（2026-10-22）**：P-01~P-11、P-13、P-14 共 **13 个阶段已收口**；P-12（规范集 + 静态安全扫描）进行中。
 
 ### 6.1 阶段总览（5 人天/阶段）
 
@@ -308,7 +312,7 @@
 | **P-11** | C 工程化  | A-9(①)      | CI 转阻断（required status）+ 覆盖率门禁 + 格式门禁进 CI                           | P-07 | ✅ 已收口（2026-10-22）：格式/覆盖率/分层单测/构建四道门禁全进 CI 且失败即红；门禁基线 Core 44%/Infra 39%/Agents 23%/Desktop 50%；required status check 待管理员在分支保护勾选 `build-and-test` |
 | **P-12** | C 工程化  | A-10/A-11   | `.editorconfig` 规则集扩充 + 恢复 `CS1591` + 静态安全扫描固化命令/凭证守卫               | P-11 | 扫描 0 高危；公共 API 有文档              |
 | **P-13** | C 工程化  | A-9(②)      | 多平台 CI 矩阵（win/mac/linux）+ Release 流水线（publish+版本号+签名）               | P-11 | ✅ 已收口（2026-10-22）：多平台矩阵（win/mac/linux 原生 runner，非阻断 `continue-on-error`，R-6）+ 架构测试独立桶（`ci-platforms.yml`）；Release 流水线（自包含单文件四 RID + GitVersion 版本号 + SHA256 校验，标签建 GitHub Release 可回退）；代码签名列为后续接入项 |
-| **P-14** | C 工程化  | A-12        | ADR 机制 + 配置 JSON Schema 单一事实来源 + CI 校验                              | P-09 | ADR≥关键决策；schema 校验生效            |
+| **P-14** | C 工程化  | A-12        | ADR 机制 + 配置 JSON Schema 单一事实来源 + CI 校验                              | P-09 | ✅ 已收口（2026-10-22）：`docs/adr/` 11 篇决策记录（含机制/模板/索引）+ `AdrHygieneTests` 4 项守卫；`config.schema.json` 键集合契约由 `ConfigSchemaTests` 4 项锁死；`Assert-ConfigSchema.ps1` 进 CI 阻断门禁 |
 
 > 主题 D（持续化）：机会主义偿还剩余 P2、月度台账复核、性能基线——**长期进行，不绑定 5 人天阶段**。
 
@@ -577,6 +581,17 @@
 - 步骤：建立 `docs/adr/`，为重大架构决策补 ADR；由 `RunOptions` 生成 JSON Schema 并接入 CI 校验 `config.json`。
 - 退出：ADR≥关键决策数；schema 校验生效；设计文档与代码同步机制就位。
 
+> **【执行记录 · 2026-10-22 · ✅ 已收口】**
+> - **ADR 机制（`docs/adr/`，新增）**：`README.md` 定义「何时写 / 怎么写 / 状态机（提议→已接受→已废弃/已取代）/ 编号规则 / 索引」，`template.md` 提供「状态·日期·决策者·关联 + 背景·决策·后果·替代方案」骨架。**决策记录 11 篇**覆盖全部关键决策，每篇均写明背景、取舍与否决方案，决策接受后不可改写（演进靠新 ADR 标注取代）：
+>   `0001` ADR 机制本身、`0002` 分层与单向依赖（含 IL 断言）、`0003` 编排 facade ≤400 行 + 协作者拆分、`0004` 调度策略对象化、`0005` VM 按 Coordinator/Presenter 分解、`0006` 存储与路径单一事实来源、`0007` 配置契约稳定（横向切片 + schema）、`0008` 可观测性（唯一落盘点/RunId/指标/脱敏）、`0009` CI 阻断与覆盖率格式基线、`0010` 多平台矩阵与 Release、`0011` 构建 SOP（fast/strict）。
+> - **文档↔代码同步机制（机器化，非人肉）**：新增 `AdrHygieneTests`（**4 项**）——① 文件名 `ADR-NNNN-slug.md` 且编号自 0001 起连续不跳号；② 必备章节（背景/决策/后果）与状态取值合规；③ `README` 索引与本目录文件**双向一一对应**（漏登记、悬挂链接、断号即红）；④ 模板文件存在。任何「写了决策不登记」「索引指向已删文件」在 CI 单测桶内直接暴露。
+> - **配置 Schema 单一事实来源（`docs/config.schema.json`，新增）**：JSON Schema 2020-12，由 `RunOptions.01~11-*.cs` 及其引用的领域类型（`WorkspaceConfig`/`AccountConfig`/`ModelCandidate`/`FallbackModel`/`FreeTimeWindow`/`ExpertRef`/`FallbackConfig`/`AutoShutdownConfig`/`CreditsClaimConfig`/`AutoAnswerPolicy`/`NotificationRule`/`SmtpConfig`/`GitConfig`）逐字派生；顶层 **41 个字段**（覆盖 12 个配置域）+ **13 个 `$defs`**，含标题/说明/枚举/边界/`pattern`（时段 `HH:mm`）。
+> - **契约同步由测试锁死（`ConfigSchemaTests`，4 项）**：① `samples/config.example.json` 通过 schema 校验（校验器支持 `type/properties/required/additionalProperties/items/enum/minimum/maximum/pattern/$ref`，容忍 `//` 注释与尾随逗号，与运行态 `JsonDefaults` 同口径）；② schema 顶层 `properties` 键集合**逐字等于** `RunOptions` 的 `[JsonPropertyName]` 键集合；③ 13 个 `$defs` 键集合分别等于对应 C# 类型键集合；④ 负向用例（`concurrency:"not-a-number"` / 非法 `agent_kind` / 缺字段的 `accounts`）必须被拦截，防校验器退化为空操作。**改字段而不同步 schema 即红**。
+> - **CI 校验（`scripts/ci/Assert-ConfigSchema.ps1`，新增）**：作为 `ci.yml` 的 `build-and-test` 独立步骤（`Config schema gate`），消费前置 build 产物（`--no-build`）；校验实现**只有一处**（复用 `ConfigSchemaTests`），脚本仅作 CI 显式入口，避免「第二份校验器」漂移。失败输出修复指引（同步 schema 与 `CONFIG-配置项说明.md`）。
+> - **契约兼容口径**：schema 全对象 `additionalProperties: true`——旧配置含已废弃字段仍可校验通过（前向兼容）；漂移由键集合等值断言拦截，而非靠 `additionalProperties:false` 误伤。此取舍与理由见 [ADR-0007](adr/ADR-0007-config-contract-and-schema.md)。
+> - **退出验证**：`ConfigSchemaTests` 4/4 绿、`AdrHygieneTests` 4/4 绿；`Assert-ConfigSchema.ps1` 本地实跑 PASS；新增 8 项测试（主工程）。ADR 数量 11 篇 ≥ 关键决策数（§1.2 的 A-1~A-12 与 P-09/P-10/P-11/P-13 决策均有对应记录）。
+> - **边界（诚实声明）**：可选的「由 C# 反射自动生成 schema」未采用——生成器会成为第二事实来源且丢失可读描述；改为「手写派生 + 键集合等值断言」，机器保证不漂移（理由见 ADR-0007「替代方案」）。ADR 覆盖的是**重大决策**，不追求把每次提交都写成 ADR。
+
 ### 6.3 人天预算汇总
 
 | 主题            | 阶段数          | 人天     | 占比   |
@@ -622,9 +637,9 @@
 | 构建 | 全量 `--no-incremental` **0 警告 0 错误**（继承）                                                                   |
 | 测试 | 全量绿；Core/Engine **≥ 85%**、Infrastructure **≥ 70%**、Desktop **≥ 50%**；契约测试覆盖 `IBatchEngine`/config/sidecar |
 | 架构 | §3.4 IL 断言全绿；`BatchEngine` facade **≤ 400 行**；`TaskRunner` **≤ 400 行**；最大单个 VM **≤ 400 行**                |
-| 工程 | CI 阻断生效（P-11 ✅：格式/覆盖率/单测/构建四道门禁失败即红，required status check 待管理员勾选 `build-and-test`）；覆盖率门禁生效（P-11 ✅：Core 44% / Infra 39% / Agents 23% / Desktop 50% 锁定基线，向 85/70/50 爬升）；静态扫描 **0 高危**（P-12）；多平台矩阵 CI 绿（P-13 ✅：win/mac/linux 非阻断矩阵 + 架构测试独立桶，`ci-platforms.yml`）；Release 流水线可发布可回退（P-13 ✅：`release.yml` 自包含单文件 + GitVersion + SHA256 校验）                                                                    |
+| 工程 | CI 阻断生效（P-11 ✅：格式/覆盖率/单测/构建四道门禁失败即红，required status check 待管理员勾选 `build-and-test`）；覆盖率门禁生效（P-11 ✅：Core 44% / Infra 39% / Agents 23% / Desktop 50% 锁定基线，向 85/70/50 爬升）；静态扫描 **0 高危**（P-12）；多平台矩阵 CI 绿（P-13 ✅：win/mac/linux 非阻断矩阵 + 架构测试独立桶，`ci-platforms.yml`）；Release 流水线可发布可回退（P-13 ✅：`release.yml` 自包含单文件 + GitVersion + SHA256 校验）；配置契约门禁生效（P-14 ✅：`Assert-ConfigSchema.ps1` schema↔代码键集合等值断言）                                                                    |
 | 业务 | 端到端跑真实任务清单，降级/兜底/冷却/时段/续跑行为与原版一致（契约测试锁定）                                                                  |
-| 文档 | ADR ≥ 关键决策数；设计文档与代码同步；配置 JSON Schema 存在且 CI 校验                                                            |
+| 文档 | ✅ P-14：ADR **11 篇**（≥ 关键决策数）且索引/结构由 `AdrHygieneTests` 机器校验；设计文档与代码同步（ADR 索引双向一致 + schema 键集合等值断言）；`docs/config.schema.json` 存在并被 CI 门禁校验                                                            |
 
 ---
 
@@ -634,9 +649,9 @@
 
 - `docs/ARCH-架构重构与工程化治理方案.md`（本方案）
 - `docs/TECH-DEBT-技术债务治理方案-v2.0.md`（持续更新剩余项）
-- `docs/adr/`（架构决策记录：分层模型、策略对象化、契约守卫、CI 阻断等）
+- `docs/adr/`（架构决策记录 ✅ P-14：README 机制/索引 + 模板 + 11 篇已接受决策——分层模型、策略对象化、facade 上限、VM 分解、单一事实来源、配置契约、可观测性、CI 门禁、多平台发布、构建 SOP、ADR 机制）
 - `docs/API-契约文档.md`（CLI 参数 / config schema / sidecar 格式 / 报告结构）
-- `docs/config.schema.json`（配置机器可校验单一事实来源）
+- `docs/config.schema.json`（配置机器可校验单一事实来源 ✅ P-14：JSON Schema 2020-12，键集合与 `RunOptions` 等值，CI 校验）
 - `docs/回滚-Runbook.md`（发布回退、配置迁移回滚步骤）
 
 ### 8.2 代码模块类
@@ -651,7 +666,7 @@
 ### 8.3 工程配置类
 
 - 扩充后的 `.editorconfig`（团队级规则集）
-- `ci.yml` 阻断版（覆盖率 + 格式 + 架构测试 + 静态扫描）+ `ci-platforms.yml` 多平台矩阵（win/mac/linux 非阻断）+ 架构测试独立桶
+- `ci.yml` 阻断版（覆盖率 + 格式 + 配置 Schema + 架构测试 + 静态扫描）+ `ci-platforms.yml` 多平台矩阵（win/mac/linux 非阻断）+ 架构测试独立桶
 - 静态扫描配置（分析器规则集 + 安全扫描）
 - `Release` 流水线（publish + 版本号 + 签名）✅（P-13：`.github/workflows/release.yml` 自包含单文件四 RID + `GitVersion.yml` 版本号 + SHA256 校验，标签建 GitHub Release 可回退；代码签名列为后续接入项）
 - `GitVersion` / 版本策略配置 ✅（P-13：`GitVersion.yml`，Mainline 模式，标签锚定 SemVer）
@@ -745,7 +760,7 @@
 | `Core/Domain/TaskStatusExtensions.cs`                  | 14   | 终态判定单一事实来源（P-08 收口） | 维持；新增终态状态只改此处                 |
 | `Core/Domain/TaskItem.cs`                              | 237  | 任务领域模型（P-08：唯一手写 `Clone`） | 维持；新增字段须同步 `Clone()`（`TaskItemCloneTests` 反射锁死） |
 
-> 测试：801 个测试方法（截至 2026-10-21；P-06 收口新增 Login/Monitor headless 契约测试 29 项 + Monitor/Login XAML 绑定守卫 1 项 + Monitor/Login facade 行数守卫 2 项，由 P-05 收口 702 → 734：主 572 + Desktop 162；**P-07 收口 +1**「第 4 份同构仓储」拦截守卫 → **735：主 573 + Desktop 162**；**P-08 收口 +9**：`DomainPrimitivesHygieneTests` 5 项 + `TaskItemCloneTests` 4 项 → **744：主 582 + Desktop 162**；**P-09 收口 +14**：主 `RunOptionsContractTests` 5 项 + `RunOptionsHygieneTests` 3 项、Desktop `ConfigEditorsHygieneTests` 3 项 + 时段行为契约 3 项 → **758：主 590 + Desktop 168**；**P-10 收口 +43**：主 `SecretMaskerTests` 20 项 + `RunMetricsTests` 8 项 + `RunMetricsInstrumentationTests` 4 项 + `RunMetricsWriterTests` 2 项 + `FileRunLoggerTests` 3 项 + `ObservabilityHygieneTests` 6 项 → **801：主 633 + Desktop 168**）；CI 触发 `push`/`PR` 至 `master`，全量 `--no-incremental` 构建 + 分层测试，当前"只报告不阻断"。
+> 测试：801 个测试方法（截至 2026-10-21；P-06 收口新增 Login/Monitor headless 契约测试 29 项 + Monitor/Login XAML 绑定守卫 1 项 + Monitor/Login facade 行数守卫 2 项，由 P-05 收口 702 → 734：主 572 + Desktop 162；**P-07 收口 +1**「第 4 份同构仓储」拦截守卫 → **735：主 573 + Desktop 162**；**P-08 收口 +9**：`DomainPrimitivesHygieneTests` 5 项 + `TaskItemCloneTests` 4 项 → **744：主 582 + Desktop 162**；**P-09 收口 +14**：主 `RunOptionsContractTests` 5 项 + `RunOptionsHygieneTests` 3 项、Desktop `ConfigEditorsHygieneTests` 3 项 + 时段行为契约 3 项 → **758：主 590 + Desktop 168**；**P-10 收口 +43**：主 `SecretMaskerTests` 20 项 + `RunMetricsTests` 8 项 + `RunMetricsInstrumentationTests` 4 项 + `RunMetricsWriterTests` 2 项 + `FileRunLoggerTests` 3 项 + `ObservabilityHygieneTests` 6 项 → **801：主 633 + Desktop 168**；P-11 收口轮实测 **822：主 654 + Desktop 168**（+21 来自 HEAD 中 ReasoningEfforts 特性提交，与门禁改动无关）；**P-14 收口 +8**：主 `ConfigSchemaTests` 4 项 + `AdrHygieneTests` 4 项 → **830：主 662 + Desktop 168**）；CI 触发 `push`/`PR` 至 `master`，全量 `--no-incremental` 构建 + 分层测试 + 格式/覆盖率/配置 Schema 门禁，**失败即红（P-11/P-14 阻断）**。
 
 ## 附录 B：本方案 ↔ TECH-DEBT v2.0 映射
 
@@ -758,7 +773,7 @@
 | §1.2 A-9         | P0-16 / §4.9                 |
 | §1.2 A-10        | P0-15                        |
 | §1.2 A-11        | P0-3（守卫）                     |
-| §1.2 A-12        | P2-26 / 文档同步                 |
+| §1.2 A-12        | **P-14 ✅**（ADR + 配置 Schema，2026-10-22 收口，见 §6.2）＝ P2-26 / 文档同步                 |
 | §3~§6 全部         | 阶段 3（持续化）+ 阶段 4 机会主义偿还的架构化编排 |
 
 ## 附录 C：架构依赖规则（IL 扫描断言，§3.4 落地）
