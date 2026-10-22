@@ -38,6 +38,9 @@
     <EmbeddedResource Include="..\..\samples\config.example.json" Link="Samples\config.example.json" LogicalName="BatchAgentRunner.Tests.Samples.config.example.json" />
     <EmbeddedResource Include="..\..\samples\tasks.json" Link="Samples\tasks.json" LogicalName="BatchAgentRunner.Tests.Samples.tasks.json" />
     <EmbeddedResource Include="..\..\samples\tasks.md" Link="Samples\tasks.md" LogicalName="BatchAgentRunner.Tests.Samples.tasks.md" />
+    <!-- ARCH P-14：配置 JSON Schema 单一事实来源（docs/config.schema.json）作为嵌入式资源，
+         由 ConfigSchemaTests 读取并校验 samples/config.example.json + 与 RunOptions 代码契约同步。 -->
+    <EmbeddedResource Include="..\..\docs\config.schema.json" Link="Schemas\config.schema.json" LogicalName="BatchAgentRunner.Tests.Schemas.config.schema.json" />
   </ItemGroup>
 
 </Project>

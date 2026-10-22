@@ -1,0 +1,389 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/BatchAgentRunner/config.schema.json",
+  "title": "BatchAgentRunner 运行配置（config.json）",
+  "description": "RunOptions 的机器可校验单一事实来源（ARCH P-14 / A-12）。本 schema 由 src/BatchAgentRunner.Core/Options/RunOptions.*.cs 及其引用的领域类型逐字派生，由 tests/BatchAgentRunner.Tests/Architecture/ConfigSchemaTests.cs 在 CI 单测桶内强制与代码保持同步（键集合一一对应）。\n\n契约语义：\n- 字段名全部小写下划线，与 [JsonPropertyName] 键名逐字一致；\n- 未列出的字段会被运行时忽略（前向兼容，见 Core/Serialization/JsonDefaults），故本 schema 对所有对象设为 additionalProperties:true，由单元测试锁死「schema 键集合 == 代码键集合」，既不放过漂移、也不误伤兼容字段；\n- 枚举以字符串形式持久化（JsonStringEnumConverter 全局注册），请用成员名原文（如 AgentKind 用 WorkBuddy/CodeBuddy/Mock，而非数字）；\n- 数值口径：int 字段为 integer，金额（decimal）字段为 number；\n- free_time_window.start/end 为本地挂钟「HH:mm」或「HH:mm:ss」；days 为星期枚举（Sunday..Saturday，自定义解析亦兼容 mon..sun 等 token）。",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "task_file_path": {
+      "type": "string",
+      "title": "任务文件路径",
+      "description": "批处理任务清单（.json 原地原子回写 / .md 只读输入写 sidecar）。必填，预检拦截空值。"
+    },
+    "agent_kind": {
+      "type": "string",
+      "title": "执行工具",
+      "enum": ["WorkBuddy", "CodeBuddy", "Mock"],
+      "description": "CLI 智能体适配器：WorkBuddy / CodeBuddy / Mock（内置仿真，不调 CLI）。"
+    },
+    "cli_path": {
+      "type": ["string", "null"],
+      "title": "CLI 可执行文件路径",
+      "description": "留空（null）= 在系统 PATH 按默认名查找。"
+    },
+    "cli_arguments_template": {
+      "type": ["string", "null"],
+      "title": "CLI 参数模板",
+      "description": "占位符 {prompt}{model}{expert}{workspace}{extra}；留空用适配器内置模板。"
+    },
+    "reasoning_effort": {
+      "type": ["string", "null"],
+      "title": "推理强度",
+      "description": "作为 --effort 传给 CLI：minimal/low/medium/high/xhigh/max；别名 middle/mid/中/中等 均按 medium；未知回落 medium；留空则不追加该参数。"
+    },
+    "show_cli_window": {
+      "type": "boolean",
+      "title": "弹出 CLI 原生控制台窗口",
+      "description": "默认 false（后台无窗口、应用捕获 stdout）。仅排障用。"
+    },
+    "workspaces": {
+      "type": "array",
+      "title": "命名工作空间列表",
+      "items": { "$ref": "#/$defs/WorkspaceConfig" }
+    },
+    "default_workspace": {
+      "type": ["string", "null"],
+      "title": "本批默认工作空间",
+      "description": "命名空间名或绝对路径；空则回退全局默认。"
+    },
+    "max_workspaces": {
+      "type": "integer",
+      "minimum": 0,
+      "title": "工作空间数量上限",
+      "description": "REQ-019 默认 10。引擎不设绝对硬上限，以该配置值为唯一校验准绳。"
+    },
+    "accounts": {
+      "type": "array",
+      "title": "账号池",
+      "items": { "$ref": "#/$defs/AccountConfig" }
+    },
+    "model_candidates": {
+      "type": "array",
+      "title": "全局共享候选模型列表（兼容字段）",
+      "description": "仅对未配置自有 model_candidates 的账号生效。",
+      "items": { "$ref": "#/$defs/ModelCandidate" }
+    },
+    "degradation_strategy": {
+      "type": "string",
+      "title": "降级策略",
+      "enum": ["ModelFirst", "AccountFirst"],
+      "description": "ModelFirst：同账号先轮候选模型，全耗尽再换账号；AccountFirst：先按模型名聚合轮完再换模型。"
+    },
+    "expert": { "$ref": "#/$defs/ExpertRef" },
+    "fallback": { "$ref": "#/$defs/FallbackConfig" },
+    "max_retries_per_task": {
+      "type": "integer",
+      "minimum": 0,
+      "title": "普通失败重试次数"
+    },
+    "rate_limit_backoff_retries": {
+      "type": "integer",
+      "minimum": 0,
+      "title": "临时限流退避重试次数"
+    },
+    "rate_limit_initial_backoff_seconds": {
+      "type": "integer",
+      "minimum": 0,
+      "title": "退避初始间隔（秒）"
+    },
+    "task_timeout_minutes": {
+      "type": "integer",
+      "minimum": 1,
+      "title": "单任务超时（分钟）"
+    },
+    "max_attempts_per_task": {
+      "type": "integer",
+      "minimum": 1,
+      "title": "单任务总尝试次数上限"
+    },
+    "max_total_minutes_per_task": {
+      "type": "integer",
+      "minimum": 1,
+      "title": "单任务总时长上限（分钟）"
+    },
+    "max_wait_minutes": {
+      "type": "integer",
+      "minimum": 0,
+      "title": "最长可等待时长（分钟）"
+    },
+    "wait_for_quota_reset": {
+      "type": "boolean",
+      "title": "额度耗尽无限等待重置",
+      "description": "默认 true：额度每日必然重置，确定性可恢复场景不计入批/任务时长。"
+    },
+    "default_cooldown_minutes": {
+      "type": "integer",
+      "minimum": 1,
+      "title": "默认冷却时长（分钟）"
+    },
+    "concurrency": {
+      "type": "integer",
+      "minimum": 1,
+      "title": "并发执行任务数",
+      "description": "默认 1（严格串行）。"
+    },
+    "force_rerun": {
+      "type": "boolean",
+      "title": "强制重跑",
+      "description": "忽略已完成断点状态，本批全部重新执行。"
+    },
+    "stop_on_failure": {
+      "type": "boolean",
+      "title": "失败即停整批"
+    },
+    "terminate_after_current_task": {
+      "type": "boolean",
+      "title": "终止时等待当前任务完成"
+    },
+    "auto_shutdown": { "$ref": "#/$defs/AutoShutdownConfig" },
+    "credits_claim": { "$ref": "#/$defs/CreditsClaimConfig" },
+    "auto_answer": { "$ref": "#/$defs/AutoAnswerPolicy" },
+    "notifications": {
+      "type": "array",
+      "title": "通知规则（REQ-018）",
+      "items": { "$ref": "#/$defs/NotificationRule" }
+    },
+    "enable_session_resume": {
+      "type": "boolean",
+      "title": "启用断点会话恢复"
+    },
+    "default_max_gate_loops": {
+      "type": "integer",
+      "minimum": 1,
+      "title": "质量门禁修订循环默认上限"
+    },
+    "markdown_in_place_writeback": {
+      "type": "boolean",
+      "title": "Markdown 任务文件原地回写"
+    },
+    "dependency_failure_policy": {
+      "type": "string",
+      "title": "依赖失败策略（DAG，二期）",
+      "enum": ["BlockDependents", "AbortBatch", "SkipDependents"]
+    },
+    "template_batch_expansion_limit": {
+      "type": "integer",
+      "minimum": 1,
+      "title": "模板展开单批上限（REQ-016）"
+    },
+    "collect_diffs": {
+      "type": "boolean",
+      "title": "采集结果 diff（REQ-017）"
+    },
+    "diff_target_globs": {
+      "type": "array",
+      "title": "diff 采集受关注文件 glob",
+      "items": { "type": "string" }
+    },
+    "git": { "$ref": "#/$defs/GitConfig" },
+    "result_max_kb": {
+      "type": "integer",
+      "minimum": 1,
+      "title": "单任务结果大小上限（KB）"
+    },
+    "backup_retention": {
+      "type": "integer",
+      "minimum": 0,
+      "title": "自动备份快照保留份数"
+    }
+  },
+  "$defs": {
+    "WorkspaceConfig": {
+      "type": "object",
+      "additionalProperties": true,
+      "title": "命名工作空间",
+      "properties": {
+        "name": { "type": "string", "title": "工作空间名称（引用键）" },
+        "path": { "type": "string", "title": "工作空间目录路径" },
+        "is_global_default": { "type": "boolean", "title": "是否全局默认" }
+      }
+    },
+    "AccountConfig": {
+      "type": "object",
+      "additionalProperties": true,
+      "title": "账号池项",
+      "properties": {
+        "id": { "type": "string", "title": "账号唯一标识" },
+        "display_name": { "type": "string", "title": "展示名" },
+        "credential_ref": { "type": "string", "title": "凭据引用（profile:/env:/keychain:，不明文）" },
+        "enabled": { "type": "boolean", "title": "是否启用" },
+        "model_candidates": {
+          "type": ["array", "null"],
+          "title": "该账号自有候选模型池",
+          "items": { "$ref": "#/$defs/ModelCandidate" }
+        },
+        "fallback_models": {
+          "type": ["array", "null"],
+          "title": "该账号自有兜底模型池",
+          "items": { "$ref": "#/$defs/FallbackModel" }
+        },
+        "note": { "type": ["string", "null"], "title": "备注（不参与逻辑）" }
+      }
+    },
+    "ModelCandidate": {
+      "type": "object",
+      "additionalProperties": true,
+      "title": "候选模型项",
+      "properties": {
+        "name": { "type": "string", "title": "模型名称（CLI 模型标识）" },
+        "free_time_window": {
+          "type": ["object", "null"],
+          "title": "免费时段",
+          "$ref": "#/$defs/FreeTimeWindow"
+        },
+        "estimated_unit_price": { "type": ["number", "null"], "title": "预估单价（元）" },
+        "discount": { "type": ["number", "null"], "title": "折扣倍率（如 0.65）" },
+        "note": { "type": ["string", "null"], "title": "备注" }
+      }
+    },
+    "FallbackModel": {
+      "type": "object",
+      "additionalProperties": true,
+      "title": "兜底模型项",
+      "properties": {
+        "name": { "type": "string", "title": "兜底模型名称" },
+        "estimated_unit_price": { "type": ["number", "null"], "title": "预估单价（元）" },
+        "note": { "type": ["string", "null"], "title": "备注" }
+      }
+    },
+    "FreeTimeWindow": {
+      "type": "object",
+      "additionalProperties": true,
+      "title": "免费时段",
+      "properties": {
+        "start": {
+          "type": "string",
+          "pattern": "^([0-1]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$",
+          "title": "时段开始（HH:mm 或 HH:mm:ss）"
+        },
+        "end": {
+          "type": "string",
+          "pattern": "^([0-1]?[0-9]|2[0-3]):[0-5][0-9](:[0-5][0-9])?$",
+          "title": "时段结束（HH:mm 或 HH:mm:ss）"
+        },
+        "days": {
+          "type": ["array", "null"],
+          "title": "星期过滤（DayOfWeek 枚举名）",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "ExpertRef": {
+      "type": "object",
+      "additionalProperties": true,
+      "title": "专家/专家团引用",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["None", "Single", "Team"],
+          "title": "专家类型"
+        },
+        "id": { "type": ["string", "null"], "title": "专家 id" },
+        "display_name": { "type": ["string", "null"], "title": "展示名" },
+        "role_prompt": { "type": ["string", "null"], "title": "角色描述（prompt 注入降级）" }
+      }
+    },
+    "FallbackConfig": {
+      "type": "object",
+      "additionalProperties": true,
+      "title": "特殊模型兜底配置",
+      "description": "v1.12 起兜底模型池挂在账号下（accounts[].fallback_models）；本类仅保留全局开关与成本上限。deprecated 字段（model/estimated_unit_price）运行时忽略、不在此声明（additionalProperties:true 容错放行）。",
+      "properties": {
+        "enabled": { "type": "boolean", "title": "是否启用兜底" },
+        "max_cost_per_task": { "type": "number", "title": "单任务兜底成本上限（元）" },
+        "max_cost_per_batch": { "type": "number", "title": "整批兜底成本上限（元）" }
+      }
+    },
+    "AutoShutdownConfig": {
+      "type": "object",
+      "additionalProperties": true,
+      "title": "自动关机配置",
+      "properties": {
+        "enabled": { "type": "boolean", "title": "批处理后自动关机" },
+        "only_when_zero_failure": { "type": "boolean", "title": "仅零失败时关机" },
+        "countdown_seconds": { "type": "integer", "minimum": 0, "title": "关机倒计时秒数" }
+      }
+    },
+    "CreditsClaimConfig": {
+      "type": "object",
+      "additionalProperties": true,
+      "title": "每日积分领取配置",
+      "properties": {
+        "enabled": { "type": "boolean", "title": "总开关" },
+        "auto_before_batch": { "type": "boolean", "title": "批量前自动领取" },
+        "force": { "type": "boolean", "title": "强制领取（忽略台账去重）" },
+        "api_base": { "type": "string", "title": "积分服务端 API 基址" },
+        "balance_path": { "type": "string", "title": "余额查询路径" },
+        "claim_path": { "type": "string", "title": "每日领取路径" },
+        "timeout_seconds": { "type": "integer", "minimum": 1, "title": "单次 HTTP 超时（秒）" }
+      }
+    },
+    "AutoAnswerPolicy": {
+      "type": "object",
+      "additionalProperties": true,
+      "title": "危险操作防护与自动应答策略",
+      "properties": {
+        "dangerous_blacklist": { "type": "array", "title": "危险操作黑名单", "items": { "type": "string" } },
+        "allowed_whitelist": { "type": "array", "title": "白名单", "items": { "type": "string" } },
+        "default_answer": { "type": "string", "title": "默认应答内容（写入 stdin）" },
+        "stdin_idle_seconds": { "type": "integer", "minimum": 0, "title": "静默判定秒数" },
+        "choice_prompt_patterns": { "type": "array", "title": "选择型交互识别关键词", "items": { "type": "string" } },
+        "choice_option_pattern": { "type": "string", "title": "匹配选项行正则" },
+        "default_choice_index": { "type": "integer", "minimum": 0, "title": "默认选项索引（0-based）" }
+      }
+    },
+    "NotificationRule": {
+      "type": "object",
+      "additionalProperties": true,
+      "title": "通知规则",
+      "properties": {
+        "channel": {
+          "type": "string",
+          "enum": ["Desktop", "Webhook", "Smtp"],
+          "title": "通知通道"
+        },
+        "triggers": {
+          "type": "array",
+          "title": "触发事件",
+          "items": {
+            "type": "string",
+            "enum": ["BatchCompleted", "BatchBlocked", "BatchTerminated", "TaskFailed", "NeedsAttention"]
+          }
+        },
+        "webhook_url": { "type": ["string", "null"], "title": "Webhook 地址" },
+        "smtp": {
+          "type": ["object", "null"],
+          "title": "SMTP 配置",
+          "$ref": "#/$defs/SmtpConfig"
+        },
+        "quiet_hours": { "type": ["string", "null"], "title": "安静时段（HH:mm-HH:mm）" }
+      }
+    },
+    "SmtpConfig": {
+      "type": "object",
+      "additionalProperties": true,
+      "title": "SMTP 邮件配置",
+      "properties": {
+        "host": { "type": ["string", "null"], "title": "SMTP 服务器" },
+        "port": { "type": "integer", "title": "端口（默认 587）" },
+        "use_ssl": { "type": "boolean", "title": "启用 SSL/TLS" },
+        "from": { "type": ["string", "null"], "title": "发件人" },
+        "to": { "type": "array", "title": "收件人", "items": { "type": "string" } },
+        "credential_ref": { "type": ["string", "null"], "title": "凭据引用（不存明文）" }
+      }
+    },
+    "GitConfig": {
+      "type": "object",
+      "additionalProperties": true,
+      "title": "版本控制全局默认（二期）",
+      "properties": {
+        "repo_path": { "type": "string", "title": "Git 仓库根目录（空=未配置）" },
+        "base_branch": { "type": ["string", "null"], "title": "基线分支" },
+        "branch_naming": { "type": "string", "title": "自动建分支命名规则" },
+        "pr_target_branch": { "type": ["string", "null"], "title": "PR 目标分支" },
+        "auto_open_pr": { "type": "boolean", "title": "完成后自动开 PR" }
+      }
+    }
+  }
+}
