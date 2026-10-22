@@ -16,6 +16,63 @@ dotnet_sort_system_directives_first = true
 csharp_style_namespace_declarations = file_scoped:suggestion
 csharp_style_var_when_type_is_apparent = true:suggestion
 
+# ==================================================================
+# 命名规范（ARCH P-12 / A-10 团队级规则集，2026-10-22 固化）
+# 口径 = 仓库存量约定（固化前全量实测零违例，非理想范式强加）：
+#   · 接口 I 前缀；类型 / 方法 / 属性 / 事件 / 命名空间 / 类型参数 PascalCase；
+#   · 参数与局部变量 camelCase；
+#   · 私有实例字段 _camelCase；
+#   · 私有静态字段与常量 PascalCase（存量约定——统一改 s_/_ 前缀属无收益
+#     churn，按 ARCH §2.4 红线不做，由本规则集显式固化防二义）。
+# 违例由格式门禁判定（`dotnet format --verify-no-changes` → IDE1006，CI 阻断）；
+# 注意命令行 `dotnet build` 不会因命名失败——别据此认为命名无需遵守。
+# ==================================================================
+dotnet_naming_symbols.interfaces.applicable_kinds = interface
+dotnet_naming_symbols.interfaces.applicable_accessibilities = public, internal, private, protected, protected_internal
+dotnet_naming_style.i_prefix.required_prefix = I
+dotnet_naming_style.i_prefix.capitalization = pascal_case
+dotnet_naming_rule.interfaces_i_prefix.symbols = interfaces
+dotnet_naming_rule.interfaces_i_prefix.style = i_prefix
+dotnet_naming_rule.interfaces_i_prefix.severity = warning
+
+dotnet_naming_symbols.types.applicable_kinds = class, struct, enum, delegate, namespace, type_parameter
+dotnet_naming_symbols.types.applicable_accessibilities = public, internal, private, protected, protected_internal
+dotnet_naming_style.pascal_case.capitalization = pascal_case
+dotnet_naming_rule.types_pascal.symbols = types
+dotnet_naming_rule.types_pascal.style = pascal_case
+dotnet_naming_rule.types_pascal.severity = warning
+
+dotnet_naming_symbols.members.applicable_kinds = method, property, event
+# 只约束对外可见成员：私有事件转发方法（如 `_Forward`）是本仓既有约定，改名属无收益 churn。
+dotnet_naming_symbols.members.applicable_accessibilities = public, internal, protected, protected_internal
+dotnet_naming_rule.members_pascal.symbols = members
+dotnet_naming_rule.members_pascal.style = pascal_case
+dotnet_naming_rule.members_pascal.severity = warning
+
+dotnet_naming_symbols.parameters_and_locals.applicable_kinds = parameter, local
+dotnet_naming_style.camel_case.capitalization = camel_case
+dotnet_naming_rule.parameters_and_locals_camel.symbols = parameters_and_locals
+dotnet_naming_rule.parameters_and_locals_camel.style = camel_case
+dotnet_naming_rule.parameters_and_locals_camel.severity = warning
+
+# 静态字段（含 const / static readonly 正则与锁对象）统一 PascalCase；
+# 可变静态缓存同样遵循（避免同一类型内两种静态字段命名并存）。
+
+dotnet_naming_symbols.static_fields.applicable_kinds = field
+dotnet_naming_symbols.static_fields.applicable_accessibilities = private, internal
+dotnet_naming_symbols.static_fields.required_modifiers = static
+dotnet_naming_rule.static_fields_pascal.symbols = static_fields
+dotnet_naming_rule.static_fields_pascal.style = pascal_case
+dotnet_naming_rule.static_fields_pascal.severity = warning
+
+dotnet_naming_symbols.instance_fields.applicable_kinds = field
+dotnet_naming_symbols.instance_fields.applicable_accessibilities = private, internal
+dotnet_naming_style.underscore_camel.required_prefix = _
+dotnet_naming_style.underscore_camel.capitalization = camel_case
+dotnet_naming_rule.instance_fields_underscore_camel.symbols = instance_fields
+dotnet_naming_rule.instance_fields_underscore_camel.style = underscore_camel
+dotnet_naming_rule.instance_fields_underscore_camel.severity = warning
+
 # 可空引用注解一致性（本项目已全面启用 Nullable）
 dotnet_diagnostic.CS8600.severity = warning
 dotnet_diagnostic.CS8602.severity = warning
@@ -23,6 +80,20 @@ dotnet_diagnostic.CS8604.severity = warning
 
 # 库层 async 必须 ConfigureAwait(false)（CA2007）
 dotnet_diagnostic.CA2007.severity = warning
+
+# ==================================================================
+# 静态安全扫描（ARCH P-12 / A-11）：安全类 CA 规则一律 error。
+# 口径：本仓 2026-10-22 实测这些规则 0 违例（无弱密码算法 / 无 SQL / 无 DTD XML），
+# 属零成本闸门——一旦新增 MD5/SHA1/DES 弱哈希、SQL 字符串拼接、不安全 DTD 解析
+# （XXE）或不带 DefaultDllImportSearchPaths 的 P/Invoke（DLL 劫持面），构建即红。
+# 命令注入 / 路径遍历 / 凭证硬编码三类仓级专属不变量由
+# SecurityHygieneTests 守卫锁死（见 ARCH §3.4 第 7 条）。
+# ==================================================================
+dotnet_diagnostic.CA5350.severity = error   # 弱加密算法（MD5/SHA1/DES/RC2…）
+dotnet_diagnostic.CA5351.severity = error   # 已破解加密算法
+dotnet_diagnostic.CA3001.severity = error   # SQL 注入
+dotnet_diagnostic.CA3075.severity = error   # 不安全的 DTD 处理（XXE）
+dotnet_diagnostic.CA5392.severity = error   # P/Invoke 未限定 DLL 搜索路径
 
 # 逃逸阀台账 #2 / 到期日 2027-01-20 / 责任人 工程 —— CA1002（不要公开泛型 List）要求把 List<T>
 # 换成 Collection<T>/ReadOnlyCollection<T>，但本仓 List<T> 公开属性全部是 System.Text.Json 的

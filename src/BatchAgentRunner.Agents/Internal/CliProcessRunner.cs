@@ -99,7 +99,7 @@ public sealed class CliProcessRunner
         // 长输出（MB 级）下每 500ms 一次 O(n) 拷贝即 O(n²)。改 rolling tail：只保留尾部
         // 固定窗口（>= Tail 宽度 400），空闲判定与危险拦截只读该窗口，语义不变。
         var tailWindow = new StringBuilder();
-        const int TailWindowChars = 1200;
+        const int tailWindowChars = 1200;
         var lockObj = new object();
         var lastOutputAt = DateTimeOffset.Now;
         var autoAnswered = new List<string>();
@@ -119,9 +119,9 @@ public sealed class CliProcessRunner
             {
                 buffer.AppendLine(clean);
                 tailWindow.AppendLine(clean);
-                if (tailWindow.Length > TailWindowChars)
+                if (tailWindow.Length > tailWindowChars)
                 {
-                    tailWindow.Remove(0, tailWindow.Length - TailWindowChars);
+                    tailWindow.Remove(0, tailWindow.Length - tailWindowChars);
                 }
 
                 lastOutputAt = DateTimeOffset.Now;

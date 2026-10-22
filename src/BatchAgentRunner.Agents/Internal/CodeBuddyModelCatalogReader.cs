@@ -13,22 +13,22 @@ namespace BatchAgentRunner.Agents.Internal;
 public static partial class CodeBuddyModelCatalogReader
 {
     private static readonly object Lock = new();
-    private static Dictionary<string, decimal>? _cache;
-    private static DateTime _cacheTime;
+    private static Dictionary<string, decimal>? Cache;
+    private static DateTime CacheTime;
 
     /// <summary>尝试读取模型倍率目录（进程内缓存 5 分钟）。失败或未登录过时返回 false / 空字典。</summary>
     public static bool TryReadCredits(out IReadOnlyDictionary<string, decimal> credits)
     {
         lock (Lock)
         {
-            if (_cache is null || DateTime.UtcNow - _cacheTime > TimeSpan.FromMinutes(5))
+            if (Cache is null || DateTime.UtcNow - CacheTime > TimeSpan.FromMinutes(5))
             {
-                _cache = ReadFromDisk();
-                _cacheTime = DateTime.UtcNow;
+                Cache = ReadFromDisk();
+                CacheTime = DateTime.UtcNow;
             }
 
-            credits = _cache;
-            return _cache.Count > 0;
+            credits = Cache;
+            return Cache.Count > 0;
         }
     }
 

@@ -92,6 +92,10 @@ sealed class Program
         }
     }
 
+    // CA5392（ARCH P-12 / A-11 静态安全扫描）：显式限定 DLL 搜索路径为 System32——
+    // 不声明时 P/Invoke 按「应用程序目录 → System32」顺序解析，攻击者若能向应用目录
+    // 投放同名 user32.dll 即构成 DLL 劫持面。user32.dll 只存在于 System32，收紧无行为影响。
+    [DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int MessageBoxW(IntPtr hWnd, string text, string caption, uint type);
 
