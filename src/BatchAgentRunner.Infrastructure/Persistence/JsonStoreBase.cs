@@ -21,6 +21,7 @@ namespace BatchAgentRunner.Infrastructure.Persistence;
 /// </remarks>
 public abstract class JsonStoreBase<T>
 {
+    /// <summary>解析数据目录（null 回落应用根目录）并拼出文档完整路径。</summary>
     protected JsonStoreBase(string? directory, string fileName)
     {
         DataDirectory = directory ?? AppPaths.Root;
@@ -34,6 +35,7 @@ public abstract class JsonStoreBase<T>
     /// <summary>文档完整路径。</summary>
     public string FilePath { get; }
 
+    /// <summary>读取并反序列化文档，文件缺失或 JSON 损坏时返回空文档。</summary>
     public async Task<T> LoadAsync(CancellationToken cancellationToken = default)
     {
         if (!File.Exists(FilePath))
@@ -53,6 +55,9 @@ public abstract class JsonStoreBase<T>
         }
     }
 
+    /// <summary>序列化文档并以原子方式写入文件路径。</summary>
+    /// <param name="value">待保存的文档对象。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     public Task SaveAsync(T value, CancellationToken cancellationToken = default) =>
         AtomicFileWriter.WriteAsync(FilePath, JsonDefaults.Serialize(value), cancellationToken);
 
@@ -60,5 +65,7 @@ public abstract class JsonStoreBase<T>
     protected abstract T CreateEmpty();
 
     /// <summary>加载后的自愈 / 迁移钩子；默认原样返回。</summary>
+    /// <param name="value">加载得到的文档对象。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     protected virtual ValueTask<T> NormalizeAsync(T value, CancellationToken cancellationToken) => new(value);
 }

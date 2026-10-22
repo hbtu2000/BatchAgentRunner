@@ -16,6 +16,7 @@ namespace BatchAgentRunner.Infrastructure.Git;
 public static class GitRefName
 {
     /// <summary>合法字符集：字母数字开头，后续允许字母数字与 . _ / -；且不含 <c>..</c>（防路径穿越）。</summary>
+    /// <param name="value">待校验的分支或引用名。</param>
     public static bool IsValid(string? value) =>
         !string.IsNullOrWhiteSpace(value)
         && value.Length <= 255
@@ -40,16 +41,18 @@ public sealed class LocalGitIntegration : IGitIntegration
 
     private readonly TimeSpan _timeout;
 
+    /// <summary>使用默认 120 秒子进程超时。</summary>
     public LocalGitIntegration() : this(TimeSpan.FromSeconds(DefaultTimeoutSeconds))
     {
     }
 
-    /// <param name="timeout">单个 git/gh 子进程的超时上限；非正值回落默认值。</param>
+    /// <summary>使用指定的子进程超时，非正值回落默认值。</summary>
     public LocalGitIntegration(TimeSpan timeout)
     {
         _timeout = timeout > TimeSpan.Zero ? timeout : TimeSpan.FromSeconds(DefaultTimeoutSeconds);
     }
 
+    /// <summary>在仓库中创建并切换到任务分支，失败返回 null 不阻断任务。</summary>
     public async Task<string?> CreateBranchAsync(ProjectRef projectRef, string taskId, CancellationToken cancellationToken = default)
     {
         if (!TryResolveRepoPath(projectRef.RepoPath, out var repoPath))
@@ -81,6 +84,7 @@ public sealed class LocalGitIntegration : IGitIntegration
         return code == 0 ? branch : null;
     }
 
+    /// <summary>优先用 gh 创建 PR，不可用时推送分支并返回提示。</summary>
     public async Task<string?> OpenPullRequestAsync(ProjectRef projectRef, string taskId, string branch, string? title = null,
         CancellationToken cancellationToken = default)
     {

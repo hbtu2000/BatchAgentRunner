@@ -13,6 +13,10 @@ namespace BatchAgentRunner.Infrastructure.Reporting;
 /// </summary>
 public static class CreditsClaimReportWriter
 {
+    /// <summary>写出积分领取的 JSON 与 Markdown 报告，返回 Markdown 路径。</summary>
+    /// <param name="directory">报告落盘目录，不存在时自动创建。</param>
+    /// <param name="summary">领取结果摘要。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     public static async Task<string> WriteAsync(CreditsClaimSummary summary, string directory,
         CancellationToken cancellationToken = default)
     {
@@ -29,6 +33,7 @@ public static class CreditsClaimReportWriter
         return mdPath;
     }
 
+    /// <summary>将领取摘要渲染为逐账号明细的 Markdown 表格。</summary>
     public static string ToMarkdown(CreditsClaimSummary s)
     {
         var title = "每日积分领取报告";

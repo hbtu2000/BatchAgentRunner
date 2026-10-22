@@ -18,6 +18,7 @@ namespace BatchAgentRunner.Infrastructure.Reporting;
 /// </summary>
 public sealed class ReportWriter : IReportWriter
 {
+    /// <summary>写出批处理汇总 JSON 与 Markdown 报告，返回 Markdown 路径。</summary>
     public async Task<string> WriteAsync(BatchReport report, string taskFilePath,
         CancellationToken cancellationToken = default)
     {
@@ -37,6 +38,7 @@ public sealed class ReportWriter : IReportWriter
         return mdPath;
     }
 
+    /// <summary>将批处理报告渲染为 Markdown（统计、切换原因与二期章节）。</summary>
     public static string ToMarkdown(BatchReport r)
     {
         var sb = new StringBuilder();

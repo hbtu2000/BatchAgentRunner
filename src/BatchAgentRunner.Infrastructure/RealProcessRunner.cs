@@ -10,6 +10,7 @@ namespace BatchAgentRunner.Infrastructure;
 /// </summary>
 public sealed class RealProcessRunner : IProcessRunner
 {
+    /// <summary>启动子进程并收集退出码与标准输出/错误，支持取消。</summary>
     public async Task<(int ExitCode, string Stdout, string Stderr)> RunAsync(
         string fileName, string arguments, string? workingDirectory, CancellationToken cancellationToken)
     {

@@ -6,6 +6,7 @@ namespace BatchAgentRunner.Infrastructure.TaskFiles;
 /// </summary>
 public static class AtomicFileWriter
 {
+    /// <summary>将文本原子写入目标路径：临时文件落盘后替换，失败时清理临时文件。</summary>
     public static async Task WriteAsync(string targetPath, string content, CancellationToken cancellationToken = default)
     {
         var directory = Path.GetDirectoryName(Path.GetFullPath(targetPath));

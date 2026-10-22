@@ -8,8 +8,14 @@ namespace BatchAgentRunner.Infrastructure.CredentialVault;
 /// </summary>
 public interface ICredentialProtector
 {
+    /// <summary>加密凭证明文。</summary>
+    /// <param name="plaintext">待加密的明文字节。</param>
+    /// <returns>密文字节（含平台保护器所需的头部信息）。</returns>
     byte[] Protect(byte[] plaintext);
 
+    /// <summary>解密凭证密文。</summary>
+    /// <param name="ciphertext">由 <see cref="Protect"/> 产出的密文字节。</param>
+    /// <returns>解密后的明文字节；密文被篡改时抛出平台异常。</returns>
     byte[] Unprotect(byte[] ciphertext);
 }
 
@@ -19,6 +25,7 @@ public interface ICredentialProtector
 /// </summary>
 public sealed class DpapiCredentialProtector : ICredentialProtector
 {
+    /// <summary>用当前用户的平台密钥加密凭证明文。</summary>
     public byte[] Protect(byte[] plaintext)
     {
         if (!OperatingSystem.IsWindows())
@@ -30,6 +37,7 @@ public sealed class DpapiCredentialProtector : ICredentialProtector
             plaintext, optionalEntropy: null, DataProtectionScope.CurrentUser);
     }
 
+    /// <summary>解密凭据密文；密文被篡改时抛平台异常。</summary>
     public byte[] Unprotect(byte[] ciphertext)
     {
         if (!OperatingSystem.IsWindows())

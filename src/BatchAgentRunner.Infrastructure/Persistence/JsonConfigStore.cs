@@ -7,17 +7,21 @@ namespace BatchAgentRunner.Infrastructure.Persistence;
 /// <summary>运行配置持久化。安全约定：账号仅存标识 + 凭据引用，不明文保存凭据。</summary>
 public sealed class JsonConfigStore : JsonStoreBase<RunOptions>, IConfigStore
 {
+    /// <summary>以指定目录（默认应用配置目录）初始化 config.json 运行配置仓储。</summary>
     public JsonConfigStore(string? directory = null)
         : base(directory, "config.json")
     {
     }
 
+    /// <summary>config.json 所在目录（应用配置目录）。</summary>
     public string ConfigDirectory => DataDirectory;
 
     /// <summary>文件缺失时回落到出厂示例配置（便于用户首次启动直接改）。</summary>
     protected override RunOptions CreateEmpty() => CreateSample();
 
     /// <summary>反序列化成功后就地迁移旧版积分领取字段。</summary>
+    /// <param name="value">反序列化得到的运行配置。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     protected override ValueTask<RunOptions> NormalizeAsync(RunOptions value, CancellationToken cancellationToken)
     {
         CreditsClaimMigrator.Migrate(value);

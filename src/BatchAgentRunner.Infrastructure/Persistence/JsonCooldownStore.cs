@@ -8,6 +8,7 @@ namespace BatchAgentRunner.Infrastructure.Persistence;
 /// </summary>
 public sealed class JsonCooldownStore : JsonStoreBase<List<QuotaCooldownRecord>>, ICooldownStore
 {
+    /// <summary>以指定目录（默认应用配置目录）读写 cooldowns.json 冷却记录。</summary>
     public JsonCooldownStore(string? directory = null)
         : base(directory, "cooldowns.json")
     {

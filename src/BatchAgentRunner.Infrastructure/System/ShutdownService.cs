@@ -9,8 +9,10 @@ namespace BatchAgentRunner.Infrastructure.Platform;
 /// </summary>
 public sealed class ShutdownService : IShutdownService
 {
+    /// <summary>当前系统是否支持自动关机（Windows 与 macOS）。</summary>
     public bool IsSupported => OperatingSystem.IsWindows() || OperatingSystem.IsMacOS();
 
+    /// <summary>尝试关机，权限不足时返回 false 由调用方提示手动关机。</summary>
     public async Task<bool> TryShutdownAsync(CancellationToken cancellationToken = default)
     {
         try

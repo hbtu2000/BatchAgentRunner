@@ -6,7 +6,22 @@ namespace BatchAgentRunner.Infrastructure.CredentialVault;
 /// <summary>引导登录的阶段（界面进度提示用）。</summary>
 public enum GuidedLoginPhase
 {
-    Prepare, Clearing, Launching, Waiting, Verifying, BackingUp, Done, Failed
+    /// <summary>准备阶段：校验登录态存储位置是否已登记。</summary>
+    Prepare,
+    /// <summary>清场：备份并删除现有 Live 凭证。</summary>
+    Clearing,
+    /// <summary>拉起 CLI 交互式登录。</summary>
+    Launching,
+    /// <summary>轮询等待 Live 凭证出现或发生变化。</summary>
+    Waiting,
+    /// <summary>调用校验回调确认新凭证有效。</summary>
+    Verifying,
+    /// <summary>把新凭证按账号备份进 Vault。</summary>
+    BackingUp,
+    /// <summary>引导登录全部完成。</summary>
+    Done,
+    /// <summary>引导登录失败。</summary>
+    Failed,
 }
 
 /// <summary>引导登录进度（DESIGN §5 ①-⑧ 对应）。</summary>
@@ -30,6 +45,7 @@ public sealed class GuidedLoginOrchestrator
     private readonly Action<GuidedLoginProgress>? _progress;
     private readonly TimeSpan _pollInterval;
 
+    /// <summary>注入 Vault、进程守卫与登录拉起器；轮询间隔未传时默认 2 秒。</summary>
     public GuidedLoginOrchestrator(ICredentialVault vault, ICliProcessGuard processGuard,
         ICliLoginLauncher launcher, IClock? clock = null, Action<GuidedLoginProgress>? progress = null,
         TimeSpan? pollInterval = null, ICredentialLocationRegistry? registry = null)
@@ -43,7 +59,14 @@ public sealed class GuidedLoginOrchestrator
         _pollInterval = pollInterval ?? TimeSpan.FromSeconds(2);
     }
 
-    /// <param name="timeout">等待登录凭证的超时（DESIGN §5 ⑤：默认 5 分钟）。</param>
+    /// <summary>执行清场、拉起登录、等待凭证、校验与备份的完整引导登录流程。</summary>
+    /// <param name="cli">目标 CLI 类型。</param>
+    /// <param name="accountId">账号标识（落盘/查找前经 NormalizeAccountId 净化）。</param>
+    /// <param name="displayName">展示名；null 表示沿用账号标识。</param>
+    /// <param name="site">站点标识；null 表示未知。</param>
+    /// <param name="timeout">超时时间；null 表示使用默认值。</param>
+    /// <param name="validator">账号有效性校验回调；null 表示跳过校验。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     public async Task<CredentialSnapshotInfo> RunAsync(AgentKind cli, string accountId,
         string? displayName = null, string? site = null, TimeSpan? timeout = null,
         AccountValidator? validator = null, CancellationToken cancellationToken = default)

@@ -22,7 +22,7 @@ namespace BatchAgentRunner.Infrastructure.CredentialVault;
 /// </summary>
 /// <remarks>
 /// CA1001（P0-12）：持有 <see cref="SemaphoreSlim"/> 序列化门，实现 <see cref="IDisposable"/>；
-/// 由 <see cref="CredentialVaultHost"/> 在用毕时释放（Vault 为应用级单例，随宿主销毁）。
+/// 由 <c>CredentialVaultHost</c> 在用毕时释放（Vault 为应用级单例，随宿主销毁）。
 /// </remarks>
 public sealed class FileCredentialVault : ICredentialVault, IDisposable
 {
@@ -41,6 +41,7 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
     private readonly SemaphoreSlim _gate = new(1, 1);
     private bool _rootSecured;
 
+    /// <summary>以默认或指定根目录构造；保护器、进程守卫等未传时用默认实现。</summary>
     public FileCredentialVault(string? root = null, ICredentialProtector? protector = null,
         ICliProcessGuard? processGuard = null, IClock? clock = null, Action<string>? auditSink = null,
         ICredentialLocationRegistry? registry = null)
@@ -58,6 +59,8 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
 
     // ---------------- 查询 ----------------
 
+    /// <summary>读取 Live 归属记账，返回该 CLI 当前绑定的账号标识。</summary>
+    /// <param name="cli">目标 CLI 类型。</param>
     public string? CurrentLiveAccount(AgentKind cli)
     {
         var spec = _registry.Resolve(cli);
@@ -65,9 +68,15 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
         return state.TryGetValue(spec.CliId, out var s) ? s.AccountId : null;
     }
 
+    /// <summary>判断该账号是否已有快照（以 manifest.json 是否存在为准）。</summary>
+    /// <param name="cli">目标 CLI 类型。</param>
+    /// <param name="accountId">账号标识，查找前会净化。</param>
     public bool SnapshotExists(AgentKind cli, string accountId) =>
         File.Exists(ManifestPath(cli, NormalizeAccountId(accountId)));
 
+    /// <summary>读取快照元数据；快照不存在时返回 null。</summary>
+    /// <param name="cli">目标 CLI 类型。</param>
+    /// <param name="accountId">账号标识（落盘/查找前经 NormalizeAccountId 净化）。</param>
     public CredentialSnapshotInfo? GetSnapshot(AgentKind cli, string accountId)
     {
         var manifest = ReadManifest(cli, NormalizeAccountId(accountId));
@@ -76,6 +85,12 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
 
     // ---------------- 备份（DESIGN §5 ⑦） ----------------
 
+    /// <summary>把当前 Live 凭证加密备份为快照，并登记该账号为 Live 归属。</summary>
+    /// <param name="accountId">账号标识，落盘前会净化。</param>
+    /// <param name="cli">CLI 类型（CodeBuddy / WorkBuddy）。</param>
+    /// <param name="displayName">展示名；null 表示沿用账号标识。</param>
+    /// <param name="site">站点标识；null 表示未知。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     public async Task<CredentialSnapshotInfo> BackupFromLiveAsync(AgentKind cli, string accountId,
         string? displayName = null, string? site = null, CancellationToken cancellationToken = default)
     {
@@ -133,6 +148,11 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
 
     // ---------------- 切换（DESIGN §6） ----------------
 
+    /// <summary>先回写旧账号的最新凭证，再把目标快照原子覆盖到 Live 并记账。</summary>
+    /// <param name="accountId">账号标识，落盘前会净化。</param>
+    /// <param name="cli">CLI 类型（CodeBuddy / WorkBuddy）。</param>
+    /// <param name="reason">原因说明（写入审计日志）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     public async Task SwitchToAsync(AgentKind cli, string accountId, string reason,
         CancellationToken cancellationToken = default)
     {
@@ -341,6 +361,10 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
 
     // ---------------- 验证时间 / 删除 ----------------
 
+    /// <summary>更新快照的最近校验时间并记审计，表示该账号凭证仍有效。</summary>
+    /// <param name="accountId">账号标识，落盘前会净化。</param>
+    /// <param name="cli">CLI 类型（CodeBuddy / WorkBuddy）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     public async Task MarkVerifiedAsync(AgentKind cli, string accountId,
         CancellationToken cancellationToken = default)
     {
@@ -363,6 +387,10 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
         }
     }
 
+    /// <summary>递归删除该账号的快照目录并记审计；不改动 Live 归属。</summary>
+    /// <param name="accountId">账号标识，落盘前会净化。</param>
+    /// <param name="cli">CLI 类型（CodeBuddy / WorkBuddy）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     public async Task DeleteSnapshotAsync(AgentKind cli, string accountId,
         CancellationToken cancellationToken = default)
     {
@@ -661,9 +689,11 @@ public sealed class FileCredentialVault : ICredentialVault, IDisposable
 /// <summary>live-state.json 中的单个 CLI 登录态归属记录。</summary>
 public sealed class LiveAccountState
 {
+    /// <summary>账号标识（净化后用作目录名）。</summary>
     [JsonPropertyName("account_id")]
     public string AccountId { get; set; } = string.Empty;
 
+    /// <summary>该账号成为 Live 的时间。</summary>
     [JsonPropertyName("since")]
     public DateTimeOffset Since { get; set; }
 }

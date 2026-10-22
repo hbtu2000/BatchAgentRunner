@@ -5,6 +5,7 @@ namespace BatchAgentRunner.Infrastructure.TaskFiles;
 /// <summary>启动前自动备份任务文件，保留最近 N 份（REQ-006）。</summary>
 public static class BackupManager
 {
+    /// <summary>复制任务文件为带时间戳的备份并清理旧份，返回备份路径，源文件不存在时为 null。</summary>
     public static string? Backup(string path, int retention)
     {
         if (!File.Exists(path))

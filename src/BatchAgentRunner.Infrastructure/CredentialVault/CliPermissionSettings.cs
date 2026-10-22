@@ -26,7 +26,7 @@ public static class CliPermissionSettings
     /// 仅当 <c>defaultMode</c> 缺失/为空时才写入；已显式设置（含 bypass 或用户其它选择）则保留并幂等返回，不静默覆盖。
     /// </summary>
     /// <param name="registry">凭证位置注册表（P1-16：显式传入，替代原静态全局态）。</param>
-    /// <param name="spec">CLI 位置规格。</param>
+    /// <param name="spec">CLI 落盘位置规格。</param>
     /// <param name="cancellationToken">取消令牌。</param>
     public static async Task EnsureBypassPermissionsAsync(
         ICredentialLocationRegistry registry,

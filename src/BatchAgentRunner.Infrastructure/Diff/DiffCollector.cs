@@ -18,6 +18,7 @@ public sealed class DiffCollector : IDiffCollector
     private readonly DiffCollectorOptions _opts;
     private readonly Dictionary<string, Snapshot> _snapshots = new();
 
+    /// <summary>绑定日志器与运行配置，可选覆盖 diff 采集选项。</summary>
     public DiffCollector(IRunLogger? logger, RunOptions options, DiffCollectorOptions? opts = null)
     {
         _logger = logger;
@@ -25,6 +26,7 @@ public sealed class DiffCollector : IDiffCollector
         _opts = opts ?? new DiffCollectorOptions();
     }
 
+    /// <summary>对任务工作区目标文件快照，返回快照 ID 供结束后比对。</summary>
     public Task<string> SnapshotAsync(TaskItem task, CancellationToken cancellationToken = default)
     {
         var id = Guid.NewGuid().ToString("N");
@@ -48,6 +50,10 @@ public sealed class DiffCollector : IDiffCollector
         return Task.FromResult(id);
     }
 
+    /// <summary>取快照后工作区相对它的改动（差分采集，返回逐文件记录）。</summary>
+    /// <param name="snapshotId">快照 ID（由 SnapshotAsync 返回）。</param>
+    /// <param name="task">任务对象（用于归属改动到任务）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     public Task<IReadOnlyList<DiffRecord>> CollectAsync(string snapshotId, TaskItem task, CancellationToken cancellationToken = default)
     {
         Snapshot? before;
@@ -204,14 +210,19 @@ public sealed class DiffCollector : IDiffCollector
 
     private sealed class Snapshot
     {
+        /// <summary>快照对应的工作区绝对路径。</summary>
         public string Workspace { get; init; } = string.Empty;
+        /// <summary>快照的文件列表：「路径 → 内容指纹」映射。</summary>
         public Dictionary<string, FileBlob> Files { get; init; } = new();
     }
 
     private sealed class FileBlob
     {
+        /// <summary>文件内容的短 SHA-256 指纹，用于判断是否变更。</summary>
         public string Hash { get; init; } = string.Empty;
+        /// <summary>文件按行拆分的内容，大文件为空、不做文本 diff。</summary>
         public string[] Lines { get; init; } = Array.Empty<string>();
+        /// <summary>文件超过 1MB 时置位，仅记录变更类型。</summary>
         public bool TooLarge { get; init; }
     }
 

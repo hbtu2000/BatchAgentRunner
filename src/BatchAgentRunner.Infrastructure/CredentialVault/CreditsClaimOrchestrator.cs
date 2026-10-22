@@ -7,7 +7,24 @@ namespace BatchAgentRunner.Infrastructure.CredentialVault;
 /// <summary>积分领取的阶段（界面进度提示用）。</summary>
 public enum CreditsClaimPhase
 {
-    Prepare, Switching, ReadingBefore, Claiming, ReadingAfter, Recording, Skipped, Done, Failed
+    /// <summary>准备阶段：加载台账并统计待处理账号。</summary>
+    Prepare,
+    /// <summary>切换阶段：把该账号凭证切换为 Live。</summary>
+    Switching,
+    /// <summary>读取领取前的积分余额。</summary>
+    ReadingBefore,
+    /// <summary>调用领取接口领取积分。</summary>
+    Claiming,
+    /// <summary>读取领取后的积分余额。</summary>
+    ReadingAfter,
+    /// <summary>记录前后积分与变化量并写入台账。</summary>
+    Recording,
+    /// <summary>跳过：今日已领取或账号不满足领取条件。</summary>
+    Skipped,
+    /// <summary>全部账号处理完成。</summary>
+    Done,
+    /// <summary>该账号领取失败。</summary>
+    Failed,
 }
 
 /// <summary>积分领取进度（按账号粒度上抛）。</summary>
@@ -29,6 +46,7 @@ public sealed class CreditsClaimOrchestrator
     private readonly IRunLogger? _logger;
     private readonly Action<CreditsClaimProgress>? _progress;
 
+    /// <summary>注入 Vault、积分接口与台账；令牌读取器等未传时用默认实现。</summary>
     public CreditsClaimOrchestrator(ICredentialVault vault, ICreditsApiClient api, ICreditsClaimStore store,
         ICredentialTokenReader? tokenReader = null, IClock? clock = null, IRunLogger? logger = null,
         Action<CreditsClaimProgress>? progress = null, ICredentialLocationRegistry? registry = null)
@@ -43,7 +61,7 @@ public sealed class CreditsClaimOrchestrator
         _progress = progress;
     }
 
-    /// <param name="force">true 时忽略去重，强制再次尝试（服务端仍会拒绝重复领取）。</param>
+    /// <summary>逐账号领取每日积分，单账号失败不中断，每条记录落库后立即保存台账。</summary>
     public async Task<CreditsClaimSummary> RunAllAsync(AgentKind cli, IReadOnlyList<AccountConfig> accounts,
         bool force = false, CancellationToken cancellationToken = default)
     {

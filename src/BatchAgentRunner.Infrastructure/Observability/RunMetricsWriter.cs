@@ -26,6 +26,7 @@ public sealed class RunMetricsWriter : IMetricsWriter
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping
     };
 
+    /// <summary>将运行指标按 run_id 原子写入 JSON，返回文件路径。</summary>
     public async Task<string> WriteAsync(RunMetricsSnapshot snapshot, string taskFilePath,
         CancellationToken cancellationToken = default)
     {

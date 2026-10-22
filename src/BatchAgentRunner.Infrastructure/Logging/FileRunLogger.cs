@@ -43,6 +43,7 @@ public sealed class FileRunLogger : IRunLogger
     private int _pendingLines;
     private bool _disposed;
 
+    /// <summary>打开 run-*.log 与 run-*.jsonl，并按任务文件或默认 runs 目录定位。</summary>
     public FileRunLogger(string? taskFilePath = null, string? logDirectory = null, string? runId = null)
     {
         var dir = logDirectory ?? (!string.IsNullOrWhiteSpace(taskFilePath)
@@ -66,15 +67,22 @@ public sealed class FileRunLogger : IRunLogger
         { RunId = RunId, Flush = true });
     }
 
+    /// <summary>人读文本日志路径（run-时间戳.log）。</summary>
     public string LogFilePath { get; }
 
+    /// <summary>结构化日志路径（run-时间戳.jsonl，一行一条 JSON）。</summary>
     public string StructuredLogFilePath { get; }
 
+    /// <summary>本次运行的唯一标识，写入每条日志以支持按批次关联。</summary>
     public string RunId { get; }
 
+    /// <summary>按级别写入一条纯文本事件，事件名留空。</summary>
+    /// <param name="level">日志级别，写入前会归一化。</param>
+    /// <param name="message">日志正文，落盘前统一脱敏。</param>
     public void Write(string level, string message) =>
         Write(new RunLogEntry(RunLogLevels.Normalize(level), string.Empty, message));
 
+    /// <summary>把引擎事件转成日志条目落盘；任务输出事件跳过，避免重复。</summary>
     public void Write(BatchEvent ev)
     {
         // 任务输出（TaskOutput）改由适配器在 CliAdapterBase.ExecuteAsync 的 onOut 回调里
@@ -116,11 +124,22 @@ public sealed class FileRunLogger : IRunLogger
         Write(new RunLogEntry(RunLogLevels.Info, LogEventNames.TaskOutput, message) { Flush = true });
     }
 
+    /// <summary>记录任务开始，含账号、模型、专家与工作目录。</summary>
+    /// <param name="taskId">任务标识。</param>
+    /// <param name="account">账号标识；null 显示为 -。</param>
+    /// <param name="model">模型名；null 显示为 -。</param>
+    /// <param name="expert">专家 Id；null 显示为 -。</param>
+    /// <param name="workspace">工作目录；null 显示为 -。</param>
     public void WriteTaskStarted(string taskId, string? account, string? model, string? expert, string? workspace) =>
         Write(new RunLogEntry(RunLogLevels.Info, LogEventNames.TaskStarted,
             $"任务 {taskId} | 账号 {account ?? "-"} | 模型 {model ?? "-"} | 专家 {expert ?? "-"} | 空间 {workspace ?? "-"}")
         { TaskId = taskId, Account = account, Model = model });
 
+    /// <summary>记录任务结束，含终态、耗时与重试次数。</summary>
+    /// <param name="taskId">任务标识。</param>
+    /// <param name="status">任务终态（成功 / 失败 / 跳过等）。</param>
+    /// <param name="durationSeconds">执行耗时（秒）。</param>
+    /// <param name="retryCount">已重试次数。</param>
     public void WriteTaskFinished(string taskId, TaskStatus status, double durationSeconds, int retryCount) =>
         Write(new RunLogEntry(RunLogLevels.Info, LogEventNames.TaskFinished,
             $"任务 {taskId} | 状态 {status} | 耗时 {durationSeconds.ToString("0.###", CultureInfo.InvariantCulture)}s | 重试 {retryCount}")
@@ -134,27 +153,51 @@ public sealed class FileRunLogger : IRunLogger
             }
         });
 
+    /// <summary>记录账号/模型切换，含切换前后的组合与原因。</summary>
+    /// <param name="fromAccount">切换前账号。</param>
+    /// <param name="fromModel">切换前模型。</param>
+    /// <param name="toAccount">切换后账号。</param>
+    /// <param name="toModel">切换后模型。</param>
+    /// <param name="reason">触发切换的原因。</param>
+    /// <param name="taskId">关联任务；null 显示为 -。</param>
     public void WriteModelSwitched(string? fromAccount, string? fromModel, string? toAccount, string? toModel,
         string reason, string? taskId) =>
         Write(new RunLogEntry(RunLogLevels.Warn, LogEventNames.ModelSwitched,
             $"任务 {taskId ?? "-"} | {fromAccount}+{fromModel} → {toAccount}+{toModel} | 原因 {reason}")
         { TaskId = taskId, Account = toAccount, Model = toModel });
 
+    /// <summary>记录因不在免费时段而跳过，含下一可用时段。</summary>
+    /// <param name="model">被跳过的模型。</param>
+    /// <param name="nextWindowStart">下一可用时段起点；null 显示为 -。</param>
     public void WriteWindowSkipped(string model, DateTimeOffset? nextWindowStart) =>
         Write(new RunLogEntry(RunLogLevels.Info, LogEventNames.WindowSkipped,
             $"模型 {model} | 下一可用时段 {nextWindowStart?.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture) ?? "-"}")
         { Model = model });
 
+    /// <summary>记录因额度冷却而跳过，含预计恢复时间。</summary>
+    /// <param name="account">账号标识。</param>
+    /// <param name="model">模型名。</param>
+    /// <param name="resetAt">预计恢复时间。</param>
     public void WriteCooldownSkipped(string account, string model, DateTimeOffset resetAt) =>
         Write(new RunLogEntry(RunLogLevels.Info, LogEventNames.CooldownSkipped,
             $"{account} × {model} | 预计恢复 {resetAt.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)}")
         { Account = account, Model = model });
 
+    /// <summary>记录额度重置时间，并标注来源是 CLI 解析还是默认冷却。</summary>
+    /// <param name="account">账号标识。</param>
+    /// <param name="model">模型名。</param>
+    /// <param name="resetAt">额度重置时间。</param>
+    /// <param name="source">重置时间来源：CLI 解析或默认冷却。</param>
     public void WriteQuotaResetRecorded(string account, string model, DateTimeOffset resetAt, CooldownSource source) =>
         Write(new RunLogEntry(RunLogLevels.Warn, LogEventNames.QuotaResetRecorded,
             $"{account} × {model} | 重置时间 {resetAt.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)} | 来源 {(source == CooldownSource.CliParsed ? "CLI 解析" : "默认冷却")}")
         { Account = account, Model = model });
 
+    /// <summary>记录启用兜底模型，含花费与计价依据。</summary>
+    /// <param name="taskId">任务标识。</param>
+    /// <param name="model">兜底模型名。</param>
+    /// <param name="cost">本次花费（元）。</param>
+    /// <param name="basis">费用口径：实测或估算。</param>
     public void WriteFallbackUsed(string taskId, string model, decimal cost, CostBasis basis) =>
         Write(new RunLogEntry(RunLogLevels.Warn, LogEventNames.FallbackUsed,
             $"任务 {taskId} | 兜底模型 {model} | 花费 ¥{cost.ToString("0.####", CultureInfo.InvariantCulture)}（{(basis == CostBasis.Measured ? "实测" : "估算")}）")
@@ -168,27 +211,46 @@ public sealed class FileRunLogger : IRunLogger
             }
         });
 
+    /// <summary>记录批次进入等待，含恢复时间、等待目标与类型。</summary>
+    /// <param name="resumeAt">预计恢复时间。</param>
+    /// <param name="target">等待目标（账号或模型）；null 显示为 -。</param>
+    /// <param name="kind">等待类型（冷却 / 时段等）。</param>
     public void WriteBatchWaiting(DateTimeOffset resumeAt, string? target, WaitKind kind) =>
         Write(new RunLogEntry(RunLogLevels.Warn, LogEventNames.BatchWaiting,
             $"等待至 {resumeAt.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)} | 目标 {target ?? "-"} | 类型 {kind}")
         { Fields = new Dictionary<string, string>(StringComparer.Ordinal) { ["wait_kind"] = kind.ToString() } });
 
+    /// <summary>以 ERROR 级记录批次阻塞，含原因与待续跑任务数。</summary>
+    /// <param name="reason">阻塞原因。</param>
+    /// <param name="pendingCount">待续跑任务数。</param>
     public void WriteBatchBlocked(string reason, int pendingCount) =>
         Write(new RunLogEntry(RunLogLevels.Error, LogEventNames.BatchBlocked,
             $"原因：{reason} | 待续跑 {pendingCount} 条"));
 
+    /// <summary>记录批次从等待或阻塞中恢复。</summary>
+    /// <param name="reason">恢复原因。</param>
     public void WriteBatchResumed(string reason) =>
         Write(new RunLogEntry(RunLogLevels.Info, LogEventNames.BatchResumed, reason));
 
+    /// <summary>记录批次被终止，含已完成与未完成数量。</summary>
+    /// <param name="doneCount">已完成任务数。</param>
+    /// <param name="unfinishedCount">未完成任务数。</param>
     public void WriteBatchTerminated(int doneCount, int unfinishedCount) =>
         Write(new RunLogEntry(RunLogLevels.Warn, LogEventNames.BatchTerminated,
             $"已完成 {doneCount} 条 | 未完成 {unfinishedCount} 条"));
 
+    /// <summary>以最高级别记录危险确认点，并标明已拒绝自动批准。</summary>
+    /// <param name="taskId">任务标识。</param>
+    /// <param name="interactionPoint">命中的交互提示文本。</param>
     public void WriteDangerousOperation(string taskId, string interactionPoint) =>
         Write(new RunLogEntry(RunLogLevels.Danger, LogEventNames.DangerousOperation,
             $"*** 高危确认点 *** 任务 {taskId} | 交互点：{interactionPoint} | 已拒绝自动批准")
         { TaskId = taskId });
 
+    /// <summary>记录已自动应答的交互点及所填答案。</summary>
+    /// <param name="taskId">任务标识。</param>
+    /// <param name="interactionPoint">发生自动应答的交互提示文本。</param>
+    /// <param name="answer">自动填入的答案。</param>
     public void WriteAutoAnswered(string taskId, string interactionPoint, string answer) =>
         Write(new RunLogEntry(RunLogLevels.Info, LogEventNames.AutoAnswered,
             $"任务 {taskId} | 交互点：{interactionPoint} | 默认选项：{answer}")
@@ -354,6 +416,7 @@ public sealed class FileRunLogger : IRunLogger
         }
     }
 
+    /// <summary>刷盘并关闭文本与结构化两路日志文件，重复调用安全。</summary>
     public void Dispose()
     {
         if (_disposed)

@@ -14,14 +14,20 @@ public sealed class DesktopNotifier : INotifier
     private readonly Action<string, string>? _toast;
     private readonly IRunLogger? _logger;
 
+    /// <summary>构造桌面通知器；toast 为 UI 弹窗回调，logger 用于降级记日志。</summary>
     public DesktopNotifier(Action<string, string>? toast = null, IRunLogger? logger = null)
     {
         _toast = toast;
         _logger = logger;
     }
 
+    /// <summary>通知通道：桌面。</summary>
     public NotificationChannel Channel => NotificationChannel.Desktop;
 
+    /// <summary>组装标题与批次摘要，调用 toast 回调并补一条日志。</summary>
+    /// <param name="rule">命中的通知规则（标题前缀/严重度来源）。</param>
+    /// <param name="context">通知上下文（触发点、批次与任务信息）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     public Task NotifyAsync(NotificationRule rule, NotificationContext context, CancellationToken cancellationToken = default)
     {
         var title = $"[BatchAgentRunner] {context.Trigger}";
@@ -44,10 +50,14 @@ public sealed class WebhookNotifier : INotifier
 {
     private readonly HttpClient _http;
 
+    /// <summary>构造 Webhook 通知器；未传 HttpClient 时自建一个。</summary>
+    /// <param name="http">用于发送 POST 的 HttpClient，可注入测试替身。</param>
     public WebhookNotifier(HttpClient? http = null) => _http = http ?? new HttpClient();
 
+    /// <summary>通知通道：Webhook。</summary>
     public NotificationChannel Channel => NotificationChannel.Webhook;
 
+    /// <summary>把批次状态以 JSON POST 到规则中的 Webhook URL，失败只打印错误。</summary>
     public async Task NotifyAsync(NotificationRule rule, NotificationContext context, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(rule.WebhookUrl))
@@ -87,10 +97,14 @@ public sealed class SmtpNotifier : INotifier
 {
     private readonly IRunLogger? _logger;
 
+    /// <summary>构造邮件通知器；logger 用于记录发送失败。</summary>
+    /// <param name="logger">运行日志，仅用于记录发送失败原因。</param>
     public SmtpNotifier(IRunLogger? logger = null) => _logger = logger;
 
+    /// <summary>通知通道：SMTP 邮件。</summary>
     public NotificationChannel Channel => NotificationChannel.Smtp;
 
+    /// <summary>按规则中的 SMTP 配置群发通知邮件，密码运行时从环境变量读取。</summary>
     public async Task NotifyAsync(NotificationRule rule, NotificationContext context, CancellationToken cancellationToken = default)
     {
         var cfg = rule.Smtp;
@@ -146,11 +160,13 @@ public sealed class NotificationDispatcher : INotificationDispatcher
 {
     private readonly Dictionary<NotificationChannel, INotifier> _notifiers;
 
+    /// <summary>按通道索引各通知器，同通道后注册者覆盖先注册者。</summary>
     public NotificationDispatcher(IEnumerable<INotifier> notifiers)
     {
         _notifiers = notifiers.ToDictionary(n => n.Channel, n => n);
     }
 
+    /// <summary>遍历规则：触发点匹配且不在安静时段时，交给对应通道发送。</summary>
     public async Task DispatchAsync(IEnumerable<NotificationRule> rules, NotificationContext context, CancellationToken cancellationToken = default)
     {
         foreach (var rule in rules)

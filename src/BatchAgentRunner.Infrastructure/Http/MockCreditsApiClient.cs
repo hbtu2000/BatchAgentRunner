@@ -13,10 +13,13 @@ public sealed class MockCreditsApiClient : ICreditsApiClient
     private readonly Dictionary<string, decimal> _balances = new(StringComparer.Ordinal);
     private readonly HashSet<string> _claimed = new(StringComparer.Ordinal);
 
+    /// <summary>每个票据（账号）的初始积分余额。</summary>
     public decimal InitialBalance { get; set; } = 100m;
 
+    /// <summary>每日首次领取发放的积分数。</summary>
     public decimal GrantAmount { get; set; } = 20m;
 
+    /// <summary>返回该票据的模拟余额，未出现过则用初始值。</summary>
     public Task<CreditsBalanceResult> GetBalanceAsync(string accessToken,
         CancellationToken cancellationToken = default)
     {
@@ -24,6 +27,7 @@ public sealed class MockCreditsApiClient : ICreditsApiClient
         return Task.FromResult(new CreditsBalanceResult(balance, null));
     }
 
+    /// <summary>模拟每日领取：首次加赠积分，同日重复领取返回已领取。</summary>
     public Task<CreditsClaimApiResult> ClaimDailyAsync(string accessToken,
         CancellationToken cancellationToken = default)
     {

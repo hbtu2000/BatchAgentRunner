@@ -11,11 +11,14 @@ public sealed class CliProcessGuard : ICliProcessGuard
 {
     private readonly ICredentialLocationRegistry _registry;
 
+    /// <summary>以凭证位置注册表构造，用于取该 CLI 的进程名。</summary>
     public CliProcessGuard(ICredentialLocationRegistry registry)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
     }
 
+    /// <summary>探测该 CLI 是否有运行中的进程；探测自身失败按未运行处理。</summary>
+    /// <param name="cli">目标 CLI 类型。</param>
     public bool IsCliRunning(AgentKind cli)
     {
         var spec = _registry.Resolve(cli);

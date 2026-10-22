@@ -63,6 +63,9 @@ public static class XlsxTaskParser
         "error", "started_at", "finished_at", "duration"
     };
 
+    /// <summary>解析 xlsx 首个工作表为任务列表，表头须包含 id 与 instruction 列。</summary>
+    /// <param name="path">xlsx 任务文件路径。</param>
+    /// <param name="issues">解析问题收集列表（发现的问题追加到此）。</param>
     public static List<TaskItem> Parse(string path, List<TaskFileIssue> issues)
     {
         using var workbook = new XLWorkbook(path);

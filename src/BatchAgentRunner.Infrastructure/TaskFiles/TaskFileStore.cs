@@ -14,6 +14,8 @@ public sealed class TaskFileStore : ITaskFileStore
 {
     private static readonly Regex IdPattern = new(@"^[A-Za-z0-9._\-]+$", RegexOptions.Compiled);
 
+    /// <summary>判断是否为 markdown 任务文件（.md / .markdown）。</summary>
+    /// <param name="path">任务文件路径。</param>
     public bool IsMarkdown(string path)
     {
         var ext = Path.GetExtension(path);
@@ -21,6 +23,8 @@ public sealed class TaskFileStore : ITaskFileStore
                string.Equals(ext, ".markdown", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>判断是否为 Excel 任务文件（.xlsx / .xlsm）。</summary>
+    /// <param name="path">任务文件路径。</param>
     public static bool IsXlsx(string path)
     {
         var ext = Path.GetExtension(path);
@@ -28,9 +32,12 @@ public sealed class TaskFileStore : ITaskFileStore
                string.Equals(ext, ".xlsm", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>解析结果落盘路径：markdown 用同名 sidecar，其余原地写回。</summary>
+    /// <param name="path">任务文件路径。</param>
     public string ResolveResultPath(string path) =>
         IsMarkdown(path) ? path + ".result.json" : path;
 
+    /// <summary>按扩展名加载任务文件（markdown / xlsx / JSON）并校验任务 ID。</summary>
     public async Task<TaskFileLoadResult> LoadAsync(string path, CancellationToken cancellationToken = default)
     {
         if (!File.Exists(path))
@@ -79,6 +86,7 @@ public sealed class TaskFileStore : ITaskFileStore
         return new TaskFileLoadResult(tasks, resultPath, isMarkdown, issues);
     }
 
+    /// <summary>保存任务结果：xlsx 原地回写，其余原子写入结果文件。</summary>
     public async Task SaveAsync(string path, IReadOnlyList<TaskItem> tasks,
         CancellationToken cancellationToken = default)
     {
@@ -93,6 +101,10 @@ public sealed class TaskFileStore : ITaskFileStore
         await AtomicFileWriter.WriteAsync(resultPath, json, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>备份任务文件及其结果 sidecar，返回主文件的备份路径。</summary>
+    /// <param name="path">任务文件路径。</param>
+    /// <param name="retention">保留的备份份数，超出部分删除。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     public Task<string?> BackupAsync(string path, int retention, CancellationToken cancellationToken = default)
     {
         var backup = BackupManager.Backup(path, retention);

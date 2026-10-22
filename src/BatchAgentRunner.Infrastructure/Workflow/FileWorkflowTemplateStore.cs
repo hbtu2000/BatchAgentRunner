@@ -14,6 +14,7 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
     private readonly string _builtinDir;
     private readonly string _userDir;
 
+    /// <summary>以指定根目录（默认模板目录）定位内置与用户模板目录。</summary>
     public FileWorkflowTemplateStore(string? baseDir = null)
     {
         var root = baseDir ?? AppPaths.TemplatesDirectory;
@@ -21,6 +22,7 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
         _userDir = Path.Combine(root, "user");
     }
 
+    /// <summary>列出全部模板，用户模板覆盖同名内置模板。</summary>
     public async Task<IReadOnlyList<TemplateSpec>> ListAsync(CancellationToken cancellationToken = default)
     {
         await SeedIfNeededAsync(cancellationToken).ConfigureAwait(false);
@@ -39,6 +41,7 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
         return byId.Values.ToList();
     }
 
+    /// <summary>按 ID 获取模板，优先用户目录，未命中回落内置。</summary>
     public async Task<TemplateSpec?> GetAsync(string id, CancellationToken cancellationToken = default)
     {
         await SeedIfNeededAsync(cancellationToken).ConfigureAwait(false);
@@ -49,6 +52,7 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
                 string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase));
     }
 
+    /// <summary>将模板序列化为 JSON 写入用户模板目录，同名覆盖。</summary>
     public Task SaveUserTemplateAsync(TemplateSpec spec, CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(_userDir);
@@ -102,6 +106,7 @@ public sealed class FileWorkflowTemplateStore : IWorkflowTemplateStore
     /// <summary>内置 S1–S16 模板定义（结构化的阶段序列 + 门禁 + 默认参数）。</summary>
     internal static class BuiltinTemplates
     {
+        /// <summary>返回 S1–S16 全部内置场景模板定义。</summary>
         public static List<TemplateSpec> All() => new()
         {
             S1(), S2(), S3(), S4(), S5(), S6(), S7(), S8(),

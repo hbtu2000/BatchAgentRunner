@@ -34,6 +34,7 @@ public sealed class CodeBuddyCreditsApiClient : ICreditsApiClient
     private readonly CreditsClaimConfig _config;
     private readonly HttpClient _client;
 
+    /// <summary>用积分配置初始化 HTTP 客户端（超时与浏览器 UA）。</summary>
     public CodeBuddyCreditsApiClient(CreditsClaimConfig config, HttpClient? client = null)
     {
         _config = config;
@@ -46,6 +47,7 @@ public sealed class CodeBuddyCreditsApiClient : ICreditsApiClient
         }
     }
 
+    /// <summary>查询账号剩余积分总额，响应结构异常时余额为 null。</summary>
     public async Task<CreditsBalanceResult> GetBalanceAsync(string accessToken,
         CancellationToken cancellationToken = default)
     {
@@ -54,6 +56,7 @@ public sealed class CodeBuddyCreditsApiClient : ICreditsApiClient
         return new CreditsBalanceResult(ParseBalance(json), json);
     }
 
+    /// <summary>调用每日领取接口，区分成功、今日已签到与其他失败。</summary>
     public async Task<CreditsClaimApiResult> ClaimDailyAsync(string accessToken,
         CancellationToken cancellationToken = default)
     {
@@ -113,6 +116,8 @@ public sealed class CodeBuddyCreditsApiClient : ICreditsApiClient
     }
 
     /// <summary>是否「今日已签到」（实测 code=10001；同时兼容消息关键词，防服务端换码）。</summary>
+    /// <param name="code">服务端返回的业务错误码。</param>
+    /// <param name="message">服务端返回的错误消息。</param>
     public static bool IsAlreadyClaimed(int? code, string? message) =>
         code == AlreadyCheckedInCode ||
         (message is not null && AlreadyKeywords.Any(k => message.Contains(k, StringComparison.OrdinalIgnoreCase)));

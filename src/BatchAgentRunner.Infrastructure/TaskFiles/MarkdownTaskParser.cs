@@ -18,6 +18,7 @@ public static class MarkdownTaskParser
     private static readonly Regex InstructionRegex = new(@"^\s*[-*]\s*instruction\s*:\s*(?<text>.*)$",
         RegexOptions.Compiled | RegexOptions.IgnoreCase);
 
+    /// <summary>解析 markdown 内容为任务列表：按二级标题切分并合并 instruction 区间。</summary>
     public static List<TaskItem> Parse(string content, List<TaskFileIssue> issues)
     {
         var tasks = new List<TaskItem>();
@@ -109,5 +110,7 @@ public static class MarkdownTaskParser
         return tasks;
     }
 
+    /// <summary>按序号生成规范任务 ID（task-000 形式）。</summary>
+    /// <param name="index">任务序号（从 1 开始）。</param>
     public static string GenerateId(int index) => string.Create(CultureInfo.InvariantCulture, $"task-{index:000}");
 }

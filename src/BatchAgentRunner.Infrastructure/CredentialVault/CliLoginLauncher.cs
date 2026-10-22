@@ -6,6 +6,9 @@ namespace BatchAgentRunner.Infrastructure.CredentialVault;
 /// <summary>拉起 CLI 交互式登录（浏览器 OAuth）的端口；立即返回，不等待登录完成。</summary>
 public interface ICliLoginLauncher
 {
+    /// <summary>拉起该 CLI 的交互式登录，立即返回，不等待登录完成。</summary>
+    /// <param name="cli">目标 CLI 类型。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     Task LaunchAsync(AgentKind cli, CancellationToken cancellationToken = default);
 }
 
@@ -14,11 +17,15 @@ public sealed class CliLoginLauncher : ICliLoginLauncher
 {
     private readonly ICredentialLocationRegistry _registry;
 
+    /// <summary>以凭证位置注册表构造，用于取登录命令与 CLI 标识。</summary>
     public CliLoginLauncher(ICredentialLocationRegistry registry)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
     }
 
+    /// <summary>按注册表登录参数以 Shell 方式启动 CLI；未登记或找不到 CLI 时抛异常。</summary>
+    /// <param name="cli">目标 CLI 类型。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     public async Task LaunchAsync(AgentKind cli, CancellationToken cancellationToken = default)
     {
         var spec = _registry.Resolve(cli);

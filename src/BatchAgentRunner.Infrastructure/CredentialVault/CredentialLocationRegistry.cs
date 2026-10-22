@@ -12,16 +12,11 @@ public sealed record CredentialLiveFile(string RelativePath, bool Required = tru
 /// </summary>
 public sealed record CredentialLocationSpec(
     AgentKind Kind,
-    /// <summary>Vault 子目录名。</summary>
     string CliId,
-    /// <summary>CLI 主目录（相对用户主目录，如 ".codebuddy"）；settings.json 等伴生文件的基准。</summary>
     string HomeRelativeRoot,
     IReadOnlyList<CredentialLiveFile> Files,
     IReadOnlyList<string> ProcessNames,
-    /// <summary>交互式登录参数；空字符串 = 拉起裸 CLI（未登录时 TUI 自动弹登录方式选择）；null = 登录命令待确认。</summary>
     string? LoginArguments,
-    /// <summary>凭证文件的根目录（相对用户主目录）；null = 沿用 HomeRelativeRoot。
-    /// CodeBuddy 的登录态不在 CLI 主目录而在共享数据区，故单列。</summary>
     string? FilesRoot = null)
 {
     /// <summary>是否已具备可用的 Vault 配置（凭证文件路径已确认）。</summary>
@@ -35,6 +30,7 @@ public sealed record CredentialLocationSpec(
 /// </summary>
 public interface ICredentialLocationRegistry
 {
+    /// <summary>按 CLI 类型解析其凭证位置规格（未注册类型抛 <see cref="CredentialVaultException"/>）。</summary>
     CredentialLocationSpec Resolve(AgentKind kind);
 
     /// <summary>Live 主目录（覆盖优先，否则 = 用户主目录 + 注册表相对根）。</summary>
@@ -96,8 +92,10 @@ public sealed class CredentialLocationRegistry : ICredentialLocationRegistry
     /// <summary>Live 主目录覆盖（Mock / 测试 / 非默认安装位置）——实例状态，线程安全。</summary>
     private readonly ConcurrentDictionary<AgentKind, string> _liveRootOverrides = new();
 
+    /// <summary>设置某 CLI 的 Live 主目录覆盖（Mock / 测试 / 非默认安装位置）；线程安全，重复设置以最后一次为准。</summary>
     public void SetLiveRootOverride(AgentKind kind, string path) => _liveRootOverrides[kind] = path;
 
+    /// <summary>按 CLI 类型解析凭证位置规格；未注册类型抛 <see cref="CredentialVaultException"/>。</summary>
     public CredentialLocationSpec Resolve(AgentKind kind)
     {
         if (Specs.TryGetValue(kind, out var spec))
@@ -120,6 +118,7 @@ public sealed class CredentialLocationRegistry : ICredentialLocationRegistry
         return Path.Combine(home, spec.HomeRelativeRoot);
     }
 
+    /// <summary>解析 Live 侧某个凭证文件的绝对路径；有 Root 覆盖且未单列 FilesRoot 时（Mock/测试）沿用覆盖根，否则 = 用户主目录 + (FilesRoot ?? HomeRelativeRoot)。</summary>
     public string ResolveLiveFile(CredentialLocationSpec spec, string relativePath)
     {
         var root = spec.FilesRoot is null && _liveRootOverrides.TryGetValue(spec.Kind, out var overridden)

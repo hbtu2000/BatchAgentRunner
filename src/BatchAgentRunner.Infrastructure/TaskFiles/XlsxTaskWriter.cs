@@ -11,6 +11,7 @@ namespace BatchAgentRunner.Infrastructure.TaskFiles;
 /// </summary>
 public static class XlsxTaskWriter
 {
+    /// <summary>将任务结果原地回写到 xlsx，缺失的规范列追加到末尾。</summary>
     public static async Task WriteAsync(string path, IReadOnlyList<TaskItem> tasks,
         CancellationToken cancellationToken = default)
     {

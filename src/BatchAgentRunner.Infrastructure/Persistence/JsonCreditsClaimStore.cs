@@ -9,6 +9,7 @@ namespace BatchAgentRunner.Infrastructure.Persistence;
 /// </summary>
 public sealed class JsonCreditsClaimStore : JsonStoreBase<CreditsClaimLedger>, ICreditsClaimStore
 {
+    /// <summary>以指定目录（默认应用配置目录）读写 credits-claims.json 领取台账。</summary>
     public JsonCreditsClaimStore(string? directory = null)
         : base(directory, "credits-claims.json")
     {

@@ -15,11 +15,13 @@ public sealed class LiveCredentialTokenReader : ICredentialTokenReader
 {
     private readonly ICredentialLocationRegistry _registry;
 
+    /// <summary>以凭证位置注册表构造，用于定位各 CLI 的 Live 凭证文件。</summary>
     public LiveCredentialTokenReader(ICredentialLocationRegistry registry)
     {
         _registry = registry ?? throw new ArgumentNullException(nameof(registry));
     }
 
+    /// <summary>递归读取 Live 凭证中的 accessToken；文件缺失或非 JSON 时返回 null。</summary>
     public string? TryReadAccessToken(AgentKind cli)
     {
         CredentialLocationSpec spec;
