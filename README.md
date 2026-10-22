@@ -60,7 +60,7 @@ Mock 适配器不调用任何 CLI，用来验证调度逻辑（降级、时段�
 
 同期 ARCH 架构重构阶段（[`docs/ARCH-架构重构与工程化治理方案.md`](docs/ARCH-架构重构与工程化治理方案.md)）已收口 P-01~P-11：P-01（`WaitCoordinator` 抽取）、P-02（`BatchEngine` facade 953→400 行 + 依赖方向 IL 断言）、P-03（`TaskRunner` 策略对象化）、P-04（`ConfigViewModel` 1065→366 行分解为 11 子编辑器）、P-05（`TemplateEditorViewModel` 674→240 行 + 3 Coordinator）、P-06（`MonitorViewModel` 983→388 行 + `LoginViewModel` 751→280 行）、P-07（`JsonStoreBase<T>` + `AppPaths` 去重）、P-08（领域原语单一事实来源 + 修 `TaskItem.Clone()` 浅拷贝缺陷）、P-09（配置契约收口：`RunOptions` 363 行 God Config 按 12 配置域切片 + 禁 JSON 往返克隆；`ConfigEditors` 解析字段全量 `FieldEditor<T>` + 修「非法输入静默抹掉已配置时段」缺陷 + 视图侧校验反馈统一）、P-10（可观测性：结构化日志接线——`IRunLogger` 唯一落盘点 `Write(RunLogEntry)` + `run-*.jsonl` 结构化流；`RunId` 贯穿事件/日志/指标；`RunMetrics` 七类运行级指标埋点 + `metrics-<run_id>.json` 落盘；`SecretMasker` 脱敏在渲染入口统一生效；`facade` 维持 399 行）、**P-11（CI 转阻断：四道门禁——全量 `--no-incremental` 构建 / `dotnet format --verify-no-changes`（`scripts/ci/Assert-Format.ps1`，CHARSET 假阳性按 SDK 10.0.401 已知问题过滤）/ 分层单测 / 覆盖率门禁（`scripts/ci/Assert-Coverage.ps1`，锁定基线 Core 44% / Infra 39% / Agents 23% / Desktop 50%）——任一步骤失败即 CI 红）**。
 
-测试基线（2026-10-22 ARCH P-11 收口轮实跑）：主测试项目 **654** 用例（快跑 613 + 慢跑 41）+ Desktop.Tests **168** 用例 = **822 通过 / 0 失败**（`dotnet test BatchAgentRunner.slnx`）。下一站：ARCH P-12（规范集 + 静态安全扫描）/ P-13（多平台矩阵 + Release）/ P-14（ADR + 配置 Schema）；机会主义偿还余项：P2-12 全量编译绑定翻转、`git filter-repo` 历史净化。
+测试基线（2026-10-22 ARCH P-11 收口轮实跑）：主测试项目 **654** 用例（快跑 613 + 慢跑 41）+ Desktop.Tests **168** 用例 = **822 通过 / 0 失败**（`dotnet test BatchAgentRunner.slnx`）。ARCH 进展：P-11（CI 阻断+覆盖率/格式门禁）✅、P-13（多平台矩阵 win/mac/linux 非阻断 + Release 流水线自包含单文件 + GitVersion + SHA256 校验）✅ 均已收口；下一站：ARCH P-12（规范集 + 静态安全扫描，进行中）/ P-14（ADR + 配置 Schema）；机会主义偿还余项：P2-12 全量编译绑定翻转、`git filter-repo` 历史净化。
 
 已落地的「防新增」机制：
 
