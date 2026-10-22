@@ -37,6 +37,7 @@ public sealed class CliProcessRunner
     private readonly Action<string>? _log;
     private readonly IProcessLauncher _launcher;
 
+    /// <summary>构造执行器：policy 决定 stdin 应答，launcher 未传时用真实进程启动器。</summary>
     public CliProcessRunner(AutoAnswerPolicy policy, Action<string>? log = null, IProcessLauncher? launcher = null)
     {
         _policy = policy;
@@ -44,6 +45,7 @@ public sealed class CliProcessRunner
         _launcher = launcher ?? RealProcessLauncher.Instance;
     }
 
+    /// <summary>运行 CLI 至结束，逐段转发输出并返回退出码、超时与取消状态。</summary>
     public async Task<ProcessRunResult> RunAsync(
         CliLaunchSpec spec,
         Action<string>? onOutput,
@@ -378,7 +380,7 @@ public sealed class CliProcessRunner
     /// P1-13 重写：改用 .NET 原生 <see cref="Process.Kill(bool)"/>（<c>entireProcessTree: true</c>）整树回收，
     /// 取代原「外部 <c>taskkill /T /F</c> + 同步 <c>WaitForExit(3000)</c>」方案。收益：
     /// ① 消除对外部进程（taskkill）的跨平台不可移植依赖；② 消除最长 3 秒的线程同步阻塞
-    /// （<see cref="Process.Kill"/> 仅发送终止信号、不等待退出，无阻塞）；③ 语义等价（整树回收），
+    /// （<c>Process.Kill</c> 仅发送终止信号、不等待退出，无阻塞）；③ 语义等价（整树回收），
     /// 行为由 <c>CliProcessRunnerTests</c> 的整树回收用例锁定，重写前后等价。
     /// </remarks>
     public static void KillTree(Process process)

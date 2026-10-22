@@ -10,12 +10,18 @@ namespace BatchAgentRunner.Agents.Internal;
 /// </summary>
 public static class CliCommandBuilder
 {
+    /// <summary>提示词占位符，替换为折叠成单行的任务指令。</summary>
     public const string PlaceholderPrompt = "{prompt}";
+    /// <summary>模型名占位符，替换为本次任务使用的模型。</summary>
     public const string PlaceholderModel = "{model}";
+    /// <summary>专家占位符，替换为专家 Id；未指定时为空串。</summary>
     public const string PlaceholderExpert = "{expert}";
+    /// <summary>工作目录占位符，替换为加引号的单行路径。</summary>
     public const string PlaceholderWorkspace = "{workspace}";
+    /// <summary>附加参数占位符，替换为配置中的额外 CLI 参数。</summary>
     public const string PlaceholderExtra = "{extra}";
 
+    /// <summary>按模板把请求拼成命令行；模板为空时用默认模板，含换行时兜底压平。</summary>
     public static string Build(string? template, AgentRequest request, string? extra = null)
     {
         var t = string.IsNullOrWhiteSpace(template) ? DefaultTemplate : template;
@@ -101,8 +107,9 @@ public static class CliCommandBuilder
 
     /// <summary>
     /// 追加 <c>--effort &lt;level&gt;</c>。命令行里已有 <c>--effort</c>（用户在自定义模板里手写）时以用户为准，不重复追加。
-    /// 取值口径见 <see cref="ReasoningEfforts"/>。
-    /// </summary>
+    /// 取值口径见 <see cref="ReasoningEfforts"/>。</summary>
+    /// <param name="raw">用户配置的推理强度原值，大小写与别名均可。</param>
+    /// <param name="arguments">已拼装到当前的命令行参数串。</param>
     public static string AppendEffort(string arguments, string? raw)
     {
         var effort = ReasoningEfforts.Normalize(raw);
@@ -119,6 +126,7 @@ public static class CliCommandBuilder
         return arguments + " --effort " + effort;
     }
 
+    /// <summary>用双引号包裹参数值，并转义值内部的引号。</summary>
     public static string Quote(string value)
     {
         var escaped = value.Replace("\"", "\\\"");

@@ -12,13 +12,15 @@ namespace BatchAgentRunner.Agents.Adapters;
 /// <summary>适配器通用设置（CLI 路径与参数模板外置，避免 M0 前硬编码猜测）。</summary>
 public sealed class CliAdapterSettings
 {
+    /// <summary>CLI 可执行文件完整路径；为空时按默认文件名在 PATH 中查找。</summary>
     public string? ExecutablePath { get; set; }
 
+    /// <summary>CLI 参数模板，支持 {prompt}/{model} 等占位符；为空时用适配器默认模板。</summary>
     public string? ArgumentsTemplate { get; set; }
 
     /// <summary>
     /// 模型推理强度（<c>--effort</c>）：minimal / low / medium / high / xhigh / max（别名 middle → medium）。
-    /// 空 = 不追加参数（走 CLI 默认 high）。见 <see cref="CliCommandBuilder.NormalizeEffort"/>。
+    /// 空 = 不追加参数（走 CLI 默认 high）。见 <c>CliCommandBuilder.NormalizeEffort</c>。
     /// </summary>
     public string? ReasoningEffort { get; set; }
 
@@ -38,6 +40,7 @@ public sealed class CliAdapterSettings
     /// <summary>执行任务时是否弹出 CLI 原生控制台窗口（不重定向 stdio，以真实 TTY 运行，便于实时观察）。</summary>
     public bool ShowWindow { get; set; }
 
+    /// <summary>诊断日志回调，用于输出拼接后的命令行与告警文本。</summary>
     public Action<string>? Log { get; set; }
 
     /// <summary>运行日志（用于任务输出逐行实时落盘，REQ：实时可观测）。执行路径由引擎注入，
@@ -53,13 +56,18 @@ public abstract class CliAdapterBase : IAgentCliAdapter
 {
     // CA1051（P0-12）：protected 只读字段改为 protected 自动属性——对子类源码兼容，
     // 但不以「可见实例字段」形态暴露（子类均在构造期赋值、运行期只读）。
+    /// <summary>当前适配器设置：CLI 路径、参数模板、推理强度与日志回调。</summary>
     protected CliAdapterSettings Settings { get; }
+    /// <summary>stdin 交互提示的自动应答策略，决定各提示如何回复。</summary>
     protected AutoAnswerPolicy Policy { get; }
+    /// <summary>错误分类器，按 CLI 输出与退出码判定限流、额度或凭据失效。</summary>
     protected QuotaErrorClassifier Classifier { get; }
+    /// <summary>CLI 子进程执行器，负责启动、输出转发与进程树回收。</summary>
     protected CliProcessRunner Runner { get; }
     /// <summary>凭证位置注册表（P1-16：显式注入，替代原静态全局态）。</summary>
     protected ICredentialLocationRegistry Locations { get; }
 
+    /// <summary>以给定设置构造基类；策略、分类器、注册表未传入时使用默认实例。</summary>
     protected CliAdapterBase(CliAdapterSettings settings, AutoAnswerPolicy? policy = null,
         QuotaErrorClassifier? classifier = null, ICredentialLocationRegistry? registry = null)
     {
@@ -70,13 +78,16 @@ public abstract class CliAdapterBase : IAgentCliAdapter
         Locations = registry ?? new CredentialLocationRegistry();
     }
 
+    /// <summary>该适配器对应的 CLI 类型（CodeBuddy / WorkBuddy / Mock）。</summary>
     public abstract AgentKind Kind { get; }
 
     /// <summary>默认可执行文件名（用于 PATH 查找）。</summary>
     protected abstract string DefaultExecutable { get; }
 
+    /// <summary>该 CLI 的默认参数模板，配置未指定时作为回退。</summary>
     protected abstract string DefaultArgumentsTemplate { get; }
 
+    /// <summary>预检本机能否找到该 CLI 可执行文件，未找到时返回安装提示。</summary>
     public virtual async Task<PreflightResult> ValidateEnvironmentAsync(CancellationToken cancellationToken = default)
     {
         var exe = ResolveExecutable();
@@ -88,6 +99,7 @@ public abstract class CliAdapterBase : IAgentCliAdapter
         return await Task.FromResult(PreflightResult.Pass($"{Kind} CLI 可用：{exe}")).ConfigureAwait(false);
     }
 
+    /// <summary>用 --version 探测账号凭据下 CLI 能否正常启动，据此判定账号可用性。</summary>
     public virtual async Task<PreflightResult> ValidateAccountAsync(AccountConfig account,
         CancellationToken cancellationToken = default)
     {
@@ -108,6 +120,7 @@ public abstract class CliAdapterBase : IAgentCliAdapter
             : PreflightResult.Fail($"账号 {account.Label} 预检失败（退出码 {result.ExitCode}）", account.Id);
     }
 
+    /// <summary>拼装命令行并运行 CLI，实时转发输出，按退出码与错误特征判定成败。</summary>
     public virtual async Task<AgentExecutionResult> ExecuteAsync(AgentRequest request,
         CancellationToken cancellationToken = default)
     {
@@ -240,8 +253,11 @@ public abstract class CliAdapterBase : IAgentCliAdapter
     /// exit 0 时的成败兜底判定（protected 以便子类/回归测试复用）：
     /// ① result 事件 is_error=true → CLI 自报失败，按输出分类（限流/额度/凭据/普通失败）；
     /// ② 无 result 事件（finalResult 为空）但输出命中凭据失效/限流/额度特征 → 按分类器判失败；
-    /// ③ 有正常 result 事件（is_error=false）→ 信任之，即使回答文本中碰巧含有 429/额度 等词也不误杀。
-    /// </summary>
+    /// ③ 有正常 result 事件（is_error=false）→ 信任之，即使回答文本中碰巧含有 429/额度 等词也不误杀。</summary>
+    /// <param name="request">本次执行的请求（用于按账号/模型归因失败）。</param>
+    /// <param name="output">CLI 的原始输出（分类器的判定依据）。</param>
+    /// <param name="finalResult">result 事件的正文；null/空表示未收到 result 事件。</param>
+    /// <param name="finalIsError">result 事件的 is_error 标志。</param>
     protected AgentExecutionResult ResolveExitZeroOutcome(
         AgentRequest request, string output, string? finalResult, bool finalIsError)
     {
@@ -355,8 +371,9 @@ public abstract class CliAdapterBase : IAgentCliAdapter
 
     /// <summary>
     /// 从 CLI 输出中提取结果正文。stream-json 模式下原始输出是逐行 JSON（不可直接当答案），
-    /// 故优先取渲染器抽取的最终回答；解析失败或非 JSON 输出再退化为原始文本。各 CLI 可在 adapter 层覆写。
-    /// </summary>
+    /// 故优先取渲染器抽取的最终回答；解析失败或非 JSON 输出再退化为原始文本。各 CLI 可在 adapter 层覆写。</summary>
+    /// <param name="rawOutput">CLI 的原始输出（stream-json 逐行 JSON 或纯文本）。</param>
+    /// <param name="finalResult">渲染器抽取的最终回答正文，为空时回退原始输出。</param>
     protected virtual string ExtractResult(string rawOutput, string? finalResult) =>
         !string.IsNullOrEmpty(finalResult)
             ? finalResult!
@@ -364,10 +381,11 @@ public abstract class CliAdapterBase : IAgentCliAdapter
 
     /// <summary>
     /// 提取用量/费用（REQ-004b / M0 V-7）。当前不可得时返回 null，
-    /// 引擎会降级为「调用次数 × 预估单价」估算口径并在报告中标注。
-    /// </summary>
+    /// 引擎会降级为「调用次数 × 预估单价」估算口径并在报告中标注。</summary>
+    /// <param name="rawOutput">CLI 的原始输出，供子类解析 token 用量与费用。</param>
     protected virtual AgentUsage? ExtractUsage(string rawOutput) => null;
 
+    /// <summary>解析实际使用的 CLI 路径：优先配置值，否则按默认名在 PATH 中查找。</summary>
     protected string? ResolveExecutable()
     {
         if (!string.IsNullOrWhiteSpace(Settings.ExecutablePath))
@@ -379,6 +397,7 @@ public abstract class CliAdapterBase : IAgentCliAdapter
         return found;
     }
 
+    /// <summary>在 PATH 各目录按 .exe/.cmd/.bat/无扩展名的顺序查找可执行文件。</summary>
     protected static string? FindOnPath(string name)
     {
         // Windows 上 npm 全局包会同时生成无扩展名 sh 脚本与 .cmd shim；
@@ -400,6 +419,7 @@ public abstract class CliAdapterBase : IAgentCliAdapter
         return null;
     }
 
+    /// <summary>构造 CLI 子进程环境变量：注入账号凭据引用，env: 引用时另注入 API Key。</summary>
     protected virtual Dictionary<string, string> BuildEnvironment(AccountConfig account)
     {
         var env = new Dictionary<string, string>

@@ -12,15 +12,19 @@ namespace BatchAgentRunner.Agents.Adapters;
 /// </summary>
 public sealed class WorkBuddyAdapter : CliAdapterBase
 {
+    /// <summary>构造 WorkBuddy 适配器；未传设置时复用 codebuddy 的路径与参数模板。</summary>
     public WorkBuddyAdapter(CliAdapterSettings? settings = null, AutoAnswerPolicy? policy = null,
         ICredentialLocationRegistry? registry = null)
         : base(settings ?? new CliAdapterSettings(), policy, registry: registry)
     {
     }
 
+    /// <summary>固定为 WorkBuddy 类型。</summary>
     public override AgentKind Kind => AgentKind.WorkBuddy;
 
+    /// <summary>默认可执行名同为 codebuddy（WorkBuddy 无独立 CLI）。</summary>
     protected override string DefaultExecutable => "codebuddy";
 
+    /// <summary>WorkBuddy 模板：--print 打印模式 + stream-json 输出，专家改走提示词注入。</summary>
     protected override string DefaultArgumentsTemplate => CliCommandBuilder.WorkBuddyTemplate;
 }

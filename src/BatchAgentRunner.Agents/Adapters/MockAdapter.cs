@@ -9,13 +9,20 @@ namespace BatchAgentRunner.Agents.Adapters;
 /// <summary>仿真步骤的结果类型。</summary>
 public enum MockOutcome
 {
+    /// <summary>执行成功。</summary>
     Success,
+    /// <summary>触发临时限流（429）。</summary>
     RateLimited,
+    /// <summary>额度耗尽，需等待重置或切换账号。</summary>
     QuotaExhausted,
+    /// <summary>命中危险操作确认，应拒绝自动批准。</summary>
     DangerousOperation,
+    /// <summary>凭据失效或未登录。</summary>
     AuthExpired,
+    /// <summary>普通任务失败。</summary>
     TaskError,
-    Timeout
+    /// <summary>执行超时。</summary>
+    Timeout,
 }
 
 /// <summary>
@@ -28,21 +35,35 @@ public sealed record MockStep(
     string? Output = null,
     decimal? Cost = null)
 {
+    /// <summary>构造成功步骤，可指定输出正文与费用。</summary>
+    /// <param name="output">成功时返回的输出正文；null 时用「仿真输出」。</param>
+    /// <param name="cost">本次调用的费用；null 表示不计费。</param>
     public static MockStep Ok(string? output = null, decimal? cost = null) =>
         new(MockOutcome.Success, Output: output, Cost: cost);
 
+    /// <summary>构造额度耗尽步骤，可带额度重置时间。</summary>
+    /// <param name="message">失败提示文本；null 时用 quota exceeded。</param>
+    /// <param name="resetIn">距额度重置的剩余时长；null 表示 CLI 未给出。</param>
     public static MockStep Quota(string? message = null, TimeSpan? resetIn = null) =>
         new(MockOutcome.QuotaExhausted, message ?? "quota exceeded", resetIn);
 
+    /// <summary>构造限流步骤，模拟 429 临时限流。</summary>
+    /// <param name="message">失败提示文本；null 时用 429 rate limit exceeded。</param>
     public static MockStep RateLimited(string? message = null) =>
         new(MockOutcome.RateLimited, message ?? "429 rate limit exceeded");
 
+    /// <summary>构造危险操作步骤，模拟需人工确认的工具调用。</summary>
+    /// <param name="message">危险操作提示文本；null 时用「确认删除文件？」。</param>
     public static MockStep Dangerous(string? message = null) =>
         new(MockOutcome.DangerousOperation, message ?? "确认删除文件？");
 
+    /// <summary>构造凭据失效步骤，模拟未登录状态。</summary>
+    /// <param name="message">失败提示文本；null 时用 not logged in。</param>
     public static MockStep Auth(string? message = null) =>
         new(MockOutcome.AuthExpired, message ?? "not logged in");
 
+    /// <summary>构造普通任务失败步骤。</summary>
+    /// <param name="message">失败提示文本；null 时用「任务执行失败」。</param>
     public static MockStep Error(string? message = null) =>
         new(MockOutcome.TaskError, message ?? "任务执行失败");
 }
@@ -58,7 +79,7 @@ public sealed class MockAdapter : IAgentCliAdapter
     private readonly TimeSpan _stepDuration;
     private IClock _clock;
 
-    /// <param name="clock">注入时钟，使「重置时间」与引擎时钟一致（测试用 FakeClock）。</param>
+    /// <summary>构造仿真适配器：planner 决定第 n 次调用的结果。</summary>
     public MockAdapter(Func<AgentRequest, int, MockStep>? planner = null, TimeSpan? stepDuration = null,
         IClock? clock = null)
     {
@@ -100,6 +121,8 @@ public sealed class MockAdapter : IAgentCliAdapter
     }
 
     /// <summary>按「模型」定制：指定模型额度耗尽（可带重置时间），其余成功。</summary>
+    /// <param name="modelNames">会命中额度耗尽的模型名集合（忽略大小写）。</param>
+    /// <param name="resetIn">额度重置的剩余时长；null 表示 CLn 未给出重置时间。</param>
     public static MockAdapter QuotaExhaustedFor(IEnumerable<string> modelNames, TimeSpan? resetIn = null)
     {
         var set = new HashSet<string>(modelNames, StringComparer.OrdinalIgnoreCase);
@@ -107,17 +130,23 @@ public sealed class MockAdapter : IAgentCliAdapter
             set.Contains(req.Model.Name) ? MockStep.Quota(resetIn: resetIn) : MockStep.Ok());
     }
 
+    /// <summary>固定为 Mock，表示不拉起真实 CLI。</summary>
     public AgentKind Kind => AgentKind.Mock;
 
+    /// <summary>累计执行次数（跨任务累加）。</summary>
     public int TotalCalls { get; private set; }
 
+    /// <summary>调用流水，逐条记录任务、账号、模型与第几次尝试，供测试断言。</summary>
     public IReadOnlyList<string> CallLog => _callLog;
 
     private readonly List<string> _callLog = new();
 
+    /// <summary>仿真环境预检恒定通过（不依赖真实 CLI）。</summary>
+    /// <param name="cancellationToken">取消令牌。</param>
     public Task<PreflightResult> ValidateEnvironmentAsync(CancellationToken cancellationToken = default) =>
         Task.FromResult(PreflightResult.Pass("仿真适配器可用（无需真实 CLI）"));
 
+    /// <summary>仿真账号预检：停用账号判失败，配置 Live 凭证路径时检查文件是否存在。</summary>
     public Task<PreflightResult> ValidateAccountAsync(AccountConfig account,
         CancellationToken cancellationToken = default)
     {
@@ -178,6 +207,7 @@ public sealed class MockAdapter : IAgentCliAdapter
         new ModelCatalogEntry("hy4", 0.29m)
     };
 
+    /// <summary>按「任务 + 第几次调用」取预设步骤，返回对应成败并可选模拟 token 轮换。</summary>
     public async Task<AgentExecutionResult> ExecuteAsync(AgentRequest request,
         CancellationToken cancellationToken = default)
     {
