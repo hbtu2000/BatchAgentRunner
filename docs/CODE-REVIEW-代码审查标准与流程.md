@@ -169,7 +169,7 @@
 |------|----------|------|
 | 构建通过（`dotnet build`） | 已可 | 必须 |
 | 测试通过（`dotnet test`） | 已可 | 必须 |
-| `dotnet format` 无差异 | **已落地**（2026-10-18：`pre-commit` 钩强制，见 §7.2/治理方案 §4.1） | 必须 |
+| `dotnet format` 无差异 | **已落地**（2026-10-18 `pre-commit` 钩强制；该钩 2026-10-21 停用后改由 **CI 门禁** `scripts/ci/Assert-Format.ps1` 强制，ARCH P-11 2026-10-22，CHARSET 假阳性按治理方案 §4.7 #9 口径过滤） | 必须 |
 | 无新增 compiler warning | **已开启** `TreatWarningsAsErrors=true`（2026-10-18，存量清零后） | 必须 |
 | 核心模块双人审 | 无 | 必须 |
 | 静态分析（CA 规则）零新增 🔴 | **已落地**（`EnforceCodeStyleInBuild` + `AnalysisLevel=latest-recommended`，2026-10-18） | 必须 |
@@ -257,13 +257,21 @@ dotnet_diagnostic.CA2007.severity = warning
 ```bash
 dotnet build BatchAgentRunner.slnx
 dotnet test tests/BatchAgentRunner.Tests
-dotnet format BatchAgentRunner.slnx --verify-no-changes   # pre-commit 钩已强制（CHARSET 假阳性除外，治理方案 §4.7 #9）
+dotnet format BatchAgentRunner.slnx --verify-no-changes   # CHARSET 假阳性除外（SDK 10.0.401，治理方案 §4.7 #9）；CI 口径见 scripts/ci/Assert-Format.ps1
+# ARCH P-11（2026-10-22）覆盖率门禁本地复跑：
+dotnet test tests/BatchAgentRunner.Tests/BatchAgentRunner.Tests.csproj --filter "Category!=E2E&Category!=Usability&Category!=Process" --settings tests/coverlet.runsettings
+dotnet test tests/BatchAgentRunner.Desktop.Tests/BatchAgentRunner.Desktop.Tests.csproj --settings tests/coverlet.runsettings
+pwsh -File scripts/ci/Assert-Coverage.ps1
 ```
 
-### 7.5 轻量 CI（已落地，`.github/workflows/ci.yml`）
-- 触发：push/PR 到 `master` → `windows-latest` + .NET 10，`dotnet build --no-incremental`（必须全量重建，否则复现 P0-12 的 0 警告假象）+ 分层测试（快跑单元 / 慢跑 E2E·Usability·Process）。
+### 7.5 CI 门禁（已落地并转阻断，`.github/workflows/ci.yml`，ARCH P-11 2026-10-22）
+- 触发：push/PR 到 `master` → `windows-latest` + .NET 10；job `build-and-test` 依次执行四道门禁，**任一步骤失败即 job 失败（红 CI）**：
+  1. `dotnet build --no-incremental`（必须全量重建，否则复现 P0-12 的 0 警告假象；`TreatWarningsAsErrors=true` 下任何分析器警告即失败）；
+  2. 格式门禁 `scripts/ci/Assert-Format.ps1`（`dotnet format --verify-no-changes`，CHARSET 假阳性按治理方案 §4.7 #9 口径过滤）；
+  3. 分层单测（快跑单元 + Desktop，经 `tests/coverlet.runsettings` 采集 `coverlet` cobertura 覆盖率；慢跑 E2E·Usability·Process 不采覆盖率）；
+  4. 覆盖率门禁 `scripts/ci/Assert-Coverage.ps1`（生产程序集行覆盖率 ≥ 锁定基线 Core 44% / Infra 39% / Agents 23% / Desktop 50%，阈值只升不降）。
 - 核心模块（路径 `src/BatchAgentRunner.Core/**`、`src/BatchAgentRunner.Agents/**`、`src/BatchAgentRunner.Infrastructure/**`）要求 2 审批。
-- 分支保护（必需状态检查）尚未配置：CI 红当前不阻止合并，需仓库管理员在 GitHub 仓库设置中补齐（治理方案 §5.3 边界 2）。
+- **required status check（待仓库管理员配置）**：分支保护属 GitHub 仓库管理设置——Settings → Branches → `master` 规则 → Require status checks to pass before merging → 勾选 **`build-and-test`**。勾选后红 CI 即阻止合并（此前「CI 红不阻止合并」的边界解除，治理方案 §5.3 边界 2 闭环）。
 
 ---
 
@@ -271,8 +279,8 @@ dotnet format BatchAgentRunner.slnx --verify-no-changes   # pre-commit 钩已强
 
 - ~~**短期（0–2 周）**：本文件落地 + 加 `.editorconfig` + 团队按 §3 清单互审；核心模块开始双人审；记录前 10 个 PR 的 🔴/🟡 分布。~~ ✅ 已完成（`.editorconfig`、双人审、CI 均已落地）
 - ~~**中期（1–2 月）**：开 `EnforceCodeStyleInBuild` + 分析器，warning 清零；`dotnet format` 接提交前钩子；核心模块门禁硬化。~~ ✅ 已完成（2026-10-18：99 个存量警告清零 + `TreatWarningsAsErrors=true`，见治理方案 §5.4）
-- **长期（3 月+）**：分支保护设为必需状态检查（GitHub 设置，待仓库管理员）；ArchUnitNET 架构断言 + 复杂度阈值（治理方案 §4.3/§4.4，迭代 2/3）；建立误切换率、审查时长、🔴 密度等指标，季度复盘迭代本标准。
-- ~~`dotnet format` 接提交前钩子（`pre-commit`，治理方案 §4.1 已规划未落地）~~ ✅ **已完成（2026-10-18 阶段 1）**：`.githooks/pre-commit` 强制 `dotnet format --verify-no-changes` + 暂存 `.cs` 的 UTF-8 校验；`.editorconfig` 声明 `end_of_line=lf`、`.gitattributes` 锁 `eol=lf`。CHARSET 类假阳性（SDK 10.0.401 + `CodePage` 回归）按治理方案 §4.7 #9 过滤并登记。
+- **长期（3 月+）**：分支保护设为必需状态检查（GitHub 设置，待仓库管理员；门禁侧已由 ARCH P-11 于 2026-10-22 就绪——勾选 `build-and-test` 即生效）；ArchUnitNET 架构断言 + 复杂度阈值（治理方案 §4.3/§4.4，迭代 2/3）；建立误切换率、审查时长、🔴 密度等指标，季度复盘迭代本标准。
+- ~~`dotnet format` 接提交前钩子（`pre-commit`，治理方案 §4.1 已规划未落地）~~ ✅ **阶段 1 已完成（2026-10-18）**：`.githooks/pre-commit` 强制 `dotnet format --verify-no-changes` + 暂存 `.cs` 的 UTF-8 校验；`.editorconfig` 声明 `end_of_line=lf`、`.gitattributes` 锁 `eol=lf`。CHARSET 类假阳性（SDK 10.0.401 + `CodePage` 回归）按治理方案 §4.7 #9 过滤并登记。⚠️ 该钩已于 2026-10-21 停用（所有者要求），格式门禁的机器强制改由 **CI 承载**（ARCH P-11，2026-10-22：`scripts/ci/Assert-Format.ps1`，过滤口径与 #9 一致）。
 
 ---
 
