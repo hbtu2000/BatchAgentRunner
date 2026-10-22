@@ -17,6 +17,8 @@ public sealed record ComboAvailability(
         NextWindowStart.HasValue ? WaitKind.FreeWindow :
         ResetAt.HasValue ? WaitKind.QuotaReset : WaitKind.None;
 
+    /// <summary>跳过原因的人话描述（供事件 / 日志展示）。</summary>
+    /// <returns>描述文本。</returns>
     public string DescribeSkip()
     {
         if (Available)
@@ -45,11 +47,22 @@ public sealed class AvailabilityEvaluator
 {
     private readonly QuotaCooldownRegistry _cooldowns;
 
+    /// <summary>构造组合可用性评估器。</summary>
+    /// <param name="cooldowns">额度冷却登记表。</param>
     public AvailabilityEvaluator(QuotaCooldownRegistry cooldowns) => _cooldowns = cooldowns;
 
+    /// <summary>评估组合在给定时刻的可用性（时段 + 冷却两个独立约束）。</summary>
+    /// <param name="combo">待评估组合。</param>
+    /// <param name="now">当前时刻。</param>
+    /// <returns>可用性评估结果。</returns>
     public ComboAvailability Evaluate(AgentCombo combo, DateTimeOffset now) =>
         Evaluate(combo.Account, combo.Model, now);
 
+    /// <summary>评估「账号 × 模型」在给定时刻的可用性；恢复时间点 = max(下一时段开始, 额度重置)。</summary>
+    /// <param name="account">账号配置。</param>
+    /// <param name="model">模型候选。</param>
+    /// <param name="now">评估时刻（时段判定与冷却判定的时间基准）。</param>
+    /// <returns>可用性评估结果。</returns>
     public ComboAvailability Evaluate(AccountConfig account, ModelCandidate model, DateTimeOffset now)
     {
         var combo = new AgentCombo(account, model);

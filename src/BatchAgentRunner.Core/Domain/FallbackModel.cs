@@ -8,6 +8,7 @@ namespace BatchAgentRunner.Core.Domain;
 /// </summary>
 public sealed class FallbackModel
 {
+    /// <summary>兜底模型名称（CLI 模型标识）。</summary>
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
 
@@ -21,5 +22,6 @@ public sealed class FallbackModel
     [JsonPropertyName("note")]
     public string? Note { get; set; }
 
+    /// <summary>返回模型名称。</summary>
     public override string ToString() => Name;
 }

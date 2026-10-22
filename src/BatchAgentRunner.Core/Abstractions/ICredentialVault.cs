@@ -14,8 +14,10 @@ public interface ICredentialVault
     /// <summary>Live 当前归属的账号（工具自己的记账，从未备份/切换过时为 null）。</summary>
     string? CurrentLiveAccount(AgentKind cli);
 
+    /// <summary>账号快照是否已存在于 vault。</summary>
     bool SnapshotExists(AgentKind cli, string accountId);
 
+    /// <summary>读取账号快照信息（不存在时返回 null）。</summary>
     CredentialSnapshotInfo? GetSnapshot(AgentKind cli, string accountId);
 
     /// <summary>
@@ -46,5 +48,6 @@ public interface ICredentialVault
 /// </summary>
 public interface ICliProcessGuard
 {
+    /// <summary>该 CLI 是否有运行中的进程（切换/备份前的互斥检查）。</summary>
     bool IsCliRunning(AgentKind cli);
 }

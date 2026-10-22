@@ -8,5 +8,6 @@ namespace BatchAgentRunner.Core.Abstractions;
 /// </summary>
 public interface IMarkdownInPlaceWriter
 {
+    /// <summary>把任务状态/结果写回 .md 任务文件中的托管区（不破坏用户手写文本）。</summary>
     Task WriteBackAsync(string markdownPath, TaskItem task, CancellationToken cancellationToken = default);
 }

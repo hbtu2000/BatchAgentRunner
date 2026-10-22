@@ -39,6 +39,7 @@ public sealed class BatchPersistence : IDisposable
     private readonly SemaphoreSlim _persistGate = new(1, 1);
     private HashSet<string>? _idSnapshot;
 
+    /// <summary>构造持久化协作者（写门/持久化门自此协作者独占，由 <see cref="BatchEngine"/> 装配与释放）。</summary>
     public BatchPersistence(
         ITaskFileStore taskStore,
         ICooldownStore cooldownStore,
@@ -102,6 +103,7 @@ public sealed class BatchPersistence : IDisposable
     }
 
     /// <summary>任务文件备份（启动前，保留最近 N 份）。对应原 <see cref="BatchEngine.StartAsync"/> 的备份分支。</summary>
+    /// <param name="cancellationToken">批次取消令牌（复制大文件时可中断）。</param>
     public async Task BackupAsync(CancellationToken cancellationToken = default) =>
         await _taskStore.BackupAsync(_options.TaskFilePath, Math.Max(0, _options.BackupRetention), cancellationToken)
             .ConfigureAwait(false);
@@ -123,7 +125,7 @@ public sealed class BatchPersistence : IDisposable
 
     /// <summary>
     /// 任务文件回写（P0-4 单写者）：持久化门串行化写入 + 写门内序列化（读改写同锁）。
-    /// 对应原 <see cref="BatchEngine.PersistAsync"/>。
+    /// 对应原 <c>BatchEngine.PersistAsync</c>（P-02 随持久化职责一并下沉）。
     /// </summary>
     public async Task PersistAsync(CancellationToken ct)
     {
@@ -148,7 +150,7 @@ public sealed class BatchPersistence : IDisposable
     /// <summary>
     /// 进入任务状态写入区（P0-4）。不可取消：等待期间的取消会导致终态丢失，故固定用
     /// <see cref="CancellationToken.None"/>，由整个批处理的取消入口统一收敛。
-    /// 对应原 <see cref="BatchEngine.EnterWriteGateAsync"/>。
+    /// 对应原 <c>BatchEngine.EnterWriteGateAsync</c>（P-02 下沉）。
     /// </summary>
     public async Task<IDisposable> EnterWriteGateAsync()
     {
@@ -156,7 +158,7 @@ public sealed class BatchPersistence : IDisposable
         return new GateReleaser(_writeGate);
     }
 
-    /// <summary>ID 快照校验（REQ-001a）：检测已完成任务 ID 消失/变更，告警可能重跑。对应原 <see cref="BatchEngine.CheckIdSnapshot"/>。</summary>
+    /// <summary>ID 快照校验（REQ-001a）：检测已完成任务 ID 消失/变更，告警可能重跑。对应原 <c>BatchEngine.CheckIdSnapshot</c>（P-02 下沉）。</summary>
     public void CheckIdSnapshot()
     {
         var current = _tasks.Select(t => t.Id).ToHashSet(StringComparer.OrdinalIgnoreCase);
@@ -189,6 +191,7 @@ public sealed class BatchPersistence : IDisposable
 
     private sealed class GateReleaser(SemaphoreSlim gate) : IDisposable
     {
+        /// <summary>释放写闸（等价 using 作用域结束时让出写入权）。</summary>
         public void Dispose() => gate.Release();
     }
 }

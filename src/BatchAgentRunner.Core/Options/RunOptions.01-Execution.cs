@@ -6,9 +6,11 @@ namespace BatchAgentRunner.Core.Options;
 /// <summary>① 任务文件与执行工具（PRD 第 9 章配置域 1）。</summary>
 public sealed partial class RunOptions
 {
+    /// <summary>任务文件路径（批处理任务清单，YAML / JSON）。</summary>
     [JsonPropertyName("task_file_path")]
     public string TaskFilePath { get; set; } = string.Empty;
 
+    /// <summary>执行用 CLI 智能体类型（默认 <c>WorkBuddy</c>）。</summary>
     [JsonPropertyName("agent_kind")]
     public AgentKind AgentKind { get; set; } = AgentKind.WorkBuddy;
 

@@ -10,12 +10,15 @@ namespace BatchAgentRunner.Core.Options;
 /// </summary>
 public sealed class FallbackConfig
 {
+    /// <summary>是否启用特殊模型兜底（默认 false）。</summary>
     [JsonPropertyName("enabled")]
     public bool Enabled { get; set; }
 
+    /// <summary>单任务兜底成本上限（元，默认 1.0；超出即停止该任务的兜底尝试）。</summary>
     [JsonPropertyName("max_cost_per_task")]
     public decimal MaxCostPerTask { get; set; } = 1.0m;
 
+    /// <summary>整批兜底成本上限（元，默认 10.0）。</summary>
     [JsonPropertyName("max_cost_per_batch")]
     public decimal MaxCostPerBatch { get; set; } = 10.0m;
 }

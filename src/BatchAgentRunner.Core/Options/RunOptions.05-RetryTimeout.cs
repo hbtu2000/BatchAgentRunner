@@ -14,6 +14,7 @@ public sealed partial class RunOptions
     [JsonPropertyName("rate_limit_backoff_retries")]
     public int RateLimitBackoffRetries { get; set; } = 3;
 
+    /// <summary>临时限流退避的初始间隔（秒，默认 5；后续按指数退避递增，上限见重试策略）。</summary>
     [JsonPropertyName("rate_limit_initial_backoff_seconds")]
     public int RateLimitInitialBackoffSeconds { get; set; } = 5;
 
@@ -35,7 +36,7 @@ public sealed partial class RunOptions
 
     /// <summary>
     /// 额度耗尽时无限等待重置（默认 <c>true</c>）。
-    /// <para>当所有启用账号的所有候选模型组合<b>因额度耗尽</b>（<see cref="WaitKind.QuotaReset"/>）同时不可用时，
+    /// <para>当所有启用账号的所有候选模型组合<b>因额度耗尽</b>（<c>WaitKind.QuotaReset</c>）同时不可用时，
     /// 引擎进入 <c>Waiting</c> 暂停并等待最早恢复的组合额度重置后自动续跑，不再受 <see cref="MaxWaitMinutes"/> 上限约束
     /// （额度每日必然重置，属于确定可恢复场景）。暂停时长不计入批处理与各任务的时长。</para>
     /// <para>关闭后退回旧行为：额度耗尽等待同样受 <see cref="MaxWaitMinutes"/> 约束，超出则转 <c>Blocked</c>。</para>

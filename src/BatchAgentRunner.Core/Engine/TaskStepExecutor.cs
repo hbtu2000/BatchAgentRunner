@@ -30,6 +30,7 @@ public sealed class TaskStepExecutor
     private readonly FreeTimeWindowPolicy _freeTime;
     private readonly FallbackPolicy _fallback;
 
+    /// <summary>构造单任务状态机执行体（四个纯判定策略于构造期装配）。</summary>
     public TaskStepExecutor(TaskRunnerContext context)
     {
         _ctx = context;
@@ -42,6 +43,10 @@ public sealed class TaskStepExecutor
         _fallback = new FallbackPolicy(context.Fallback);
     }
 
+    /// <summary>安全执行单任务：引擎自身的未预期异常不冒泡杀死整批，任务判失败后继续下一任务。</summary>
+    /// <param name="task">待执行任务。</param>
+    /// <param name="ct">取消标记。</param>
+    /// <returns>单任务执行结局。</returns>
     public Task<TaskOutcome> RunSafeAsync(TaskItem task, CancellationToken ct) => ExecuteTaskSafeAsync(task, ct);
 
     /// <summary>
@@ -585,12 +590,19 @@ public sealed class TaskStepExecutor
     /// </summary>
     private sealed class TaskExecutionState
     {
+        /// <summary>当前尝试使用的账号×模型组合，切换后即为下一次尝试的目标。</summary>
         public AgentCombo? Combo;
+        /// <summary>下次尝试是否沿用同一组合（限流退避时置位，切换组合时清零）。</summary>
         public bool RetrySameCombo;
+        /// <summary>已发起的尝试次数（含失败重试），用于 MaxAttemptsPerTask 上限判定。</summary>
         public int Attempts;
+        /// <summary>连续限流次数（退避时长依据，额度耗尽处理后归零）。</summary>
         public int RateLimitStreak;
+        /// <summary>普通失败重试计数（不含限流重试，用于判定耗尽）。</summary>
         public int NormalRetries;
+        /// <summary>首次尝试所用账号 id（REQ-021 禁止跨账号兜底的比对基准）。</summary>
         public string? OriginalAccountId;
+        /// <summary>任务开始执行的时刻（单任务最长执行时长的起算点，不含暂停等待）。</summary>
         public DateTimeOffset StartedAt;
 
         /// <summary>

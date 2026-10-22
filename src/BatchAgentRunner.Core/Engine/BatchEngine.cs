@@ -85,6 +85,9 @@ public sealed class BatchEngine : IBatchEngine
     private readonly string _runId;
     /// <summary>运行级指标采集器（ARCH P-10 / A-8）。</summary>
     private readonly RunMetrics _metrics;
+    /// <summary>
+    /// 构造批处理调度引擎（P-02 后为「按序编排协作者 + 维护批次级状态」的 facade）。
+    /// </summary>
     public BatchEngine(
         RunOptions options,
         IAgentCliAdapter adapter,
@@ -246,18 +249,31 @@ public sealed class BatchEngine : IBatchEngine
     };
 
     // ---------------- 公开状态 ----------------
+    /// <summary>本批运行选项。</summary>
     public RunOptions Options => _options;
+
+    /// <summary>本批任务列表（加载 / 预检后填充）。</summary>
     public IReadOnlyList<TaskItem> Tasks => _tasks;
+
+    /// <summary>当前降级矩阵（配置变更后经 <c>NotifyConfigurationChanged</c> 重建）。</summary>
     public DegradationMatrix Matrix => _matrix;
+
+    /// <summary>额度冷却登记表（重启后从 cooldowns.json 恢复）。</summary>
     public QuotaCooldownRegistry Cooldowns => _cooldowns;
+
+    /// <summary>当前批处理状态。</summary>
     public BatchStatus Status { get; private set; } = BatchStatus.Idle;
     /// <summary>本批跳过的已完成任务数（ForceRerun 时为 0；P1-1 拆分后由报告协作者持有）。</summary>
     public int SkippedDoneCount => _report.SkippedDoneCount;
+    /// <summary>最近一次运行报告（尚未运行为 null）。</summary>
     public BatchReport? Report { get; private set; }
+    /// <summary>本次运行的唯一标识（事件、日志与落盘文件共用）。</summary>
     /// <inheritdoc />
     public string RunId => _runId;
+    /// <summary>运行级指标聚合（吞吐 / 失败率 / 耗时等报告数据源）。</summary>
     /// <inheritdoc />
     public RunMetrics Metrics => _metrics;
+    /// <summary>当前在飞任务 ID（无在飞任务时为 null）。</summary>
     public string? CurrentTaskId => _runState.CurrentTaskId;
     /// <summary>当前是否存在在飞任务（REQ-021 手动切换禁用闸）。</summary>
     public bool HasInFlight => _coordinator?.HasInFlight ?? false;
@@ -265,12 +281,18 @@ public sealed class BatchEngine : IBatchEngine
     public bool IsDispatchHalted => _coordinator?.DispatchHalted ?? false;
     /// <summary>是否允许手动「切换到此账号」（REQ-021：并发且有在飞时禁用；串行态或 in-flight=0 时允许）。</summary>
     public bool CanManualSwitchAccount => _options.Concurrency <= 1 || !HasInFlight;
+    /// <summary>批处理事件（状态变更 / 任务进度 / 警告 / 切换等）。</summary>
     public event EventHandler<BatchEvent>? EventRaised;
+
+    /// <summary>任务列表或任务状态变化通知（UI 刷新用）。</summary>
     public event EventHandler? TasksChanged;
     // ---------------- 生命周期 ----------------
+    /// <summary>初始化：从持久化端口加载冷却记录（重启后续跑）。</summary>
+    /// <param name="cancellationToken">取消标记。</param>
     public async Task InitializeAsync(CancellationToken cancellationToken = default) =>
         await _persistence.LoadCooldownsAsync(cancellationToken).ConfigureAwait(false);
     /// <summary>加载任务文件（REQ-001 / REQ-001a）。</summary>
+    /// <param name="cancellationToken">批次取消令牌（加载期间可被外部终止）。</param>
     public async Task<IReadOnlyList<TaskItem>> LoadTasksAsync(CancellationToken cancellationToken = default) =>
         await _persistence.LoadTasksAsync(cancellationToken).ConfigureAwait(false);
     /// <summary>启动前预检（REQ-010）。委托 <see cref="IPreflight"/> 协作者（P1-1 拆分产物 ⑥）。</summary>
@@ -289,6 +311,8 @@ public sealed class BatchEngine : IBatchEngine
         return outcome.Report;
     }
     /// <summary>启动或续跑（REQ-008）。委托 <see cref="BatchLifecycle"/>（P-02 拆分产物）。</summary>
+    /// <param name="waitIfUnavailable">全部组合不可用时是否进入 waiting（false 则直接 blocked）。</param>
+    /// <param name="cancellationToken">批次取消令牌（与内部运行 CTS 链接）。</param>
     public Task<BatchReport> StartAsync(bool waitIfUnavailable = false, CancellationToken cancellationToken = default) =>
         _lifecycle.RunAsync(waitIfUnavailable, cancellationToken);
     /// <summary>终止（REQ-008）。默认立即安全中断；<paramref name="waitCurrentTask"/> 时等待当前任务完成。</summary>
@@ -331,12 +355,15 @@ public sealed class BatchEngine : IBatchEngine
     }
 
     /// <summary>手动重置某组合的冷却标记（REQ-004c）。</summary>
+    /// <param name="accountId">账号标识（与模型名共同定位唯一组合）。</param>
+    /// <param name="modelName">模型名称，与账号共同定位冷却记录。</param>
     public void ResetCooldown(string accountId, string modelName)
     {
         _cooldowns.Clear(accountId, modelName);
         NotifyConfigurationChanged();
     }
 
+    /// <summary>手动重置全部组合的冷却标记，并触发配置变更重评（已可用则提前退出 waiting）。</summary>
     public void ResetAllCooldowns()
     {
         _cooldowns.ClearAll();
@@ -346,6 +373,7 @@ public sealed class BatchEngine : IBatchEngine
     // ---------------- 辅助 ----------------
 
     /// <summary>三级覆盖：单任务 &gt; 本批默认 &gt; 全局默认（REQ-003a）。</summary>
+    /// <param name="workspace">任务声明的工作区（名称或路径），空则回退全局默认。</param>
     public string? ResolveWorkspacePath(string? workspace) => WorkspaceResolver.Resolve(_options, workspace);
     private void RebuildMatrix() =>
         _matrix = new DegradationMatrix(_options.Accounts, _options.ModelCandidates, _options.DegradationStrategy);

@@ -11,10 +11,6 @@ public interface IProcessRunner
     /// <summary>
     /// 运行一个进程并等待其结束。
     /// </summary>
-    /// <param name="fileName">可执行文件（如 <c>cmd.exe</c> 或 <c>/bin/sh</c>）。</param>
-    /// <param name="arguments">命令行参数（已含 shell 包装，如 <c>/c "echo hi"</c>）。</param>
-    /// <param name="workingDirectory">工作目录；为空或不存在时由实现决定行为。</param>
-    /// <param name="cancellationToken">取消令牌（超时/用户取消时杀掉进程并抛出）。</param>
     /// <returns>(退出码, 标准输出, 标准错误)。启动失败约定返回 <c>(-1, "", 错误信息)</c>。</returns>
     Task<(int ExitCode, string Stdout, string Stderr)> RunAsync(
         string fileName, string arguments, string? workingDirectory, CancellationToken cancellationToken);

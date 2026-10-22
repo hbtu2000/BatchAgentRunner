@@ -9,9 +9,11 @@ namespace BatchAgentRunner.Core.Domain;
 /// </summary>
 public sealed class FreeTimeWindow
 {
+    /// <summary>时段开始（本机挂钟时间）。</summary>
     [JsonPropertyName("start")]
     public TimeOnly Start { get; set; }
 
+    /// <summary>时段结束；大于 <see cref="Start"/> 时表示跨零点时段的次日结束。</summary>
     [JsonPropertyName("end")]
     public TimeOnly End { get; set; }
 
@@ -24,10 +26,15 @@ public sealed class FreeTimeWindow
     [JsonPropertyName("days")]
     public HashSet<DayOfWeek>? Days { get; set; }
 
+    /// <summary>空构造（反序列化用）。</summary>
     public FreeTimeWindow()
     {
     }
 
+    /// <summary>构造免费时段。</summary>
+    /// <param name="start">时段起点（含）。</param>
+    /// <param name="end">时段终点（不含；与 <paramref name="start"/> 相同视为全天）。</param>
+    /// <param name="days">生效星期集合；null 表示每日生效。</param>
     public FreeTimeWindow(TimeOnly start, TimeOnly end, IEnumerable<DayOfWeek>? days = null)
     {
         Start = start;
@@ -43,6 +50,8 @@ public sealed class FreeTimeWindow
     [JsonIgnore]
     public bool IsCrossMidnight => !IsFullDay && Start > End;
 
+    /// <summary>判定给定时刻是否落在免费时段内（含跨零点与星期过滤）。</summary>
+    /// <returns>落在时段内返回 true。</returns>
     public bool Contains(DateTimeOffset instant)
     {
         var local = instant.LocalDateTime;
@@ -99,6 +108,8 @@ public sealed class FreeTimeWindow
             : $"{days ?? "每日"} {Start:HH:mm}–{End:HH:mm}";
     }
 
+    /// <summary>星期过滤的人话描述（如「周一、周三」）；未配置或全选返回 null。</summary>
+    /// <returns>星期描述或 null。</returns>
     public string? DescribeDays()
     {
         if (Days is null || Days.Count == 0 || Days.Count == 7)
@@ -111,6 +122,8 @@ public sealed class FreeTimeWindow
             .Select(ToChineseDayName));
     }
 
+    /// <summary>同 <see cref="Describe"/>。</summary>
+    /// <returns>人话版时段描述。</returns>
     public override string ToString() => Describe();
 
     // 用户以「HH:mm」表达时段时，结束时刻天然是「闭区间」语义（写 07:59 即希望包含 07:59 这一整分钟，
@@ -155,6 +168,9 @@ public sealed class FreeTimeWindow
                (endDay != startDay && Days.Contains(endDay.DayOfWeek));
     }
 
+    /// <summary>星期中文名（周一 ~ 周日）。</summary>
+    /// <param name="day">星期枚举值。</param>
+    /// <returns>中文星期名。</returns>
     public static string ToChineseDayName(DayOfWeek day) => day switch
     {
         DayOfWeek.Monday => "周一",
@@ -168,6 +184,7 @@ public sealed class FreeTimeWindow
     };
 
     /// <summary>星期缩写 token（配置 JSON 用 mon–sun）。</summary>
+    /// <param name="day">星期枚举值，用于取对应缩写。</param>
     public static string ToDayToken(DayOfWeek day) => day switch
     {
         DayOfWeek.Monday => "mon",
@@ -180,6 +197,9 @@ public sealed class FreeTimeWindow
         _ => day.ToString().ToLowerInvariant()
     };
 
+    /// <summary>解析星期 token（mon–sun / monday–sunday / 1–7 / 0 / 周一–周日）；无法识别返回 null。</summary>
+    /// <param name="token">待解析 token。</param>
+    /// <returns>星期枚举值或 null。</returns>
     public static DayOfWeek? ParseDayToken(string? token) => token?.Trim().ToLowerInvariant() switch
     {
         "mon" or "monday" or "1" => DayOfWeek.Monday,
@@ -199,6 +219,8 @@ public sealed class FreeTimeWindow
         _ => null
     };
 
+    /// <summary>从「HH:mm」字符串与星期 token 列表解析免费时段；起止解析失败按 00:00（全天）处理。</summary>
+    /// <returns>解析出的免费时段。</returns>
     public static FreeTimeWindow ParseStartEnd(string? start, string? end, IEnumerable<string>? days = null)
     {
         var s = TimeOnly.TryParse(start, CultureInfo.InvariantCulture, out var sv) ? sv : new TimeOnly(0, 0);

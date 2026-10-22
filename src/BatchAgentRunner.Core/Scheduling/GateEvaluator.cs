@@ -9,19 +9,37 @@ namespace BatchAgentRunner.Core.Scheduling;
 /// <summary>门禁评估结果。</summary>
 public sealed record GateResult(bool Passed, string? Leftover = null)
 {
+    /// <summary>通过的共享单例。</summary>
     public static readonly GateResult Pass = new(true);
+
+    /// <summary>构造失败结果，可携带遗留输出供修订循环使用。</summary>
+    /// <param name="leftover">失败时遗留的输出。</param>
+    /// <returns>失败的门禁结果。</returns>
     public static GateResult Fail(string? leftover = null) => new(false, leftover);
 }
 
 /// <summary>门禁评估上下文。</summary>
 public sealed class GateEvaluationContext
 {
+    /// <summary>待评估的质量门禁配置。</summary>
     public QualityGate Gate { get; init; } = new();
+
+    /// <summary>上一阶段的输出文本（Command 门禁正则匹配用）。</summary>
     public string StageOutput { get; init; } = string.Empty;
+
+    /// <summary>Command 门禁命令的工作目录。</summary>
     public string WorkingDirectory { get; init; } = string.Empty;
+
+    /// <summary>所属任务 ID。</summary>
     public string TaskId { get; init; } = string.Empty;
+
+    /// <summary>所属阶段 ID。</summary>
     public string StageId { get; init; } = string.Empty;
+
+    /// <summary>执行时使用的账号。</summary>
     public string? AccountUsed { get; init; }
+
+    /// <summary>执行时使用的模型。</summary>
     public string? ModelUsed { get; init; }
 }
 
@@ -39,6 +57,9 @@ public sealed class GateEvaluator
     private readonly Func<GateEvaluationContext, Task<GateResult>>? _reviewer;
     private readonly Func<GateEvaluationContext, Task<bool>>? _manualApprover;
 
+    /// <summary>
+    /// 构造门禁评估器。
+    /// </summary>
     public GateEvaluator(
         IProcessRunner processRunner,
         Func<GateEvaluationContext, Task<GateResult>>? reviewer = null,
@@ -49,6 +70,11 @@ public sealed class GateEvaluator
         _manualApprover = manualApprover;
     }
 
+    /// <summary>
+    /// 按门禁类型评估：Command 在 Workspace 目录跑命令、按退出码与可选输出正则判定；
+    /// Review / Manual 交由注入的委托执行（无委托时默认通过）。
+    /// </summary>
+    /// <returns>门禁结果（通过 / 失败含遗留输出）。</returns>
     public async Task<GateResult> EvaluateAsync(QualityGate gate, GateEvaluationContext ctx, CancellationToken cancellationToken)
     {
         switch (gate.Kind)

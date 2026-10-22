@@ -5,19 +5,23 @@ namespace BatchAgentRunner.Core.Scheduling;
 /// <summary>「账号 × 模型」组合。模型项取自该账号自有候选池（v1.12），时段/单价随组合独立。</summary>
 public sealed record AgentCombo(AccountConfig Account, ModelCandidate Model)
 {
+    /// <summary>组合键（账号 id :: 模型名，不区分大小写比较用）。</summary>
     public string Key => $"{Account.Id}::{Model.Name}";
 
+    /// <summary>展示形如 <c>账号标签 + 模型名</c>。</summary>
     public override string ToString() => $"{Account.Label} + {Model.Name}";
 }
 
 /// <summary>一次选点结果。</summary>
 public sealed class ComboSelection
 {
+    /// <summary>选中的组合（无可用组合时为 null）。</summary>
     public AgentCombo? Combo { get; init; }
 
     /// <summary>本次决策中被跳过的组合及原因（用于埋点/toast/报告）。</summary>
     public IReadOnlyList<ComboAvailability> Skipped { get; init; } = Array.Empty<ComboAvailability>();
 
+    /// <summary>是否找到可用组合。</summary>
     public bool Found => Combo is not null;
 }
 
@@ -32,6 +36,9 @@ public sealed class DegradationMatrix
 {
     private readonly List<AgentCombo> _ordered;
 
+    /// <summary>
+    /// 构建降级矩阵：账号 × 自有候选池（未配置自有池回退全局共享池）按策略展开为有序组合表。
+    /// </summary>
     public DegradationMatrix(
         IEnumerable<AccountConfig> accounts,
         IEnumerable<ModelCandidate> globalModelPool,
@@ -90,8 +97,10 @@ public sealed class DegradationMatrix
         _ordered = combos;
     }
 
+    /// <summary>遍历策略（模型优先 / 账号优先）。</summary>
     public DegradationStrategy Strategy { get; }
 
+    /// <summary>参与展开的启用账号（构造期快照）。</summary>
     public IReadOnlyList<AccountConfig> Accounts { get; }
 
     /// <summary>全局共享候选模型列表（仅对未配置自有池的账号生效，v1.12 兼容字段）。</summary>
@@ -103,6 +112,7 @@ public sealed class DegradationMatrix
     /// <summary>首选组合（首选账号 + 首选模型）。</summary>
     public AgentCombo? Preferred => _ordered.Count > 0 ? _ordered[0] : null;
 
+    /// <summary>是否为空矩阵（无任何可用账号/模型，启动前预检直接失败）。</summary>
     public bool IsEmpty => _ordered.Count == 0;
 
     /// <summary>
@@ -140,6 +150,8 @@ public sealed class DegradationMatrix
     }
 
     /// <summary>首选可用组合（新任务起点）。</summary>
+    /// <param name="now">调度决策时刻（时段与冷却判定的基准）。</param>
+    /// <param name="evaluator">组合可用性评估器，注入时段 / 冷却判定。</param>
     public ComboSelection SelectFirst(DateTimeOffset now, AvailabilityEvaluator evaluator) =>
         SelectNext(null, now, evaluator);
 
@@ -175,6 +187,9 @@ public sealed class DegradationMatrix
     /// <summary>
     /// 全部组合中最早的恢复时间点；并列时按遍历顺序取第一个（REQ-003b）。
     /// </summary>
+    /// <param name="now">评估时刻（时段判定与冷却判定的时间基准）。</param>
+    /// <param name="evaluator">组合可用性评估器。</param>
+    /// <returns>最早恢复的候选组合及其恢复时刻；全部可用时返回 null。</returns>
     public RestoreCandidate? EarliestRestore(DateTimeOffset now, AvailabilityEvaluator evaluator)
     {
         RestoreCandidate? best = null;
@@ -197,6 +212,8 @@ public sealed class DegradationMatrix
     }
 
     /// <summary>是否所有组合当前都不可用。</summary>
+    /// <param name="now">判定时刻（时段与冷却判定的基准）。</param>
+    /// <param name="evaluator">组合可用性评估器，注入时段 / 冷却判定。</param>
     public bool AllUnavailable(DateTimeOffset now, AvailabilityEvaluator evaluator) =>
         _ordered.All(c => !evaluator.Evaluate(c, now).Available);
 
@@ -204,6 +221,9 @@ public sealed class DegradationMatrix
     /// 是否「所有组合均因额度耗尽（冷却）而不可用」：任一组合可用、或因账号停用 / 免费时段外（含混合）而不可用的，均不算。
     /// 仅此情形才对额度重置无限等待（DESIGN-额度耗尽暂停续跑）：其它阻塞原因不会因额度重置而消失，无限等待无意义。
     /// </summary>
+    /// <param name="now">评估时刻（时段判定与冷却判定的时间基准）。</param>
+    /// <param name="evaluator">组合可用性评估器。</param>
+    /// <returns>是否确实全部因额度冷却而不可用。</returns>
     public bool AllUnavailablePurelyByQuota(DateTimeOffset now, AvailabilityEvaluator evaluator)
     {
         if (_ordered.Count == 0)

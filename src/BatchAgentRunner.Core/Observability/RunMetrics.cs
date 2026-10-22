@@ -38,6 +38,7 @@ public sealed class RunMetrics
     private double _totalDurationSeconds;
     private DateTimeOffset? _startedAt;
 
+    /// <summary>构造指标采集器（startedAt 缺省时由 <c>MarkBatchStarted</c> 显式标记）。</summary>
     public RunMetrics(string runId, DateTimeOffset? startedAt = null)
     {
         RunId = runId;
@@ -56,6 +57,7 @@ public sealed class RunMetrics
         }
     }
 
+    /// <summary>任务开始执行（已开始任务数 +1）。</summary>
     public void RecordTaskStarted()
     {
         lock (_sync)
@@ -113,6 +115,7 @@ public sealed class RunMetrics
         }
     }
 
+    /// <summary>触发兜底（付费）模型（REQ-004b）。</summary>
     public void RecordFallback()
     {
         lock (_sync)
@@ -139,6 +142,7 @@ public sealed class RunMetrics
         }
     }
 
+    /// <summary>高危操作被拒绝（REQ-010b）。</summary>
     public void RecordDangerousBlock()
     {
         lock (_sync)
@@ -147,6 +151,8 @@ public sealed class RunMetrics
         }
     }
 
+    /// <summary>生成当前时刻的指标快照（批次结束 / 落盘时调用）。</summary>
+    /// <param name="capturedAt">快照采集时刻（作为结束时间写入，未开始过批次时兼作起点）。</param>
     public RunMetricsSnapshot Snapshot(DateTimeOffset capturedAt)
     {
         lock (_sync)
@@ -173,8 +179,8 @@ public sealed class RunMetrics
 
     /// <summary>
     /// 指标快照条目（批次结束时写入运行日志）：数值进 <c>Fields</c> 供采集，
-    /// 正文给一行人读摘要，便于 <c>tail</c> 排障时直接看到"这批跑得怎么样"。
-    /// </summary>
+    /// 正文给一行人读摘要，便于 <c>tail</c> 排障时直接看到"这批跑得怎么样"。</summary>
+    /// <param name="at">日志条目时刻（须与快照采集时刻一致，保证行列对得上）。</param>
     public RunLogEntry ToLogEntry(DateTimeOffset at)
     {
         var snapshot = Snapshot(at);
@@ -213,6 +219,7 @@ public sealed record RunMetricsSnapshot(
     public int TasksTerminal =>
         TasksCompleted + TasksFailed + TasksInterrupted + TasksNeedsAttention + TasksBlocked;
 
+    /// <summary>批次已运行秒数（捕获时刻 - 开始时刻；开始时刻晚于捕获时兜底为 0）。</summary>
     public double ElapsedSeconds => Math.Max(0, (CapturedAt - StartedAt).TotalSeconds);
 
     /// <summary>失败率：失败 / 终态（待人工与阻断不计失败）。</summary>

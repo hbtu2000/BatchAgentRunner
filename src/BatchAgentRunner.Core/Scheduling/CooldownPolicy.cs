@@ -11,12 +11,18 @@ public sealed class CooldownPolicy
 {
     private readonly QuotaCooldownRegistry _cooldowns;
 
+    /// <summary>构造冷却判定策略。</summary>
+    /// <param name="cooldowns">冷却登记表（记录 / 清理的状态持有者）。</param>
     public CooldownPolicy(QuotaCooldownRegistry cooldowns) => _cooldowns = cooldowns;
 
     /// <summary>
     /// 额度耗尽时：记录冷却重置点（cli 给出的重置时间不可靠时降级为默认冷却），随后清理已过期记录。
-    /// 返回所落地的冷却记录，供上层广播 <see cref="BatchEventKind.QuotaResetRecorded"/> 与日志使用。
-    /// </summary>
+    /// 返回所落地的冷却记录，供上层广播 <c>BatchEventKind.QuotaResetRecorded</c> 与日志使用。</summary>
+    /// <param name="accountId">账号标识（与模型名构成冷却键）。</param>
+    /// <param name="modelName">模型名称，与账号共同定位冷却记录。</param>
+    /// <param name="resetAt">CLI 声明的额度重置时刻，不可信时传 null 走默认冷却。</param>
+    /// <param name="now">当前时刻（判定记录是否已过期的时间基准）。</param>
+    /// <param name="raw">CLI 原文片段，仅用于排障展示。</param>
     public QuotaCooldownRecord RecordAndPurge(
         string accountId,
         string modelName,

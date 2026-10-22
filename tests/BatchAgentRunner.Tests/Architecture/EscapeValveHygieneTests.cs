@@ -121,7 +121,9 @@ public class EscapeValveHygieneTests
     {
         var repoRoot = LocateRepoRoot();
         var rows = ReadLedger(repoRoot);
-        Assert.True(rows.Count >= 10, $"§4.7 逃逸阀台账解析到的行数异常（{rows.Count}）——表结构可能被改动，请同步更新本守卫的解析口径");
+        // 阈值 = 当前在册逃逸条目数（9 条）。它是「表结构被改坏」的探针，不是债务目标：
+        // P-12（2026-10-22）偿还 NoWarn CS1591 后 #3 退役、总数 10→9，阈值随之下调一次。
+        Assert.True(rows.Count >= 9, $"§4.7 逃逸阀台账解析到的行数异常（{rows.Count}）——表结构可能被改动，请同步更新本守卫的解析口径");
 
         var problems = new List<string>();
         var today = DateTime.Today;

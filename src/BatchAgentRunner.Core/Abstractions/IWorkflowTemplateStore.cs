@@ -13,5 +13,6 @@ public interface IWorkflowTemplateStore
 
     /// <summary>保存用户自定义模板（覆盖同名）。</summary>
     /// <param name="spec">模板定义（参数名避开 C# 关键字 <c>template</c>，CA1716）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     Task SaveUserTemplateAsync(TemplateSpec spec, CancellationToken cancellationToken = default);
 }

@@ -27,10 +27,13 @@ public sealed record RunLogEntry(
     /// <summary>批次关联标识（一次运行一个，贯穿日志与指标）。</summary>
     public string? RunId { get; init; }
 
+    /// <summary>关联任务标识（任务级日志；无任务上下文时为空）。</summary>
     public string? TaskId { get; init; }
 
+    /// <summary>关联账号标识（账号切换 / 额度相关日志）。</summary>
     public string? Account { get; init; }
 
+    /// <summary>关联模型标识（模型降级 / 兜底相关日志）。</summary>
     public string? Model { get; init; }
 
     /// <summary>高危确认点标记：渲染为醒目前缀（REQ-010b），结构化侧亦作为采集维度。</summary>
@@ -57,8 +60,11 @@ public sealed record RunLogEntry(
     }
 
     /// <summary>取用于采集的数值字段（把可空数值统一成不变文化字符串）。</summary>
+    /// <param name="value">浮点数值，保留至多 3 位小数且不受系统区域设置影响。</param>
     public static string Num(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
 
+    /// <summary>取用于采集的十进制数值字段（不变文化字符串）。</summary>
+    /// <param name="value">金额/成本值，保留至多 4 位小数且不受系统区域设置影响。</param>
     public static string Num(decimal value) => value.ToString("0.####", CultureInfo.InvariantCulture);
 
     /// <summary>

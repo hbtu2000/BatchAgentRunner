@@ -19,10 +19,17 @@ public enum SessionResumeDecision
 /// </summary>
 public sealed class SessionResumePolicy
 {
+    /// <summary>是否启用会话恢复；false 时 <see cref="Resolve"/> 恒返回 <see cref="SessionResumeDecision.NoSession"/>。</summary>
     public bool EnableSessionResume { get; }
 
+    /// <summary>构造策略；enableSessionResume 为 false 时一律回退「完整指令重发」。</summary>
+    /// <param name="enableSessionResume">是否启用会话恢复（默认 false，走完整指令重发）。</param>
     public SessionResumePolicy(bool enableSessionResume) => EnableSessionResume = enableSessionResume;
 
+    /// <summary>
+    /// 恢复决策：开关开启、会话存在、会话 adapter 与当前一致且 CLI 声明可恢复时才返回
+    /// <see cref="SessionResumeDecision.Resume"/>，否则一律回退 <see cref="SessionResumeDecision.NoSession"/>。
+    /// </summary>
     public SessionResumeDecision Resolve(
         SessionHandle? session,
         AgentKind adapterKind,

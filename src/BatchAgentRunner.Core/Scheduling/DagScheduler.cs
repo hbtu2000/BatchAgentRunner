@@ -17,6 +17,7 @@ public enum DependencyFailurePolicy
 /// <summary>依赖图中存在环时抛出。</summary>
 public sealed class DagCycleException : Exception
 {
+    /// <summary>构造循环依赖异常。</summary>
     public DagCycleException(string cyclePath) : base($"检测到循环依赖：{cyclePath}") { }
 }
 
@@ -171,8 +172,10 @@ public static class DagScheduler
     }
 
     /// <summary>
-    /// 依赖是否满足（可入队执行）。<see cref="EvaluateDependency"/> 的布尔包装，保持既有调用面不变。
-    /// </summary>
+    /// 依赖是否满足（可入队执行）。<see cref="EvaluateDependency"/> 的布尔包装，保持既有调用面不变。</summary>
+    /// <param name="task">待判定任务，读取其 DependsOn 列表。</param>
+    /// <param name="statusById">全批任务状态快照，按任务 id 查依赖终态。</param>
+    /// <param name="blockOnNeedsAttention">依赖处于 NeedsAttention 时是否判阻塞（false 视为已满足）。</param>
     public static bool DependenciesSatisfied(
         TaskItem task,
         IReadOnlyDictionary<string, TaskStatus> statusById,

@@ -12,9 +12,17 @@ public readonly record struct WaitDecision(
     DateTimeOffset? RestoreAt,
     string? BlockReason)
 {
+    /// <summary>构造「等待恢复」决策。</summary>
+    /// <param name="restoreAt">恢复时间点。</param>
+    /// <param name="unbounded">是否无限等待（额度重置确定可恢复，不受最长可等待时长约束）。</param>
+    /// <returns>等待决策。</returns>
     public static WaitDecision Wait(DateTimeOffset restoreAt, bool unbounded) =>
         new(true, unbounded, restoreAt, null);
 
+    /// <summary>构造「转阻塞」决策。</summary>
+    /// <param name="reason">阻塞原因（原样透传上层用于事件 / 中断文案）。</param>
+    /// <param name="restoreAt">已知的恢复时间点；未知传 null。</param>
+    /// <returns>阻塞决策。</returns>
     public static WaitDecision Block(string reason, DateTimeOffset? restoreAt = null) =>
         new(false, false, restoreAt, reason);
 }
@@ -30,6 +38,7 @@ public sealed class FreeTimeWindowPolicy
     private readonly Func<DegradationMatrix> _matrixProvider;
     private readonly AvailabilityEvaluator _evaluator;
 
+    /// <summary>构造免费时段窗口策略。</summary>
     public FreeTimeWindowPolicy(RunOptions options, Func<DegradationMatrix> matrixProvider, AvailabilityEvaluator evaluator)
     {
         _options = options;

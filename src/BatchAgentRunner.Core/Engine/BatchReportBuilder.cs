@@ -17,6 +17,7 @@ public interface IBatchReportBuilder
     /// <summary>本批跳过的已完成任务数（ForceRerun 时为 0）。</summary>
     int SkippedDoneCount { get; }
 
+    /// <summary>设定本批跳过的已完成任务数（ForceRerun 时为 0）。</summary>
     void SetSkippedDoneCount(int count);
 
     /// <summary>累计账号/模型维度用量（成本按最后一次 Basis 覆盖展示值，任务数累加）。</summary>
@@ -52,6 +53,7 @@ public sealed class BatchReportBuilder : IBatchReportBuilder
     private double _cooldownWaitSeconds;
     private int _skippedDoneCount;
 
+    /// <summary>构造报告聚合器（引擎态经函数读取，保证 Build 时点一致）。</summary>
     public BatchReportBuilder(
         IClock clock,
         Func<RunOptions> options,
@@ -68,11 +70,15 @@ public sealed class BatchReportBuilder : IBatchReportBuilder
         _fallbackSummary = fallbackSummary;
     }
 
+    /// <summary>本批因已完成而被跳过的任务数（ForceRerun 时为 0）。</summary>
+    /// <inheritdoc cref="IBatchReportBuilder.SkippedDoneCount"/>
     public int SkippedDoneCount
     {
         get { lock (_statsLock) { return _skippedDoneCount; } }
     }
 
+    /// <summary>写入本批跳过数（加锁，供 Build 计入报告的 SkippedAlreadyDone）。</summary>
+    /// <inheritdoc cref="IBatchReportBuilder.SetSkippedDoneCount"/>
     public void SetSkippedDoneCount(int count)
     {
         lock (_statsLock)
@@ -81,6 +87,11 @@ public sealed class BatchReportBuilder : IBatchReportBuilder
         }
     }
 
+    /// <summary>累计账号 / 模型维度用量与成本（加锁后委托核心实现）。</summary>
+    /// <param name="account">账号标识（统计键，忽略大小写）。</param>
+    /// <param name="model">模型名称（统计键，忽略大小写）。</param>
+    /// <param name="usage">本次调用的用量，未知时可传 null。</param>
+    /// <inheritdoc cref="IBatchReportBuilder.TrackUsage"/>
     public void TrackUsage(string account, string model, AgentUsage? usage)
     {
         lock (_statsLock)
@@ -89,9 +100,13 @@ public sealed class BatchReportBuilder : IBatchReportBuilder
         }
     }
 
+    /// <summary>追加时间线条目（切换 / 跳过 / 阻塞等），非并发延后切换。</summary>
+    /// <inheritdoc cref="IBatchReportBuilder.AddTimeline(string, string, string?, string?, string?)"/>
     public void AddTimeline(string kind, string message, string? taskId, string? account, string? model)
         => AddTimeline(kind, message, taskId, account, model, false);
 
+    /// <summary>追加时间线条目，并标记是否为 REQ-021 并发延后切换。</summary>
+    /// <inheritdoc cref="IBatchReportBuilder.AddTimeline(string, string, string?, string?, string?, bool)"/>
     public void AddTimeline(string kind, string message, string? taskId, string? account, string? model, bool deferredSwitch)
     {
         var entry = new TimelineEntry
@@ -110,6 +125,8 @@ public sealed class BatchReportBuilder : IBatchReportBuilder
         }
     }
 
+    /// <summary>累计等待秒数：时段/混合计入窗口等待，其余计入冷却等待。</summary>
+    /// <inheritdoc cref="IBatchReportBuilder.AddWaitSeconds"/>
     public void AddWaitSeconds(WaitKind kind, double seconds)
     {
         lock (_statsLock)
@@ -125,6 +142,8 @@ public sealed class BatchReportBuilder : IBatchReportBuilder
         }
     }
 
+    /// <summary>按当前快照组装批处理报告（任务数 / 用量 / 时间线 / 兜底汇总）。</summary>
+    /// <inheritdoc cref="IBatchReportBuilder.Build"/>
     public BatchReport Build(DateTimeOffset startedAt)
     {
         var options = _options();

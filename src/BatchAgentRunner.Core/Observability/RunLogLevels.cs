@@ -13,16 +13,25 @@ namespace BatchAgentRunner.Core.Observability;
 /// </remarks>
 public static class RunLogLevels
 {
+    /// <summary>信息级别。</summary>
     public const string Info = "INFO";
+
+    /// <summary>警告级别。</summary>
     public const string Warn = "WARN";
+
+    /// <summary>错误级别。</summary>
     public const string Error = "ERROR";
+
+    /// <summary>高危级别（高危确认点相关记录，REQ-010b）。</summary>
     public const string Danger = "DANGER";
 
     /// <summary>需要即时刷盘的级别（P2-24 批量落盘策略的下游判据）。</summary>
+    /// <param name="level">待判定的级别字面量，null 视为不重要。</param>
     public static bool IsImportant(string? level) =>
         level is Warn or Error or Danger;
 
     /// <summary>规范化：非法/未知级别一律回落 <see cref="Info"/>，保证级别集合封闭。</summary>
+    /// <param name="level">待规范化的级别字面量，未知值回落 INFO。</param>
     public static string Normalize(string? level) => level switch
     {
         Warn => Warn,

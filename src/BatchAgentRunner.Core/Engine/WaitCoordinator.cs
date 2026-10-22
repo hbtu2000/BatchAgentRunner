@@ -25,6 +25,8 @@ public sealed class WaitCoordinator : IDisposable
     private TaskCompletionSource? _wake;
     private bool _waitingCancelled;
 
+    /// <summary>用上下文能力集合构造等待协调者。</summary>
+    /// <param name="context">等待协调所需的引擎能力集合。</param>
     public WaitCoordinator(WaitCoordinatorContext context) => _ctx = context;
 
     /// <summary>
@@ -143,14 +145,33 @@ public sealed class WaitCoordinator : IDisposable
 /// <summary>等待协调所需的引擎能力集合（沿用 <see cref="TaskRunnerContext"/> 的上下文注入范式）。</summary>
 public sealed class WaitCoordinatorContext
 {
+    /// <summary>时钟（等待切片与时间推进的单一事实来源）。</summary>
     public IClock Clock { get; init; } = null!;
+
+    /// <summary>组合可用性评估器（等待循环每轮重评）。</summary>
     public AvailabilityEvaluator Evaluator { get; init; } = null!;
+
+    /// <summary>降级矩阵延迟提供者（重评时现取，避免陈旧矩阵）。</summary>
     public Func<DegradationMatrix> MatrixProvider { get; init; } = null!;
+
+    /// <summary>报告构建器（累计等待时长）。</summary>
     public IBatchReportBuilder Report { get; init; } = null!;
+
+    /// <summary>运行日志（等待 / 恢复事件落日志）。</summary>
     public IRunLogger Logger { get; init; } = null!;
+
+    /// <summary>单任务级暂停等待累计（从任务时长中剔除，key 不区分大小写）。</summary>
     public Dictionary<string, double> TaskWaitSeconds { get; init; } = null!;
+
+    /// <summary>保护 <see cref="TaskWaitSeconds"/> 累计的锁。</summary>
     public object StatsLock { get; init; } = null!;
+
+    /// <summary>批处理事件广播委托。</summary>
     public Action<BatchEvent> Raise { get; init; } = null!;
+
+    /// <summary>批处理状态设置委托（Waiting / Running）。</summary>
     public Action<BatchStatus> SetStatus { get; init; } = null!;
+
+    /// <summary>当前任务 ID 提供者（事件携带）。</summary>
     public Func<string?> CurrentTaskIdProvider { get; init; } = null!;
 }

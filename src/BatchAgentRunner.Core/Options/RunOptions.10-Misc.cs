@@ -9,6 +9,7 @@ public sealed partial class RunOptions
     [JsonPropertyName("result_max_kb")]
     public int ResultMaxKB { get; set; } = 100;
 
+    /// <summary>自动备份快照保留份数（默认 5；超出后滚动删除最旧快照）。</summary>
     [JsonPropertyName("backup_retention")]
     public int BackupRetention { get; set; } = 5;
 }

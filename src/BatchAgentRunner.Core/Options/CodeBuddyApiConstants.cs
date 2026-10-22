@@ -4,7 +4,7 @@ namespace BatchAgentRunner.Core.Options;
 /// CodeBuddy 控制台积分 API 的规范化端点常量（实测值，2026-10-16 抓包确认）。
 /// <para>
 /// 生产基址与 <c>/billing/meter/*</c> 路径集中于此，<see cref="CreditsClaimConfig"/> 的默认值
-/// 与 <see cref="BatchAgentRunner.Infrastructure.Persistence.CreditsClaimMigrator"/> 的迁移目标
+/// 与 <c>BatchAgentRunner.Infrastructure.Persistence.CreditsClaimMigrator</c> 的迁移目标
 /// 均引用本类，杜绝在多处硬编码同一组魔法串（P1-21）。
 /// </para>
 /// <para>

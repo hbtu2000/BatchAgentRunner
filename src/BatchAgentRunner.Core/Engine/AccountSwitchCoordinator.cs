@@ -21,6 +21,8 @@ public sealed class AccountSwitchCoordinator
 {
     private readonly AccountSwitchContext _ctx;
 
+    /// <summary>用上下文能力集合构造凭证切换协调者。</summary>
+    /// <param name="context">凭证切换所需的引擎能力集合。</param>
     public AccountSwitchCoordinator(AccountSwitchContext context) => _ctx = context;
 
     /// <summary>
@@ -173,13 +175,30 @@ public sealed class AccountSwitchCoordinator
 /// <summary>凭证切换所需的引擎能力集合（沿用 <see cref="TaskRunnerContext"/> 的上下文注入范式）。</summary>
 public sealed class AccountSwitchContext
 {
+    /// <summary>运行选项（账号池 / 并发度 / Agent 类型）。</summary>
     public RunOptions Options { get; init; } = null!;
+
+    /// <summary>凭证 Vault；null 表示不启用凭证切换（保持旧行为）。</summary>
     public ICredentialVault? Vault { get; init; }
+
+    /// <summary>报告构建器（切换时间线）。</summary>
     public IBatchReportBuilder Report { get; init; } = null!;
+
+    /// <summary>运行日志（切换事件落日志）。</summary>
     public IRunLogger Logger { get; init; } = null!;
+
+    /// <summary>时钟（事件时间戳）。</summary>
     public IClock Clock { get; init; } = null!;
+
+    /// <summary>组合可用性评估器（并行启动前固定首选账号用）。</summary>
     public AvailabilityEvaluator Evaluator { get; init; } = null!;
+
+    /// <summary>降级矩阵延迟提供者。</summary>
     public Func<DegradationMatrix> MatrixProvider { get; init; } = null!;
+
+    /// <summary>矩阵重建委托（矩阵仍是引擎持有的共享可变状态）。</summary>
     public Action RebuildMatrix { get; init; } = null!;
+
+    /// <summary>批处理事件广播委托。</summary>
     public Action<BatchEvent> Raise { get; init; } = null!;
 }

@@ -35,6 +35,7 @@ public sealed class TaskItem : INotifyPropertyChanged
     private DateTimeOffset? _finishedAt;
     private double _durationSeconds;
 
+    /// <summary>任务唯一 Id（JSON 键 id；加载期缺失时自动生成）。</summary>
     [JsonPropertyName("id")]
     public string Id
     {
@@ -50,6 +51,7 @@ public sealed class TaskItem : INotifyPropertyChanged
         set => SetField(ref _workspace, value);
     }
 
+    /// <summary>任务指令（单指令任务；工作流任务改用 <see cref="Workflow"/>）。</summary>
     [JsonPropertyName("instruction")]
     public string Instruction
     {
@@ -57,6 +59,7 @@ public sealed class TaskItem : INotifyPropertyChanged
         set => SetField(ref _instruction, value);
     }
 
+    /// <summary>任务级状态。</summary>
     [JsonPropertyName("status")]
     public TaskStatus Status
     {
@@ -64,6 +67,7 @@ public sealed class TaskItem : INotifyPropertyChanged
         set => SetField(ref _status, value);
     }
 
+    /// <summary>结果正文（可能为「部分输出」，见 <see cref="HasPartialResult"/>）。</summary>
     [JsonPropertyName("result")]
     public string? Result
     {
@@ -71,6 +75,7 @@ public sealed class TaskItem : INotifyPropertyChanged
         set => SetField(ref _result, value);
     }
 
+    /// <summary>实际执行所用模型名。</summary>
     [JsonPropertyName("model_used")]
     public string? ModelUsed
     {
@@ -78,6 +83,7 @@ public sealed class TaskItem : INotifyPropertyChanged
         set => SetField(ref _modelUsed, value);
     }
 
+    /// <summary>实际执行所用账号展示名。</summary>
     [JsonPropertyName("account_used")]
     public string? AccountUsed
     {
@@ -85,6 +91,7 @@ public sealed class TaskItem : INotifyPropertyChanged
         set => SetField(ref _accountUsed, value);
     }
 
+    /// <summary>实际执行所用专家标识。</summary>
     [JsonPropertyName("expert_used")]
     public string? ExpertUsed
     {
@@ -92,6 +99,7 @@ public sealed class TaskItem : INotifyPropertyChanged
         set => SetField(ref _expertUsed, value);
     }
 
+    /// <summary>是否发生过兜底执行（REQ-004b）。</summary>
     [JsonPropertyName("fallback_used")]
     public bool FallbackUsed
     {
@@ -99,6 +107,7 @@ public sealed class TaskItem : INotifyPropertyChanged
         set => SetField(ref _fallbackUsed, value);
     }
 
+    /// <summary>兜底累计费用。</summary>
     [JsonPropertyName("fallback_cost")]
     public decimal? FallbackCost
     {
@@ -106,6 +115,7 @@ public sealed class TaskItem : INotifyPropertyChanged
         set => SetField(ref _fallbackCost, value);
     }
 
+    /// <summary>已重试次数。</summary>
     [JsonPropertyName("retry_count")]
     public int RetryCount
     {
@@ -113,6 +123,7 @@ public sealed class TaskItem : INotifyPropertyChanged
         set => SetField(ref _retryCount, value);
     }
 
+    /// <summary>失败错误摘要。</summary>
     [JsonPropertyName("error")]
     public string? Error
     {
@@ -120,6 +131,7 @@ public sealed class TaskItem : INotifyPropertyChanged
         set => SetField(ref _error, value);
     }
 
+    /// <summary>开始执行时间（续跑/断点恢复用）。</summary>
     [JsonPropertyName("started_at")]
     [JsonConverter(typeof(NullableDateTimeOffsetConverter))]
     public DateTimeOffset? StartedAt
@@ -128,6 +140,7 @@ public sealed class TaskItem : INotifyPropertyChanged
         set => SetField(ref _startedAt, value);
     }
 
+    /// <summary>结束执行时间。</summary>
     [JsonPropertyName("finished_at")]
     [JsonConverter(typeof(NullableDateTimeOffsetConverter))]
     public DateTimeOffset? FinishedAt
@@ -178,9 +191,11 @@ public sealed class TaskItem : INotifyPropertyChanged
     [JsonPropertyName("session")]
     public SessionHandle? Session { get; set; }
 
+    /// <summary>是否为工作流任务（带至少一个阶段）。</summary>
     [JsonIgnore]
     public bool IsWorkflow => Workflow is { Stages.Count: > 0 };
 
+    /// <summary>是否已终态（Done/Failed/Interrupted/NeedsAttention/Blocked）。</summary>
     [JsonIgnore]
     public bool IsTerminal => Status.IsTerminal();
 
@@ -188,10 +203,13 @@ public sealed class TaskItem : INotifyPropertyChanged
     [JsonIgnore]
     public bool HasPartialResult => Result is not null && Result.StartsWith(PartialResultPrefix, StringComparison.Ordinal);
 
+    /// <summary>部分输出结果的前缀标记（与结果正文同落盘，报告据此标注）。</summary>
     public const string PartialResultPrefix = "[部分输出]";
 
+    /// <summary>属性变更通知（Desktop 行 VM 订阅驱动刷新；防腐边界见类型级 remarks）。</summary>
     public event PropertyChangedEventHandler? PropertyChanged;
 
+    /// <summary>落定终态：写状态/结束时间并按起止时间算耗时（秒，四舍五入 3 位）。</summary>
     public void Finish(TaskStatus status, DateTimeOffset finishedAt)
     {
         Status = status;
@@ -199,6 +217,11 @@ public sealed class TaskItem : INotifyPropertyChanged
         DurationSeconds = StartedAt.HasValue ? Math.Round((finishedAt - StartedAt.Value).TotalSeconds, 3) : 0;
     }
 
+    /// <summary>
+    /// 深拷贝（P-08：唯一手写 <c>Clone</c> 入口，因本类型承载属性通知无法记录化）。
+    /// 工作流 / 依赖 / 项目关联 / 模板变量 / 阶段结果 / 会话句柄均逐层深拷——快照与原型不得共享可变节点
+    /// （由 <c>TaskItemCloneTests</c> 反射锁死字段完整性）。
+    /// </summary>
     public TaskItem Clone() => new()
     {
         Id = Id,

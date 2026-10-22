@@ -3,6 +3,7 @@ using System.Text.Json.Serialization;
 
 namespace BatchAgentRunner.Core.Domain;
 
+/// <summary>专家引用类型（REQ-004a）：未指定 / 单专家 / 专家团；经 <c>JsonStringEnumConverter</c> 以字符串形式持久化。</summary>
 public enum ExpertKind
 {
     /// <summary>未指定，使用默认智能体（REQ-004a）。</summary>
@@ -16,6 +17,8 @@ public enum ExpertKind
     /// </summary>
     [SuppressMessage("Naming", "CA1720:标识符包含类型名称", Justification = "持久化兼容：ExpertKind.Single 已随用户模板落盘，重命名破坏兼容；逃逸阀台账 #7 / 到期日 2027-01-20 / 责任人 工程")]
     Single,
+
+    /// <summary>专家团（多专家协作）。</summary>
     Team
 }
 
@@ -25,12 +28,15 @@ public enum ExpertKind
 /// </summary>
 public sealed class ExpertRef
 {
+    /// <summary>专家类型：<see cref="ExpertKind.None"/> 未指定 / <see cref="ExpertKind.Single"/> 单专家 / <see cref="ExpertKind.Team"/> 专家团。</summary>
     [JsonPropertyName("kind")]
     public ExpertKind Kind { get; set; } = ExpertKind.None;
 
+    /// <summary>专家 id（CLI 专家参数值；<see cref="ExpertKind.None"/> 时可为空）。</summary>
     [JsonPropertyName("id")]
     public string? Id { get; set; }
 
+    /// <summary>展示名（界面 / 日志用，不参与调度）。</summary>
     [JsonPropertyName("display_name")]
     public string? DisplayName { get; set; }
 
@@ -38,11 +44,14 @@ public sealed class ExpertRef
     [JsonPropertyName("role_prompt")]
     public string? RolePrompt { get; set; }
 
+    /// <summary>是否已指定有效专家（类型非 <see cref="ExpertKind.None"/> 且 id 非空白）。</summary>
     [JsonIgnore]
     public bool IsSpecified => Kind != ExpertKind.None && !string.IsNullOrWhiteSpace(Id);
 
+    /// <summary>默认引用：未指定专家，使用默认智能体。</summary>
     public static ExpertRef Default() => new();
 
+    /// <summary>无参构造（反序列化与 <c>Default()</c> 使用）。</summary>
     public ExpertRef()
     {
     }
@@ -54,6 +63,7 @@ public sealed class ExpertRef
         Id = id;
     }
 
+    /// <summary>展示用字符串：已指定为「展示名（专家 / 专家团）」，否则为「默认智能体」。</summary>
     public override string ToString() => IsSpecified
         ? $"{DisplayName ?? Id}{(Kind == ExpertKind.Team ? "（专家团）" : "（专家）")}"
         : "默认智能体";

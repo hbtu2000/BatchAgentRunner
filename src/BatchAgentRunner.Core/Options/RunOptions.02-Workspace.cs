@@ -6,9 +6,11 @@ namespace BatchAgentRunner.Core.Options;
 /// <summary>② 工作空间（REQ-003a / REQ-019）。</summary>
 public sealed partial class RunOptions
 {
+    /// <summary>命名工作空间列表（三级覆盖：单任务 &gt; 本批默认 &gt; 全局默认）。</summary>
     [JsonPropertyName("workspaces")]
     public List<WorkspaceConfig> Workspaces { get; set; } = new();
 
+    /// <summary>本批默认工作空间名称；为空则回退到全局默认（<c>is_global_default</c> 项）。</summary>
     [JsonPropertyName("default_workspace")]
     public string? DefaultWorkspace { get; set; }
 

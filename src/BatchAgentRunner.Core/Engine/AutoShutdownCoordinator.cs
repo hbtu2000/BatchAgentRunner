@@ -16,17 +16,18 @@ public sealed class AutoShutdownCoordinator
 {
     private readonly IShutdownService _shutdownService;
 
+    /// <summary>构造自动关机协调者（关机能力经端口注入，平台不支持时优雅降级）。</summary>
+    /// <param name="shutdownService">平台关机能力端口，不可用时协调器降级为不关机。</param>
     public AutoShutdownCoordinator(IShutdownService shutdownService) => _shutdownService = shutdownService;
 
     /// <summary>
     /// 按 REQ-015 执行「条件判定 → 可撤销倒计时 → 关机」，产出写入报告的 <see cref="ShutdownOutcome"/>。
     /// </summary>
-    /// <param name="config">自动关机配置。</param>
-    /// <param name="report">本批报告（触发条件以批级终态与失败数为依据）。</param>
-    /// <param name="confirmAsync">
-    /// 倒计时确认：入参为倒计时秒数（0 = 无需等待）。返回 true = 倒计时走完且未被用户取消；false = 用户取消。
-    /// </param>
-    /// <param name="cancellationToken">整体取消（批处理被终止时不该继续等待倒计时）。</param>
+    /// <param name="config">自动关机配置（是否启用、仅零失败、倒计时秒数等）。</param>
+    /// <param name="report">已完成的批次报告——批次状态与失败数是触发条件的数据源。</param>
+    /// <param name="confirmAsync">倒计时确认：入参为倒计时秒数（0 = 无需等待）。返回 true = 倒计时走完且未被用户取消；false = 用户取消。</param>
+    /// <param name="cancellationToken">批次取消令牌。</param>
+    /// <returns>本次关机决策结果（已关机 / 已跳过及原因 / 用户取消）。</returns>
     public async Task<ShutdownOutcome> RunAsync(AutoShutdownConfig config, BatchReport report,
         Func<int, CancellationToken, Task<bool>> confirmAsync, CancellationToken cancellationToken = default)
     {

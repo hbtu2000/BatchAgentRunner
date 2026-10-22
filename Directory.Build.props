@@ -14,13 +14,13 @@
     <AnalysisMode>Recommended</AnalysisMode>
     <InvariantGlobalization>true</InvariantGlobalization>
     <EnableDefaultItems>true</EnableDefaultItems>
-    <!-- 逃逸阀台账 #3 / 到期日 2027-01-20 / 责任人 工程 —— CS1591（公共 API 缺文档注释）全仓抑制：
-         补齐需数百处，与 P0-15「先 warning 不阻断」同期决策同源。
+    <!-- ARCH P-12 / A-10（2026-10-22）：CS1591 全仓抑制已偿还——四个 src 生产工程
+         开启 GenerateDocumentationFile 且公共 API 全部补齐 XML 文档（测试工程不产出
+         文档文件、CS1591 不触发，无需豁免）。该豁免已从治理方案 §4.7 逃逸阀台账退役。
          其余例外一律登记于治理方案 §4.7 台账并就近写明台账 ID 与到期日：CA1707 / CA2007 / CA1861
          （#4 / #5 / #6，仅测试项目，理由见各测试 csproj）、CA1720 / CA1859（#7 / #8，逐点
          [SuppressMessage]，写在其 Justification 上）、AVLN3001（#10，仅 Desktop，见其 csproj）。
          2026-10-21 P2-30 起由 EscapeValveHygieneTests 机器校验：四要素齐全 + 到期日未过期 + 代码与台账双向一致。 -->
-    <NoWarn>$(NoWarn);CS1591</NoWarn>
   </PropertyGroup>
 
   <PropertyGroup Label="编码">

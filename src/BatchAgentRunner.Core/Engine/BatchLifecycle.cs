@@ -25,12 +25,17 @@ public sealed class BatchLifecycle
 {
     private readonly BatchLifecycleContext _ctx;
 
+    /// <summary>构造生命周期编排者（上下文由 <see cref="BatchEngine"/> 构造期装配）。</summary>
+    /// <param name="context">协作者装配上下文（时钟 / 队列 / 状态 / 落盘 / 指标）。</param>
     public BatchLifecycle(BatchLifecycleContext context) => _ctx = context;
 
     /// <summary>
     /// 启动或续跑（REQ-008）。<paramref name="waitIfUnavailable"/> 为 true 时，启动前全部组合不可用会进入 waiting
     /// （REQ-010 用户选择「等待自动启动」），否则直接 blocked 退出。对应原 <see cref="BatchEngine.StartAsync"/>。
     /// </summary>
+    /// <param name="waitIfUnavailable">启动时全部组合不可用，是否进入等待（true）还是直接 blocked 退出（false）。</param>
+    /// <param name="cancellationToken">批次取消令牌（与内部运行 CTS 链接）。</param>
+    /// <returns>批次终态报告。</returns>
     public async Task<BatchReport> RunAsync(bool waitIfUnavailable = false, CancellationToken cancellationToken = default)
     {
         _ctx.RunState.RunCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
@@ -173,7 +178,7 @@ public sealed class BatchLifecycle
 
     /// <summary>
     /// 工作流任务执行（多阶段顺序驱动 + 质量门禁 + 修订循环）。委托自包含的 <see cref="WorkflowExecutor"/>，
-    /// 生命周期只负责落盘与终态映射。对应原 <see cref="BatchEngine.ExecuteWorkflowAsync"/>。
+    /// 生命周期只负责落盘与终态映射。对应原 <c>BatchEngine.ExecuteWorkflowAsync</c>（P-02 随编排体一同下沉）。
     /// </summary>
     public async Task<TaskOutcome> ExecuteWorkflowAsync(TaskItem task, CancellationToken ct)
     {
@@ -216,7 +221,7 @@ public sealed class BatchLifecycle
         };
     }
 
-    /// <summary>构造工作流执行上下文（把降级/额度/冷却/兜底内核能力注入工作流执行器）。对应原 <see cref="BatchEngine.BuildWorkflowContext"/>。</summary>
+    /// <summary>构造工作流执行上下文（把降级/额度/冷却/兜底内核能力注入工作流执行器）。对应原 <c>BatchEngine.BuildWorkflowContext</c>（P-02 下沉）。</summary>
     private WorkflowEngineContext BuildWorkflowContext() => new()
     {
         Options = _ctx.Options,
@@ -251,9 +256,13 @@ public sealed class BatchLifecycle
         Justification = "RunCts 由引擎在 Dispose/终止流程中释放，生命周期不持有非托管资源；逃逸阀台账 #11 / 到期日 2027-01-20 / 责任人 工程")]
     public sealed class BatchRunState
     {
+        /// <summary>运行级取消源（由引擎 <c>Dispose</c> 统一释放；逃逸阀台账 #11）。</summary>
         public CancellationTokenSource? RunCts { get; set; }
+        /// <summary>是否已请求终止（当前任务结束后停批）。</summary>
         public bool TerminateRequested { get; set; }
+        /// <summary>是否「完成当前任务即停」。</summary>
         public bool StopAfterCurrentTask { get; set; }
+        /// <summary>当前执行中的任务 id（等待/取消时定位）。</summary>
         public string? CurrentTaskId { get; set; }
     }
 }
@@ -261,31 +270,57 @@ public sealed class BatchLifecycle
 /// <summary>批处理生命周期编排所需的引擎能力集合（沿用 <see cref="TaskRunnerContext"/> 的上下文注入范式）。</summary>
 public sealed class BatchLifecycleContext
 {
+    /// <summary>运行配置。</summary>
     public RunOptions Options { get; init; } = null!;
+    /// <summary>CLI 适配器（预检 / 模型目录）。</summary>
     public IAgentCliAdapter Adapter { get; init; } = null!;
+    /// <summary>时钟（测试可替身冻结）。</summary>
     public IClock Clock { get; init; } = null!;
+    /// <summary>可用性评估器（时段 / 冷却判定入口）。</summary>
     public AvailabilityEvaluator Evaluator { get; init; } = null!;
+    /// <summary>额度冷却注册表。</summary>
     public QuotaCooldownRegistry Cooldowns { get; init; } = null!;
+    /// <summary>错误分类器（限流 / 额度 / 凭据 / 普通）。</summary>
     public QuotaErrorClassifier Classifier { get; init; } = null!;
+    /// <summary>质量门禁评估器。</summary>
     public GateEvaluator GateEvaluator { get; init; } = null!;
+    /// <summary>任务清单（与引擎共享同一实例）。</summary>
     public List<TaskItem> Tasks { get; init; } = null!;
+    /// <summary>降级矩阵提供者（配置变更时重建，懒解析防陈旧）。</summary>
     public Func<DegradationMatrix> MatrixProvider { get; init; } = null!;
+    /// <summary>报告构建器。</summary>
     public IBatchReportBuilder Report { get; init; } = null!;
+    /// <summary>通知派发器。</summary>
     public IBatchNotifier Notifier { get; init; } = null!;
+    /// <summary>运行日志。</summary>
     public IRunLogger Logger { get; init; } = null!;
+    /// <summary>任务派发协作者。</summary>
     public ITaskDispatcher Dispatcher { get; init; } = null!;
+    /// <summary>等待协调者（等待循环 / 唤醒 / 可用性轮询）。</summary>
     public WaitCoordinator WaitCoordinator { get; init; } = null!;
+    /// <summary>凭证切换协作者。</summary>
     public AccountSwitchCoordinator AccountSwitch { get; init; } = null!;
+    /// <summary>持久化协作者（加载 / 备份 / 落盘 / 写入门）。</summary>
     public BatchPersistence Persistence { get; init; } = null!;
+    /// <summary>批次运行级共享可变状态。</summary>
     public BatchLifecycle.BatchRunState RunState { get; init; } = null!;
+    /// <summary>凭证 Vault（null = 不启用凭证切换）。</summary>
     public ICredentialVault? Vault { get; init; }
+    /// <summary>等待恢复委托（转 WaitCoordinator）。</summary>
     public Func<RestoreCandidate, string?, CancellationToken, Task<bool>> WaitForRestore { get; init; } = null!;
+    /// <summary>事件上报委托（统一填充 RunId）。</summary>
     public Action<BatchEvent> Raise { get; init; } = null!;
+    /// <summary>批次状态设置委托。</summary>
     public Action<BatchStatus> SetStatus { get; init; } = null!;
+    /// <summary>批次状态读取委托。</summary>
     public Func<BatchStatus> GetStatus { get; init; } = null!;
+    /// <summary>报告就绪回调（供宿主读取）。</summary>
     public Action<BatchReport?> SetReport { get; init; } = null!;
+    /// <summary>任务变更事件上报委托。</summary>
     public Action<TaskItem> RaiseTaskChanged { get; init; } = null!;
+    /// <summary>工作区路径解析委托。</summary>
     public Func<string?, string?> ResolveWorkspace { get; init; } = null!;
+    /// <summary>阻塞事件上报委托。</summary>
     public Action<string, string?> RaiseBlocked { get; init; } = null!;
 
     /// <summary>运行级指标采集器（ARCH P-10 / A-8）：批次结束时输出快照。</summary>

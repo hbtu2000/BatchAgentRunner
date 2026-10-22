@@ -8,6 +8,7 @@ namespace BatchAgentRunner.Core.Domain;
 public static class TaskStatusExtensions
 {
     /// <summary>是否为终态（Done / Failed / Interrupted / NeedsAttention / Blocked）。</summary>
+    /// <param name="status">待判定的任务状态。</param>
     public static bool IsTerminal(this TaskStatus status) =>
         status is TaskStatus.Done or TaskStatus.Failed or TaskStatus.Interrupted
             or TaskStatus.NeedsAttention or TaskStatus.Blocked;

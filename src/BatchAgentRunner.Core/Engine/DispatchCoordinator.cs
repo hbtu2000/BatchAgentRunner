@@ -57,6 +57,8 @@ public sealed class DispatchCoordinator
     /// 任务开始派发：登记其在飞态与其所属工作空间（REQ-020）。同一工作空间在飞数恒为 0 或 1。
     /// <paramref name="workspaceKey"/> 由调用方归一化（null/空视为单一默认工作空间桶）。
     /// </summary>
+    /// <param name="taskId">任务标识。</param>
+    /// <param name="workspaceKey">任务所属工作空间的归一化键（每空间串行的最小并发单位）。</param>
     public void RegisterInFlight(string taskId, string workspaceKey)
     {
         lock (_lock)
@@ -71,8 +73,8 @@ public sealed class DispatchCoordinator
     /// 任务到达终态或进入 waiting/interrupted：释放其工作空间在飞槽位（REQ-020）。
     /// 返回非空字符串表示「派发已暂停且当前在飞数已降为 0」，调度器应执行一次统一切换，
     /// 随后本方法已清除 <see cref="DispatchHalted"/> / <see cref="PendingSwitchTarget"/> / 冻结集合。
-    /// 返回 null 表示尚无需统一切换。
-    /// </summary>
+    /// 返回 null 表示尚无需统一切换。</summary>
+    /// <param name="taskId">释放槽位的任务标识（终态或进入等待的任务）。</param>
     public string? ReleaseInFlight(string taskId)
     {
         lock (_lock)
@@ -109,6 +111,8 @@ public sealed class DispatchCoordinator
     /// 在飞任务触发切换需求（REQ-021）：冻结该在飞槽位、进入全局派发暂停、记录统一切换目标。
     /// 多任务并行冻结只产生唯一目标（设计「目标唯一性」论证），故仅首次设置 <see cref="PendingSwitchTarget"/>。
     /// </summary>
+    /// <param name="taskId">触发切换的在飞任务标识。</param>
+    /// <param name="targetAccountId">统一切换目标账号；仅首次调用生效，后续并行冻结沿用同一目标。</param>
     public void RequestDeferredSwitch(string taskId, string targetAccountId)
     {
         lock (_lock)

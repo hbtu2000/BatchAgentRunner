@@ -20,6 +20,9 @@ public static class TextTruncate
     }
 
     /// <summary>通用截断：超过 <paramref name="maxChars"/> 时附固定 <paramref name="suffix"/>（null / 空后缀 = 纯截断）。</summary>
+    /// <param name="value">待截断文本，null 原样返回。</param>
+    /// <param name="maxChars">字符上限，&lt;=0 表示不截断。</param>
+    /// <param name="suffix">超限时追加的提示后缀，null 或空为纯截断。</param>
     public static string? Truncate(string? value, int maxChars, string? suffix) =>
         Cut(value, maxChars, suffix);
 

@@ -13,6 +13,7 @@ namespace BatchAgentRunner.Core.Engine;
 /// </summary>
 public interface IBatchNotifier
 {
+    /// <summary>按触发时机组装通知上下文并分发（trigger 为 null 时为空操作）。</summary>
     Task DispatchAsync(NotifyTrigger? trigger, DateTimeOffset? batchStartedAt = null,
         string? message = null);
 }
@@ -28,6 +29,7 @@ public sealed class BatchNotifier : IBatchNotifier
     private readonly IClock _clock;
     private readonly IRunLogger _logger;
 
+    /// <summary>构造通知协作者（上下文全部由提供函数现算，无内部状态）。</summary>
     public BatchNotifier(
         RunOptions options,
         IReadOnlyList<NotificationRule> notifications,
@@ -46,6 +48,10 @@ public sealed class BatchNotifier : IBatchNotifier
         _logger = logger;
     }
 
+    /// <summary>
+    /// 组装 <c>NotificationContext</c> 并分发：未注入分发器 / 无规则 / trigger 为 null 时为空操作；
+    /// 推送失败只记 WARN 日志，不阻断批处理（REQ-018）。
+    /// </summary>
     public async Task DispatchAsync(NotifyTrigger? trigger, DateTimeOffset? batchStartedAt = null,
         string? message = null)
     {

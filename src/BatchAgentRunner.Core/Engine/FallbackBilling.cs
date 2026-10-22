@@ -72,6 +72,7 @@ public sealed class FallbackBilling : IFallbackBilling
     private bool _stoppedByLimit;
     private readonly List<string> _modelsUsed = new();
 
+    /// <summary>构造兜底计费协作者（成本 / 用量状态随实例走）。</summary>
     public FallbackBilling(RunOptions options, Func<DegradationMatrix> matrixProvider,
         IClock clock, Action<BatchEvent> raise)
     {
@@ -81,8 +82,12 @@ public sealed class FallbackBilling : IFallbackBilling
         _raise = raise;
     }
 
+    /// <summary>兜底能力是否启用（透传配置开关，未启用时各选取方法直接返回 null）。</summary>
+    /// <inheritdoc />
     public bool Enabled => _options.Fallback.Enabled;
 
+    /// <summary>全池兜底选取：按账号顺序 × 兜底池顺序取首个可用项，超限则告警并停用。</summary>
+    /// <inheritdoc />
     public FallbackSelection? TrySelect(string taskId)
     {
         if (!_options.Fallback.Enabled)
@@ -134,6 +139,8 @@ public sealed class FallbackBilling : IFallbackBilling
         return new FallbackSelection(account, fallback, unitPrice);
     }
 
+    /// <summary>限定账号兜底选取（REQ-021）：只在原启动账号自己的兜底池内挑，不跨账号。</summary>
+    /// <inheritdoc />
     public FallbackSelection? TrySelectForAccount(string taskId, string accountId)
     {
         if (!_options.Fallback.Enabled)
@@ -181,8 +188,13 @@ public sealed class FallbackBilling : IFallbackBilling
         return new FallbackSelection(account, fallback, unitPrice);
     }
 
+    /// <summary>P0-1 不变量：按单任务成本上限截断，保证兜底记账不越界。</summary>
+    /// <param name="cost">待截断的实测或估算成本，负值按 0 处理。</param>
+    /// <inheritdoc />
     public decimal CapCost(decimal cost) => Math.Min(cost, Math.Max(0m, _options.Fallback.MaxCostPerTask));
 
+    /// <summary>登记本次用到的兜底模型名（同锁去重，供报告展示）。</summary>
+    /// <inheritdoc />
     public void RecordModelUsed(string modelName)
     {
         lock (_lock)
@@ -194,6 +206,8 @@ public sealed class FallbackBilling : IFallbackBilling
         }
     }
 
+    /// <summary>兜底成功：累加批成本与用量计数（同锁，供上限判定）。</summary>
+    /// <inheritdoc />
     public void RecordSuccess(decimal cost, CostBasis basis)
     {
         lock (_lock)
@@ -204,6 +218,8 @@ public sealed class FallbackBilling : IFallbackBilling
         }
     }
 
+    /// <summary>兜底失败：仅累加成本，不增用量计数。</summary>
+    /// <inheritdoc />
     public void RecordFailure(decimal cost, CostBasis basis)
     {
         lock (_lock)
@@ -213,6 +229,7 @@ public sealed class FallbackBilling : IFallbackBilling
         }
     }
 
+    /// <inheritdoc />
     public FallbackSummary BuildSummary()
     {
         lock (_lock)

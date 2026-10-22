@@ -13,21 +13,37 @@ namespace BatchAgentRunner.Core.Observability;
 /// </remarks>
 public static class LogEventNames
 {
+    /// <summary>批次启动。</summary>
     public const string RunStarted = "run_started";
+    /// <summary>任务流式输出行。</summary>
     public const string TaskOutput = "task_output";
+    /// <summary>任务开始执行。</summary>
     public const string TaskStarted = "task_started";
+    /// <summary>任务结束（终态）。</summary>
     public const string TaskFinished = "task_finished";
+    /// <summary>模型切换（降级矩阵展开）。</summary>
     public const string ModelSwitched = "model_switched";
+    /// <summary>免费时段外跳过。</summary>
     public const string WindowSkipped = "model_window_skipped";
+    /// <summary>额度冷却期跳过。</summary>
     public const string CooldownSkipped = "model_cooldown_skipped";
+    /// <summary>记录额度冷却。</summary>
     public const string QuotaResetRecorded = "quota_reset_recorded";
+    /// <summary>发生兜底执行。</summary>
     public const string FallbackUsed = "fallback_used";
+    /// <summary>批次进入等待。</summary>
     public const string BatchWaiting = "batch_waiting_window";
+    /// <summary>批次阻塞。</summary>
     public const string BatchBlocked = "batch_blocked";
+    /// <summary>批次从等待恢复。</summary>
     public const string BatchResumed = "batch_resumed";
+    /// <summary>批次被终止。</summary>
     public const string BatchTerminated = "batch_terminated";
+    /// <summary>危险操作确认被拒绝。</summary>
     public const string DangerousOperation = "dangerous_operation_blocked";
+    /// <summary>自动应答交互点。</summary>
     public const string AutoAnswered = "auto_answered";
+    /// <summary>批次终态指标快照。</summary>
     public const string MetricsSnapshot = "metrics_snapshot";
 
     private static readonly Regex PascalBoundary = new(@"(?<!^)(?=[A-Z])", RegexOptions.Compiled);

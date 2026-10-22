@@ -10,6 +10,10 @@ namespace BatchAgentRunner.Core.Serialization;
 /// </summary>
 public sealed class NullableDateTimeOffsetConverter : JsonConverter<DateTimeOffset?>
 {
+    /// <summary>
+    /// 读取可为空时间：<c>null</c> / 空字符串一律视为 <c>null</c>；字符串按 ISO 8601 解析
+    /// （本地时区假定并转 UTC）；数字按 Unix 秒 / 毫秒时间戳解析；其它类型跳过并返回 <c>null</c>。
+    /// </summary>
     public override DateTimeOffset? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
         switch (reader.TokenType)
@@ -52,6 +56,7 @@ public sealed class NullableDateTimeOffsetConverter : JsonConverter<DateTimeOffs
         }
     }
 
+    /// <summary>写出：有值按 <c>yyyy-MM-ddTHH:mm:sszzz</c> 输出；<c>null</c> 回填空字符串（保持用户文件形状稳定）。</summary>
     public override void Write(Utf8JsonWriter writer, DateTimeOffset? value, JsonSerializerOptions options)
     {
         if (value.HasValue)

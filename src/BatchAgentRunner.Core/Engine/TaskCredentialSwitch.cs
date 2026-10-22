@@ -13,6 +13,7 @@ namespace BatchAgentRunner.Core.Engine;
 /// </summary>
 internal static class TaskCredentialSwitch
 {
+    /// <summary>执行前确保 Live 凭证属于该组合账号；切换失败则停用账号并返回 false。</summary>
     public static async Task<bool> EnsureLiveCredentialAsync(TaskRunnerContext ctx, TaskItem task, AgentCombo combo, CancellationToken ct)
     {
         if (ctx.Vault is null)

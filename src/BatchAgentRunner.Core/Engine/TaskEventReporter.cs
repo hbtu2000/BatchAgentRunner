@@ -10,6 +10,7 @@ namespace BatchAgentRunner.Core.Engine;
 /// </summary>
 internal static class TaskEventReporter
 {
+    /// <summary>上报组合跳过事件：按时段外 / 冷却分流埋点，并计入「跳过」而非失败。</summary>
     public static void RaiseSkipEvent(TaskRunnerContext ctx, ComboAvailability skipped)
     {
         switch (skipped.Reason)
@@ -40,6 +41,7 @@ internal static class TaskEventReporter
         }
     }
 
+    /// <summary>上报降级切换：真实切换才计数，并区分账号切换与同账号换模型。</summary>
     public static void RaiseSwitchEvents(TaskRunnerContext ctx, AgentCombo from, AgentCombo to, string? taskId)
     {
         // P-10 / A-8：降级切换计数（误切换率的分母）。账号切换与模型切换各计一次真实切换；

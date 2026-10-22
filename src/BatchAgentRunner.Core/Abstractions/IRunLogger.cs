@@ -25,8 +25,10 @@ public interface IRunLogger : IDisposable
     /// </summary>
     string RunId { get; }
 
+    /// <summary>写入引擎事件（转结构化条目后经 <see cref="Write(RunLogEntry)"/> 渲染）。</summary>
     void Write(BatchEvent ev);
 
+    /// <summary>写入带级别的普通日志行（便捷方法）。</summary>
     void Write(string level, string message);
 
     /// <summary>
@@ -36,31 +38,44 @@ public interface IRunLogger : IDisposable
     /// </summary>
     void Write(RunLogEntry entry);
 
+    /// <summary>任务开始（账号/模型/专家/工作区上下文）。</summary>
     void WriteTaskStarted(string taskId, string? account, string? model, string? expert, string? workspace);
 
+    /// <summary>任务结束（终态 / 耗时秒 / 重试次数）。</summary>
     void WriteTaskFinished(string taskId, BatchAgentRunner.Core.Domain.TaskStatus status, double durationSeconds, int retryCount);
 
+    /// <summary>模型切换（from → to + 原因）。</summary>
     void WriteModelSwitched(string? fromAccount, string? fromModel, string? toAccount, string? toModel,
         string reason, string? taskId);
 
+    /// <summary>免费时段外跳过（附下一时段开始时间）。</summary>
     void WriteWindowSkipped(string model, DateTimeOffset? nextWindowStart);
 
+    /// <summary>额度冷却期跳过（附重置时间）。</summary>
     void WriteCooldownSkipped(string account, string model, DateTimeOffset resetAt);
 
+    /// <summary>记录新的额度冷却（附重置时间与来源）。</summary>
     void WriteQuotaResetRecorded(string account, string model, DateTimeOffset resetAt, CooldownSource source);
 
+    /// <summary>发生兜底执行（模型 / 费用 / 口径）。</summary>
     void WriteFallbackUsed(string taskId, string model, decimal cost, CostBasis basis);
 
+    /// <summary>批次进入等待（恢复时间 / 目标 / 等待类型）。</summary>
     void WriteBatchWaiting(DateTimeOffset resumeAt, string? target, WaitKind kind);
 
+    /// <summary>批次阻塞（原因 / 剩余任务数）。</summary>
     void WriteBatchBlocked(string reason, int pendingCount);
 
+    /// <summary>批次从等待恢复（原因）。</summary>
     void WriteBatchResumed(string reason);
 
+    /// <summary>批次被终止（完成数 / 未完成数）。</summary>
     void WriteBatchTerminated(int doneCount, int unfinishedCount);
 
+    /// <summary>危险操作确认被拒绝（任务 / 交互点）。</summary>
     void WriteDangerousOperation(string taskId, string interactionPoint);
 
+    /// <summary>自动应答了交互点（任务 / 交互点 / 应答内容）。</summary>
     void WriteAutoAnswered(string taskId, string interactionPoint, string answer);
 
     /// <summary>

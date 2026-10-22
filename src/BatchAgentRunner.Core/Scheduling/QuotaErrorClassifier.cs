@@ -9,6 +9,7 @@ public sealed record AgentFailure(
     DateTimeOffset? ResetAt = null,
     string? Raw = null)
 {
+    /// <summary>「无失败」哨兵（执行成功时使用）。</summary>
     public static AgentFailure None { get; } = new(AgentFailureKind.None, string.Empty);
 }
 

@@ -15,7 +15,7 @@ public sealed record GitTaskContext(ProjectRef? Project, string? SnapshotId);
 /// <summary>
 /// Git 工作流协作者（P1-1 拆分产物 ④，§3.4 <c>IGitWorkflow</c>）：从 <see cref="BatchEngine"/>
 /// 抽出「项目级任务建分支/开 PR + 结果 diff 采集 + Markdown 原地回写」的全部机制，
-/// 含生效项目配置解析（<see cref="EffectiveProjectRef"/>）与分支命名渲染。
+/// 含生效项目配置解析（<c>EffectiveProjectRef</c>，私有方法）与分支命名渲染。
 /// 所有步骤均为「尽力而为，失败不阻断任务」（WARN 日志后继续）。
 /// </summary>
 public interface IGitWorkflow
@@ -47,6 +47,7 @@ public sealed class GitWorkflow : IGitWorkflow
     private readonly object _diffsLock = new();
     private readonly List<DiffRecord> _diffs = new();
 
+    /// <summary>构造 Git 工作流协作者（端口全部来自注入，缺失即对应能力未启用）。</summary>
     public GitWorkflow(
         RunOptions options,
         IDiffCollector? diffCollector,
@@ -61,11 +62,16 @@ public sealed class GitWorkflow : IGitWorkflow
         _logger = logger;
     }
 
+    /// <summary>本批已采集的 diff 记录（报告用；并发采集经内部锁保护）。</summary>
     public IReadOnlyList<DiffRecord> Diffs
     {
         get { lock (_diffsLock) { return _diffs.ToList(); } }
     }
 
+    /// <summary>执行前：解析生效项目级 Git 配置 + 采集 diff 快照（尽力而为，失败不阻断）。</summary>
+    /// <param name="task">即将执行的任务（提供项目引用与工作目录）。</param>
+    /// <param name="ct">取消令牌；已取消时跳过 diff 采集。</param>
+    /// <returns>本次执行的 Git 上下文（生效配置 + 快照标识），供收尾阶段比对。</returns>
     public async Task<GitTaskContext> BeginAsync(TaskItem task, CancellationToken ct)
     {
         var project = EffectiveProjectRef(task);
@@ -99,6 +105,7 @@ public sealed class GitWorkflow : IGitWorkflow
         return new GitTaskContext(project, snapshotId);
     }
 
+    /// <summary>执行后：开 PR → 采集结果 diff → Markdown 原地回写（均尽力而为）。</summary>
     public async Task CompleteAsync(TaskItem task, GitTaskContext context, CancellationToken ct)
     {
         // 项目级任务成功后开 PR（尽力而为；需任务/全局显式开启 auto_open_pr）

@@ -42,6 +42,7 @@ public sealed class StartupPreflight : IPreflight
     private readonly Action<BatchEvent> _raise;
     private readonly Func<string?, string?> _resolveWorkspace;
 
+    /// <summary>构造启动前预检协作者（机制全部来自构造期注入的端口）。</summary>
     public StartupPreflight(
         RunOptions options,
         ITaskFileStore taskStore,
@@ -64,6 +65,8 @@ public sealed class StartupPreflight : IPreflight
         _vault = vault;
     }
 
+    /// <summary>执行预检（任务文件 / 工作空间校验、DAG 环检测、CLI 可用性、账号池、矩阵可用性）。</summary>
+    /// <returns>预检结果（报告 + 已加载任务 + 重建后的降级矩阵）。</returns>
     public async Task<PreflightOutcome> RunAsync(CancellationToken cancellationToken = default)
     {
         var report = new PreflightReport();

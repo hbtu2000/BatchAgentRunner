@@ -23,9 +23,14 @@ public interface IFileSystem
 /// </summary>
 public sealed class SystemFileSystem : IFileSystem
 {
+    /// <summary>文件是否存在（直接委派 BCL）。</summary>
+    /// <param name="path">待探测的文件路径（相对或绝对）。</param>
     public bool FileExists(string path) => File.Exists(path);
 
+    /// <summary>目录是否存在（直接委派 BCL）。</summary>
+    /// <param name="path">待探测的目录路径（相对或绝对）。</param>
     public bool DirectoryExists(string path) => Directory.Exists(path);
 
+    /// <summary>当前工作目录（直接委派 BCL）。</summary>
     public string CurrentDirectory => Directory.GetCurrentDirectory();
 }

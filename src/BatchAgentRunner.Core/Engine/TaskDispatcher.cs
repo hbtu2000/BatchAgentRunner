@@ -23,17 +23,29 @@ public interface ITaskDispatcher
 /// <summary>派发所需的引擎能力集合（沿用 <see cref="TaskRunnerContext"/> 的上下文注入范式）。</summary>
 public sealed class TaskDispatcherContext
 {
+    /// <summary>运行配置。</summary>
     public RunOptions Options { get; init; } = null!;
+    /// <summary>任务清单（与引擎共享）。</summary>
     public IReadOnlyList<TaskItem> Tasks { get; init; } = null!;
+    /// <summary>时钟。</summary>
     public IClock Clock { get; init; } = null!;
+    /// <summary>运行日志。</summary>
     public IRunLogger Logger { get; init; } = null!;
+    /// <summary>单任务执行委托（转 TaskRunner）。</summary>
     public Func<TaskItem, CancellationToken, Task<TaskOutcome>> RunTask { get; init; } = null!;
+    /// <summary>写入门进入委托（与落盘序列化互斥）。</summary>
     public Func<Task<IDisposable>> EnterWriteGate { get; init; } = null!;
+    /// <summary>落盘委托。</summary>
     public Func<CancellationToken, Task> Persist { get; init; } = null!;
+    /// <summary>「完成当前任务即停」读取委托。</summary>
     public Func<bool> StopAfterCurrentTask { get; init; } = null!;
+    /// <summary>事件上报委托。</summary>
     public Action<BatchEvent> Raise { get; init; } = null!;
+    /// <summary>批次状态设置委托。</summary>
     public Action<BatchStatus> SetStatus { get; init; } = null!;
+    /// <summary>阻塞事件上报委托。</summary>
     public Action<string, string?> RaiseBlocked { get; init; } = null!;
+    /// <summary>任务变更事件上报委托。</summary>
     public Action<TaskItem> RaiseTaskChanged { get; init; } = null!;
 
     /// <summary>并行调度协调器（REQ-020 / REQ-021）：维护按工作空间在飞计数、全局派发暂停、统一切换目标与冻结槽位。</summary>
@@ -51,8 +63,14 @@ public sealed class TaskDispatcher : ITaskDispatcher
 {
     private readonly TaskDispatcherContext _ctx;
 
+    /// <summary>构造派发协作者（上下文由 <see cref="BatchEngine"/> 装配）。</summary>
+    /// <param name="context">派发上下文（队列 / 并发 / 事件 / 在飞槽位协作器）。</param>
     public TaskDispatcher(TaskDispatcherContext context) => _ctx = context;
 
+    /// <summary>按并发上限派发队列：串行/双路径选择与依赖判定在此收敛。</summary>
+    /// <param name="queue">待派发任务（已按 DAG 拓扑序排好）。</param>
+    /// <param name="ct">批次取消令牌，触发后停止取新任务。</param>
+    /// <inheritdoc cref="ITaskDispatcher.DispatchAsync"/>
     public Task DispatchAsync(IReadOnlyList<TaskItem> queue, CancellationToken ct) => DispatchCoreAsync(queue, ct);
 
     // ---------------- 调度主循环 ----------------

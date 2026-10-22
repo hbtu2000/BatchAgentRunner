@@ -11,6 +11,7 @@ namespace BatchAgentRunner.Core.Engine;
 /// </summary>
 internal static class TaskRequestBuilder
 {
+    /// <summary>组装一次 CLI 执行请求：解析工作区并绑定输出分块回调。</summary>
     public static AgentRequest BuildRequest(TaskRunnerContext ctx, TaskItem task, AgentCombo combo, bool isFallback)
     {
         var workspace = ctx.ResolveWorkspace(task.Workspace ?? ctx.Options.DefaultWorkspace)

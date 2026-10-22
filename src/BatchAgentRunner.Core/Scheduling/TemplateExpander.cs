@@ -14,7 +14,8 @@ public sealed class TemplateExpander
     /// </summary>
     /// <param name="template">模板定义。</param>
     /// <param name="baseDir">变量文件 glob / CSV 的相对路径解析根（目录路径）。</param>
-    /// <param name="workspace">写入每条生成任务的工作空间（命名空间名或目录路径）；为空则任务不携带、运行时由引擎套用默认工作空间。</param>
+    /// <param name="workspace">展开产物统一使用的工作空间键；null/空表示不指定。</param>
+    /// <returns>展开后的任务清单（顺序与变量组合枚举顺序一致）。</returns>
     public static List<TaskItem> Expand(TemplateSpec template, string? baseDir = null, string? workspace = null)
     {
         var instances = BuildInstances(template, baseDir);

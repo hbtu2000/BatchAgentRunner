@@ -14,8 +14,10 @@ public sealed class QuotaCooldownRegistry
     private readonly IClock _clock;
     private TimeSpan _defaultCooldown;
 
+    /// <summary>新冷却记录写入事件（供上层广播 / 落盘）。</summary>
     public event EventHandler<QuotaCooldownRecord>? Recorded;
 
+    /// <summary>构造冷却登记表。</summary>
     public QuotaCooldownRegistry(IClock clock, TimeSpan? defaultCooldown = null,
         IEnumerable<QuotaCooldownRecord>? initial = null)
     {
@@ -30,12 +32,15 @@ public sealed class QuotaCooldownRegistry
         }
     }
 
+    /// <summary>默认冷却时长（CLI 重置时间缺失 / 不可靠时使用）。</summary>
     public TimeSpan DefaultCooldown
     {
         get { lock (_sync) { return _defaultCooldown; } }
         set { lock (_sync) { _defaultCooldown = value; } }
     }
 
+    /// <summary>当前全部记录的只读快照（按重置时间升序）。</summary>
+    /// <returns>记录列表快照。</returns>
     public IReadOnlyList<QuotaCooldownRecord> Snapshot()
     {
         lock (_sync)
@@ -44,6 +49,8 @@ public sealed class QuotaCooldownRegistry
         }
     }
 
+    /// <summary>判定组合是否处于冷却中（重置时间晚于当前时刻）。</summary>
+    /// <returns>冷却中返回 true。</returns>
     public bool IsCooling(string accountId, string modelName, DateTimeOffset now, out DateTimeOffset resetAt)
     {
         lock (_sync)
@@ -86,6 +93,7 @@ public sealed class QuotaCooldownRegistry
         return rec;
     }
 
+    /// <summary>手动重置某组合的冷却标记。</summary>
     public void Clear(string accountId, string modelName)
     {
         lock (_sync)
@@ -94,6 +102,7 @@ public sealed class QuotaCooldownRegistry
         }
     }
 
+    /// <summary>清空全部冷却标记。</summary>
     public void ClearAll()
     {
         lock (_sync)

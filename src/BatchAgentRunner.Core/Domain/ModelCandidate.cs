@@ -10,6 +10,7 @@ namespace BatchAgentRunner.Core.Domain;
 /// </summary>
 public sealed class ModelCandidate
 {
+    /// <summary>模型名称（CLI 模型标识，调度与展示共用）。</summary>
     [JsonPropertyName("name")]
     public string Name { get; set; } = string.Empty;
 
@@ -35,12 +36,18 @@ public sealed class ModelCandidate
     [JsonPropertyName("note")]
     public string? Note { get; set; }
 
+    /// <summary>是否全天可用（未配置免费时段时恒为 true）。</summary>
     [JsonIgnore]
     public bool IsAlwaysAvailable => FreeTimeWindow is null;
 
+    /// <summary>给定时间是否落在免费时段内；未配置时段视为恒真。</summary>
+    /// <param name="now">待判定的时刻（调度决策的时间基准）。</param>
     public bool IsInFreeWindow(DateTimeOffset now) => FreeTimeWindow is null || FreeTimeWindow.Contains(now);
 
+    /// <summary>下一免费时段开始时间（晚于 now 的下一段开始；未配置时段返回 null）。</summary>
+    /// <param name="now">基准时刻，返回严格晚于此刻的时段起点。</param>
     public DateTimeOffset? NextWindowStart(DateTimeOffset now) => FreeTimeWindow?.NextStartAfter(now);
 
+    /// <summary>返回模型名称。</summary>
     public override string ToString() => Name;
 }

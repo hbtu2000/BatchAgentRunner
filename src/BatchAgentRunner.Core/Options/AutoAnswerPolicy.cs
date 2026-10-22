@@ -40,6 +40,8 @@ public sealed class AutoAnswerPolicy
     [JsonPropertyName("default_choice_index")]
     public int DefaultChoiceIndex { get; set; } = 0;
 
+    /// <summary>创建内置默认策略（危险操作黑名单 / 白名单 / 默认应答 / 选择型交互等）。</summary>
+    /// <returns>默认策略实例。</returns>
     public static AutoAnswerPolicy CreateDefault() => new()
     {
         DangerousBlacklist = new List<string>

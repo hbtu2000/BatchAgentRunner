@@ -8,9 +8,11 @@ namespace BatchAgentRunner.Core.Domain;
 /// </summary>
 public sealed class AccountConfig
 {
+    /// <summary>账号唯一标识（任务文件按 id 引用该账号）。</summary>
     [JsonPropertyName("id")]
     public string Id { get; set; } = string.Empty;
 
+    /// <summary>展示名（界面 / 日志用；为空时回退显示 Id）。</summary>
     [JsonPropertyName("display_name")]
     public string DisplayName { get; set; } = string.Empty;
 
@@ -18,6 +20,7 @@ public sealed class AccountConfig
     [JsonPropertyName("credential_ref")]
     public string CredentialReference { get; set; } = string.Empty;
 
+    /// <summary>是否启用（默认 true；false 的账号不参与调度）。</summary>
     [JsonPropertyName("enabled")]
     public bool Enabled { get; set; } = true;
 
@@ -36,9 +39,11 @@ public sealed class AccountConfig
     [JsonPropertyName("fallback_models")]
     public List<FallbackModel>? FallbackModels { get; set; }
 
+    /// <summary>备注：仅供用户自解释，不参与任何调度逻辑。</summary>
     [JsonPropertyName("note")]
     public string? Note { get; set; }
 
+    /// <summary>界面标签：DisplayName 非空时取之，否则回退 Id。</summary>
     [JsonIgnore]
     public string Label => string.IsNullOrWhiteSpace(DisplayName) ? Id : DisplayName;
 
@@ -46,5 +51,6 @@ public sealed class AccountConfig
     [JsonIgnore]
     public bool HasFallbackModels => FallbackModels is { Count: > 0 };
 
+    /// <summary>返回界面标签（<see cref="Label"/>）。</summary>
     public override string ToString() => Label;
 }

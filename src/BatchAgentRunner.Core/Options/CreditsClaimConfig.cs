@@ -4,7 +4,7 @@ namespace BatchAgentRunner.Core.Options;
 
 /// <summary>
 /// 每日积分领取配置。
-/// 端点 2026-10-16 已抓包实测确认（契约见 <see cref="Infrastructure.Http.CodeBuddyCreditsApiClient"/>）：
+/// 端点 2026-10-16 已抓包实测确认（契约见 <c>Infrastructure.Http.CodeBuddyCreditsApiClient</c>）：
 /// 全部为 POST + 空 JSON 体 + Bearer accessToken 鉴权；服务端如调整接口仅需改这里的路径。
 /// </summary>
 public sealed class CreditsClaimConfig

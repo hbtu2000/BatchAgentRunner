@@ -22,6 +22,7 @@ public sealed class SnapshotManifest
     [JsonPropertyName("cli")]
     public string Cli { get; set; } = string.Empty;
 
+    /// <summary>账号展示名（人读）。</summary>
     [JsonPropertyName("display_name")]
     public string? DisplayName { get; set; }
 
@@ -29,6 +30,7 @@ public sealed class SnapshotManifest
     [JsonPropertyName("site")]
     public string? Site { get; set; }
 
+    /// <summary>快照创建时间（UTC）。</summary>
     [JsonPropertyName("backed_up_at")]
     public DateTimeOffset BackedUpAt { get; set; }
 
@@ -36,9 +38,11 @@ public sealed class SnapshotManifest
     [JsonPropertyName("last_verified_at")]
     public DateTimeOffset? LastVerifiedAt { get; set; }
 
+    /// <summary>快照内凭证文件指纹清单（DESIGN §4.2）。</summary>
     [JsonPropertyName("files")]
     public List<CredentialFileInfo> Files { get; set; } = new();
 
+    /// <summary>快照结构版本（当前 1）。</summary>
     [JsonPropertyName("schema_version")]
     public int SchemaVersion { get; set; } = 1;
 }
@@ -59,10 +63,12 @@ public sealed record CredentialSnapshotInfo(
 /// </summary>
 public sealed class CredentialVaultException : Exception
 {
+    /// <summary>构造凭证 Vault 异常（仅消息）。</summary>
     public CredentialVaultException(string message) : base(message)
     {
     }
 
+    /// <summary>构造凭证 Vault 异常（消息 + 内部异常）。</summary>
     public CredentialVaultException(string message, Exception innerException) : base(message, innerException)
     {
     }

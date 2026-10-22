@@ -8,5 +8,6 @@ namespace BatchAgentRunner.Core.Abstractions;
 /// </summary>
 public interface INotificationDispatcher
 {
+    /// <summary>按触发事件与安静时段过滤规则后推送通知。</summary>
     Task DispatchAsync(IEnumerable<NotificationRule> rules, NotificationContext context, CancellationToken cancellationToken = default);
 }

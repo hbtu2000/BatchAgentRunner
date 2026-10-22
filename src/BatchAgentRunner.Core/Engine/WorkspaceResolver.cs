@@ -12,6 +12,7 @@ namespace BatchAgentRunner.Core.Engine;
 /// </remarks>
 internal static class WorkspaceResolver
 {
+    /// <summary>按「任务声明 &gt; 全局默认」解析工作区路径；无法解析时返回 null。</summary>
     public static string? Resolve(RunOptions options, string? workspace)
     {
         if (string.IsNullOrWhiteSpace(workspace))

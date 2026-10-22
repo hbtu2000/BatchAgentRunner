@@ -14,6 +14,7 @@ namespace BatchAgentRunner.Core.Engine;
 /// </summary>
 internal static class TaskTerminalWriter
 {
+    /// <summary>写入完成终态：回填结果/模型/账号，累计用量并记录吞吐与耗时。</summary>
     public static async Task CompleteTaskAsync(TaskRunnerContext ctx, TaskItem task, AgentExecutionResult result)
     {
         var combo = result.Request;
@@ -42,6 +43,7 @@ internal static class TaskTerminalWriter
         await ctx.Persist(CancellationToken.None).ConfigureAwait(false);
     }
 
+    /// <summary>写入失败终态：记录错误、计入失败率，并按规则触发任务失败通知。</summary>
     public static async Task FailTaskAsync(TaskRunnerContext ctx, TaskItem task, string error)
     {
         using (await ctx.EnterWriteGate().ConfigureAwait(false))
@@ -64,6 +66,7 @@ internal static class TaskTerminalWriter
         await ctx.Notifier.DispatchAsync(NotifyTrigger.TaskFailed, null, error).ConfigureAwait(false);
     }
 
+    /// <summary>写入中断终态：为已有输出打部分结果前缀，保留现场供续跑复用。</summary>
     public static async Task MarkInterruptedAsync(TaskRunnerContext ctx, TaskItem task, string reason)
     {
         using (await ctx.EnterWriteGate().ConfigureAwait(false))
@@ -88,6 +91,7 @@ internal static class TaskTerminalWriter
         await ctx.Persist(CancellationToken.None).ConfigureAwait(false);
     }
 
+    /// <summary>追加流式输出到任务结果（超限时保留前段并附截断指引）。</summary>
     public static void AppendPartialOutput(TaskRunnerContext ctx, TaskItem task, string output)
     {
         var merged = string.IsNullOrWhiteSpace(task.Result) ? output : task.Result + "\n" + output;
