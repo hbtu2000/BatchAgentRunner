@@ -39,6 +39,7 @@ public sealed class LoginViewModel : ViewModelBase, ILoginView, IDisposable
     private bool _isSuccess;
     private bool _isError;
 
+    /// <summary>创建登录页 facade，装配登录 / 领积分 / 账号池协作者并订阅领取进度。</summary>
     public LoginViewModel(IEngineHost host)
     {
         _host = host;
@@ -71,12 +72,16 @@ public sealed class LoginViewModel : ViewModelBase, ILoginView, IDisposable
         RebuildRows();
     }
 
+    /// <summary>一键登录的步骤条条目，由登录编排者按阶段推进。</summary>
     public ObservableCollection<LoginStepItem> Steps => _steps.Items;
 
+    /// <summary>账号池中的账号行，切换 / 删除 / 登录成功后重建。</summary>
     public ObservableCollection<LoginAccountRow> Rows => _accounts.Rows;
 
+    /// <summary>可选的智能体内核枚举值，供下拉框绑定。</summary>
     public AgentKind[] AgentKinds { get; } = Enum.GetValues<AgentKind>();
 
+    /// <summary>当前选择的智能体内核，来自配置并在进入页面时同步。</summary>
     public AgentKind AgentKind
     {
         get => _agentKind;
@@ -107,6 +112,7 @@ public sealed class LoginViewModel : ViewModelBase, ILoginView, IDisposable
         }
     }
 
+    /// <summary>一键登录进行中，期间禁用登录按钮并联动空闲判定。</summary>
     public bool IsBusy
     {
         get => _isBusy;
@@ -121,6 +127,7 @@ public sealed class LoginViewModel : ViewModelBase, ILoginView, IDisposable
         }
     }
 
+    /// <summary>当前没有登录在跑，界面据此启用登录入口。</summary>
     public bool IsIdle => !_isBusy;
 
     /// <summary>登录过程中的当前进度说明（取自编排器的人话消息）。</summary>
@@ -130,12 +137,14 @@ public sealed class LoginViewModel : ViewModelBase, ILoginView, IDisposable
         private set => SetProperty(ref _statusText, value);
     }
 
+    /// <summary>登录结束后的结果横幅文案，成功或失败时由编排者写入。</summary>
     public string ResultText
     {
         get => _resultText;
         private set => SetProperty(ref _resultText, value);
     }
 
+    /// <summary>上次登录是否成功，为真时结果横幅按成功样式渲染。</summary>
     public bool IsSuccess
     {
         get => _isSuccess;
@@ -148,6 +157,7 @@ public sealed class LoginViewModel : ViewModelBase, ILoginView, IDisposable
         }
     }
 
+    /// <summary>上次登录是否失败，为真时结果横幅按失败样式渲染。</summary>
     public bool IsError
     {
         get => _isError;
@@ -160,12 +170,16 @@ public sealed class LoginViewModel : ViewModelBase, ILoginView, IDisposable
         }
     }
 
+    /// <summary>是否已有登录结果可展示（成功或失败任一成立）。</summary>
     public bool HasResult => _isSuccess || _isError;
 
+    /// <summary>一键登录命令，点击后按引导流程完成登录并回填账号池。</summary>
     public IAsyncRelayCommand LoginCommand { get; }
 
+    /// <summary>取消命令，点击后中止正在执行的一键登录。</summary>
     public IRelayCommand CancelLoginCommand { get; }
 
+    /// <summary>刷新命令，重新读取配置并重建账号行。</summary>
     public IRelayCommand RefreshCommand { get; }
 
     /// <summary>一键领取所有启用账号的今日积分。</summary>
@@ -174,6 +188,7 @@ public sealed class LoginViewModel : ViewModelBase, ILoginView, IDisposable
     /// <summary>本次领取的逐账号结果（领取前 / 领取后 / 变化量）。</summary>
     public ObservableCollection<CreditsClaimRow> ClaimRows { get; } = new();
 
+    /// <summary>是否已有逐账号领取结果，为假时隐藏领取结果表。</summary>
     public bool HasClaimRows => ClaimRows.Count > 0;
 
     /// <summary>领取进行中（与登录流程互斥：同一时刻 CLI 只有一个 Live 身份）。</summary>
@@ -190,22 +205,28 @@ public sealed class LoginViewModel : ViewModelBase, ILoginView, IDisposable
         }
     }
 
+    /// <summary>当前可发起积分领取（既未登录也未领取），驱动按钮可用性。</summary>
     public bool IsClaimIdle => !_isClaiming && !_isBusy;
 
     // ---------------- 账号行操作（委托 AccountPoolCoordinator） ----------------
 
     /// <summary>由账号行「重新登录」按钮调用（对同一账号重跑一键登录）。</summary>
+    /// <param name="row">要重新登录的账号行。</param>
     public Task ReLoginAsync(LoginAccountRow row) => _loginFlow.ReLoginAsync(row);
 
     /// <summary>由账号行「切换到这个账号」按钮调用（Vault 快照一键回填 Live）。</summary>
+    /// <param name="row">要切换到的目标账号行。</param>
     public Task SwitchToAsync(LoginAccountRow row) => _accounts.SwitchAsync(row);
 
     /// <summary>由账号行「取消」按钮调用：撤销删除确认状态。</summary>
+    /// <param name="row">正在等待删除确认的账号行。</param>
     public void CancelDelete(LoginAccountRow row) => _accounts.CancelDelete(row);
 
     /// <summary>由账号行「删除」按钮调用：清掉 Vault 快照并从账号池移除（两段式确认）。</summary>
+    /// <param name="row">要删除的账号行。</param>
     public Task DeleteAsync(LoginAccountRow row) => _accounts.DeleteAsync(row);
 
+    /// <summary>账号池是否非空，为假时显示「尚无账号」空态。</summary>
     public bool HasAccounts => Rows.Count > 0;
 
     /// <summary>按账号池 + Vault 快照重建账号行（切换 / 删除 / 登录成功 / 全量刷新共用）。</summary>

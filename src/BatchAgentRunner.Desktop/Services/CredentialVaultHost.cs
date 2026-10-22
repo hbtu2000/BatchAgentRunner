@@ -21,6 +21,7 @@ namespace BatchAgentRunner.Desktop.Services;
 /// </remarks>
 public sealed class CredentialVaultHost : IDisposable
 {
+    /// <summary>底层凭证保险库（快照读写与切换的真实实现）。</summary>
     public ICredentialVault Vault { get; }
 
     /// <summary>引导登录编排器（Infrastructure 具体类型，仅内部使用；P1-4 收敛可见性避免经宿主泄漏到 UI 层）。</summary>
@@ -29,6 +30,7 @@ public sealed class CredentialVaultHost : IDisposable
     /// <summary>凭证位置注册表（P1-16：宿主持有唯一实例，引导登录链路显式共用同一份覆盖状态）。</summary>
     public ICredentialLocationRegistry Locations { get; }
 
+    /// <summary>注入保险库、引导登录编排器与凭证位置注册表。</summary>
     public CredentialVaultHost(ICredentialVault vault, GuidedLoginOrchestrator orchestrator,
         ICredentialLocationRegistry locations)
     {
@@ -68,10 +70,16 @@ public sealed class CredentialVaultHost : IDisposable
     }
 
     /// <summary>手动切换：把指定账号的快照复制回 Live（DESIGN §6）。</summary>
+    /// <param name="kind">执行工具，决定区分哪套凭证目录与快照库。</param>
+    /// <param name="accountId">目标账号标识，用于定位该账号的凭证快照。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     public Task SwitchAsync(AgentKind kind, string accountId, CancellationToken cancellationToken = default) =>
         Vault.SwitchToAsync(kind, accountId, "manual", cancellationToken);
 
     /// <summary>删除账号快照（界面层负责二次确认，DESIGN §8.5）。</summary>
+    /// <param name="kind">执行工具，决定区分哪套凭证目录与快照库。</param>
+    /// <param name="accountId">目标账号标识，用于定位要恢复的快照。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     public Task DeleteSnapshotAsync(AgentKind kind, string accountId, CancellationToken cancellationToken = default) =>
         Vault.DeleteSnapshotAsync(kind, accountId, cancellationToken);
 

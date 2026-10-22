@@ -13,6 +13,8 @@ public sealed class TemplateLoadCoordinator
 {
     private readonly IWorkflowTemplateStore _store;
 
+    /// <summary>注入模板存储，用于拉取模板清单。</summary>
+    /// <param name="store">模板规格的读取端口。</param>
     public TemplateLoadCoordinator(IWorkflowTemplateStore store) => _store = store;
 
     /// <summary>加载模板清单；返回行视图模型列表与状态文案（失败时为异常说明，列表为空）。</summary>

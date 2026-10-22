@@ -13,18 +13,21 @@ public sealed class FallbackSectionViewModel : ViewModelBase
     private decimal _fallbackMaxPerTask;
     private decimal _fallbackMaxPerBatch;
 
+    /// <summary>是否启用特殊模型兜底（主模型不可用时的备选）。</summary>
     public bool FallbackEnabled
     {
         get => _fallbackEnabled;
         set => SetProperty(ref _fallbackEnabled, value);
     }
 
+    /// <summary>单任务兜底成本上限（计价单位同模型价格）。</summary>
     public decimal FallbackMaxPerTask
     {
         get => _fallbackMaxPerTask;
         set => SetProperty(ref _fallbackMaxPerTask, value);
     }
 
+    /// <summary>单批次兜底成本上限（计价单位同模型价格）。</summary>
     public decimal FallbackMaxPerBatch
     {
         get => _fallbackMaxPerBatch;

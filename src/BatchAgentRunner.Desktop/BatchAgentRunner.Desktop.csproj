@@ -12,6 +12,8 @@
          否则非 Windows 平台会尝试嵌入 Win32 manifest / 图标而构建失败或产生无意义产物。 -->
     <ApplicationIcon Condition="'$([MSBuild]::IsOSPlatform(`Windows`))'">Assets\app-icon.ico</ApplicationIcon>
     <Nullable>enable</Nullable>
+    <!-- ARCH P-12 / A-10：产出 XML 文档文件，CS1591（公共 API 缺文档）随之真实生效。 -->
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <ApplicationManifest Condition="'$([MSBuild]::IsOSPlatform(`Windows`))'">app.manifest</ApplicationManifest>
     <!-- 使用反射绑定：避免为每处 XAML 声明 x:DataType，降低维护成本 -->
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>

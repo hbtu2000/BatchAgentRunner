@@ -64,6 +64,7 @@ public sealed class EngineFactory : IEngineFactory
     /// <summary>出厂示例配置（与 <c>JsonConfigStore.CreateSample()</c> 等价，经工厂暴露以避免 UI 层直引 Infrastructure）。</summary>
     public static RunOptions CreateSampleRunOptions() => JsonConfigStore.CreateSample();
 
+    /// <summary>创建工厂并装配凭证 Vault 宿主。</summary>
     public EngineFactory()
     {
         VaultHost = CreateVaultHost(CredentialLocations);
@@ -97,7 +98,11 @@ public sealed class EngineFactory : IEngineFactory
     /// </summary>
     public static AutoShutdownCoordinator CreateShutdownCoordinator() => new(new ShutdownService());
 
-    /// <inheritdoc />
+    /// <summary>按配置装配适配器、日志、通知、Diff 与 Git 等依赖并返回引擎。</summary>
+    /// <param name="options">运行配置（含执行工具、账号与批处理选项）。</param>
+    /// <param name="logger">运行日志写入器，供引擎与适配器落盘。</param>
+    /// <param name="credentialVault">凭证保险库；null 表示本次不启用凭证切换能力。</param>
+    /// <param name="raiseToast">向 UI 推送轻提示的回调（标题, 正文）。</param>
     public IBatchEngine CreateEngine(
         RunOptions options,
         IRunLogger logger,
@@ -134,10 +139,12 @@ public sealed class EngineFactory : IEngineFactory
     }
 
     /// <summary>构造 CLI 适配器（按当前执行工具）。</summary>
+    /// <param name="options">运行配置（决定执行工具与适配器选项）。</param>
     public IAgentCliAdapter CreateAdapter(RunOptions options) =>
         AgentAdapterFactory.Create(options, registry: CredentialLocations);
 
     /// <summary>构造运行日志（按任务文件路径落盘）。</summary>
+    /// <param name="options">运行配置（提供任务文件路径以决定日志落盘位置）。</param>
     public static IRunLogger CreateLogger(RunOptions options) => new FileRunLogger(options.TaskFilePath);
 
     /// <summary>构造积分领取 API 客户端（Mock 走仿真，生产走真实端点）。</summary>

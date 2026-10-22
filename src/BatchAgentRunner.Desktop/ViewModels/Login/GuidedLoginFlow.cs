@@ -19,6 +19,7 @@ internal sealed class GuidedLoginFlow : IDisposable
     private readonly LoginStepsPresenter _steps;
     private CancellationTokenSource? _cts;
 
+    /// <summary>注入登录页视图缝与步骤条呈现器。</summary>
     public GuidedLoginFlow(ILoginView view, LoginStepsPresenter steps)
     {
         _view = view;

@@ -6,6 +6,7 @@ namespace BatchAgentRunner.Desktop.ViewModels;
 /// </summary>
 internal static class LoginErrorTranslator
 {
+    /// <summary>把技术异常翻译为面向用户、可照做的中文提示。</summary>
     public static string Translate(Exception ex)
     {
         var raw = ex.Message;

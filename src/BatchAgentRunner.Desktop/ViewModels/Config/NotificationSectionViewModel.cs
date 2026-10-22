@@ -14,16 +14,20 @@ public sealed class NotificationSectionViewModel : ViewModelBase
 {
     private ObservableCollection<NotificationRuleEditor> _notificationRules = new();
 
+    /// <summary>通知规则集合，保存时逐条生成结构化规则。</summary>
     public ObservableCollection<NotificationRuleEditor> NotificationRules
     {
         get => _notificationRules;
         set => SetProperty(ref _notificationRules, value);
     }
 
+    /// <summary>点击后追加一条空白通知规则。</summary>
     public IRelayCommand AddNotificationRuleCommand { get; }
 
+    /// <summary>点击后移除指定的通知规则。</summary>
     public IRelayCommand<NotificationRuleEditor> RemoveNotificationRuleCommand { get; }
 
+    /// <summary>初始化通知规则的增删命令。</summary>
     public NotificationSectionViewModel()
     {
         AddNotificationRuleCommand = new RelayCommand(() =>

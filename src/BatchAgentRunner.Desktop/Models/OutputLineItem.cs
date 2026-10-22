@@ -31,6 +31,7 @@ public enum OutputTagKind
 /// <summary>实时输出流单行视图模型（仅承载展示数据，无 UI 依赖）。</summary>
 public sealed class OutputLineItem
 {
+    /// <summary>以时间、标签类别、标签文字与消息正文创建输出行。</summary>
     public OutputLineItem(DateTimeOffset at, OutputTagKind kind, string tagText, string message, bool dim = false, string? taskId = null)
     {
         At = at;
@@ -41,8 +42,10 @@ public sealed class OutputLineItem
         TaskId = taskId;
     }
 
+    /// <summary>该行输出的时间点（界面格式化为 HH:mm:ss）。</summary>
     public DateTimeOffset At { get; }
 
+    /// <summary>标签类别，决定胶囊的配色样式。</summary>
     public OutputTagKind Kind { get; }
 
     /// <summary>标签胶囊文字（如「工具调用」「完成」「切换」「额度」）。</summary>
@@ -57,5 +60,6 @@ public sealed class OutputLineItem
     /// <summary>所属任务 Id（实时输出流按任务联动：选中任务或运行中自动跟随的任务；空表示批处理级事件，不归属特定任务）。</summary>
     public string? TaskId { get; }
 
+    /// <summary>时间列的 HH:mm:ss 文本。</summary>
     public string TimeText => At.ToString("HH:mm:ss");
 }

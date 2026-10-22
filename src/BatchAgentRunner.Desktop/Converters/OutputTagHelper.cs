@@ -11,6 +11,7 @@ namespace BatchAgentRunner.Desktop.Converters;
 /// </summary>
 public class OutputTagHelper : AvaloniaObject
 {
+    /// <summary>附加属性：输出标签类别，变更时切换 Border 的 tag-* 类。</summary>
     public static readonly AttachedProperty<OutputTagKind> TagKindProperty =
         AvaloniaProperty.RegisterAttached<OutputTagHelper, Border, OutputTagKind>("TagKind");
 
@@ -19,8 +20,13 @@ public class OutputTagHelper : AvaloniaObject
         TagKindProperty.Changed.AddClassHandler<Border>(OnTagKindChanged);
     }
 
+    /// <summary>读取 Border 上的输出标签类别。</summary>
+    /// <param name="element">承载标签胶囊的 Border。</param>
     public static OutputTagKind GetTagKind(Border element) => element.GetValue(TagKindProperty);
 
+    /// <summary>设置标签类别，变更回调按类别切换着色类。</summary>
+    /// <param name="element">承载标签胶囊的 Border。</param>
+    /// <param name="value">标签类别，决定胶囊配色。</param>
     public static void SetTagKind(Border element, OutputTagKind value) => element.SetValue(TagKindProperty, value);
 
     private static void OnTagKindChanged(Border el, AvaloniaPropertyChangedEventArgs e)
@@ -51,6 +57,7 @@ public class OutputTagHelper : AvaloniaObject
 /// </summary>
 public sealed class OutputMessageForegroundConverter : Avalonia.Data.Converters.IValueConverter
 {
+    /// <summary>去强调行返回次级文字色，普通行返回主文字色。</summary>
     public object? Convert(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
     {
         var key = value is true ? "TextSecondaryBrush" : "TextPrimaryBrush";
@@ -64,6 +71,11 @@ public sealed class OutputMessageForegroundConverter : Avalonia.Data.Converters.
         return null;
     }
 
+    /// <summary>不支持反向转换，返回 null。</summary>
+    /// <param name="value">源值：该行是否为去强调行。</param>
+    /// <param name="targetType">目标类型，由绑定系统传入，此处不使用。</param>
+    /// <param name="parameter">ConverterParameter，此处不使用。</param>
+    /// <param name="culture">绑定区域信息，此处不使用。</param>
     public object? ConvertBack(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture) =>
         null;
 }

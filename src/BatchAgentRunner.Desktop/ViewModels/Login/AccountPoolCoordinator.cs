@@ -17,6 +17,7 @@ internal sealed class AccountPoolCoordinator
     private readonly ILoginView _view;
     private readonly ObservableCollection<LoginAccountRow> _rows = new();
 
+    /// <summary>以登录页 facade 初始化，并从其读取宿主与 UI 状态。</summary>
     public AccountPoolCoordinator(LoginViewModel vm)
     {
         _vm = vm;

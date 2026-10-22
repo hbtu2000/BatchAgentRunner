@@ -19,11 +19,13 @@ internal sealed class BatchStatusState : ViewModelBase
     private BatchStatus _status = BatchStatus.Idle;
     private bool _dispatchPaused;
 
+    /// <summary>创建批次状态持有者，初始为空闲，由宿主状态事件驱动。</summary>
     public BatchStatusState(IEngineHost host)
     {
         _host = host;
     }
 
+    /// <summary>批次状态，写入后级联通知文案、画刷与各可用性属性。</summary>
     public BatchStatus Status
     {
         get => _status;
@@ -42,6 +44,7 @@ internal sealed class BatchStatusState : ViewModelBase
         }
     }
 
+    /// <summary>批次状态中文文案（空闲 / 运行中 / 等待恢复等）。</summary>
     public string StatusText => _status switch
     {
         BatchStatus.Idle => "空闲",
@@ -53,8 +56,10 @@ internal sealed class BatchStatusState : ViewModelBase
         _ => _status.ToString()
     };
 
+    /// <summary>按批次状态取色的画刷，供状态圆点绑定。</summary>
     public Avalonia.Media.IBrush StatusBrush => AppBrushes.ForBatchStatus(_status);
 
+    /// <summary>是否处于等待恢复状态，为真时展示等待横幅。</summary>
     public bool IsWaiting => _status == BatchStatus.Waiting;
 
     /// <summary>
@@ -67,11 +72,15 @@ internal sealed class BatchStatusState : ViewModelBase
         set => SetProperty(ref _dispatchPaused, value);
     }
 
+    /// <summary>当前是否允许开始，未运行且已配置任务文件时为真。</summary>
     public bool CanStart => !_host.IsRunning && !string.IsNullOrWhiteSpace(_host.Options.TaskFilePath);
 
+    /// <summary>当前是否允许终止，仅在批处理运行中为真。</summary>
     public bool CanTerminate => _host.IsRunning;
 
+    /// <summary>当前是否允许续跑，未运行且已有任务文件时为真。</summary>
     public bool CanResume => !_host.IsRunning && !string.IsNullOrWhiteSpace(_host.Options.TaskFilePath);
 
+    /// <summary>当前是否可取消等待，仅在等待状态为真。</summary>
     public bool CanCancelWaiting => _status == BatchStatus.Waiting;
 }

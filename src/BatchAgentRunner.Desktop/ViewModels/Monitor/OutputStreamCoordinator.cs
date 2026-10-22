@@ -30,6 +30,7 @@ internal sealed class OutputStreamCoordinator : ViewModelBase
     private bool _hasDisplayedOutput;
     private string _outputEmptyHint = "选择左侧任务可查看其输出；运行中将自动跟随当前执行任务";
 
+    /// <summary>创建输出流协作者，通过回调按需读取当前任务清单做跟随与过滤。</summary>
     public OutputStreamCoordinator(Func<IReadOnlyList<TaskItem>> taskItems)
     {
         _taskItems = taskItems;

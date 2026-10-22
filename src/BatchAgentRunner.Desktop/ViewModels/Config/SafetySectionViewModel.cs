@@ -23,6 +23,7 @@ public sealed class SafetySectionViewModel : ViewModelBase
         set => SetProperty(ref _blacklistText, value);
     }
 
+    /// <summary>允许自动批准的命令白名单（每行一条，空行忽略）。</summary>
     public string WhitelistText
     {
         get => _whitelistText;

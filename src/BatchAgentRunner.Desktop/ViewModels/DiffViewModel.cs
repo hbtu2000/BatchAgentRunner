@@ -24,6 +24,7 @@ public sealed class DiffViewModel : ViewModelBase
     private DiffRowViewModel? _selectedDiff;
     private string _reportPathText = string.Empty;
 
+    /// <summary>创建变更概览页，持有宿主并初始化 diff 行与选中详情集合。</summary>
     public DiffViewModel(IEngineHost host)
     {
         _host = host;
@@ -32,8 +33,10 @@ public sealed class DiffViewModel : ViewModelBase
         RefreshCommand = new RelayCommand(Refresh);
     }
 
+    /// <summary>重新读取最近报告的命令，点击后刷新文件树与汇总。</summary>
     public IRelayCommand RefreshCommand { get; }
 
+    /// <summary>筛选后的变更文件列表，随仅看修改与阶段筛选重建。</summary>
     public ObservableCollection<DiffRowViewModel> Diffs { get; }
 
     /// <summary>选中 diff 的按行着色内容。</summary>
@@ -65,6 +68,7 @@ public sealed class DiffViewModel : ViewModelBase
         }
     }
 
+    /// <summary>列表中选中的变更记录，切换后重算右侧按行着色内容。</summary>
     public DiffRowViewModel? SelectedDiff
     {
         get => _selectedDiff;
@@ -77,14 +81,17 @@ public sealed class DiffViewModel : ViewModelBase
         }
     }
 
+    /// <summary>最近一次报告的路径，刷新时写入；尚无报告显示占位文案。</summary>
     public string ReportPathText
     {
         get => _reportPathText;
         private set => SetProperty(ref _reportPathText, value);
     }
 
+    /// <summary>筛选后是否还有变更记录，为假时显示空态提示。</summary>
     public bool HasDiffs => Diffs.Count > 0;
 
+    /// <summary>变更汇总文案，按新增 / 修改 / 删除分别计数；无报告时给出引导语。</summary>
     public string SummaryText
     {
         get
@@ -167,16 +174,23 @@ public sealed class DiffViewModel : ViewModelBase
 /// <summary>diff 文件行：一条采集记录的展示属性。</summary>
 public sealed class DiffRowViewModel : ObservableObject
 {
+    /// <summary>包装一条 diff 采集记录，暴露给列表行显示。</summary>
+    /// <param name="source">报告中的 diff 采集记录。</param>
     public DiffRowViewModel(DiffRecord source) => Source = source;
 
+    /// <summary>原始 diff 采集记录，供筛选时比对与取 unified diff 文本。</summary>
     public DiffRecord Source { get; }
 
+    /// <summary>产生该变更的任务 ID。</summary>
     public string TaskId => Source.TaskId;
 
+    /// <summary>阶段标识文案，未采集到阶段时显示短横线。</summary>
     public string StageText => string.IsNullOrWhiteSpace(Source.StageId) ? "-" : Source.StageId!;
 
+    /// <summary>发生变更的文件路径。</summary>
     public string FilePath => Source.FilePath;
 
+    /// <summary>变更类型中文文案：新增 / 删除 / 修改。</summary>
     public string KindText => Source.Kind switch
     {
         DiffKind.Added => "新增",
@@ -184,8 +198,10 @@ public sealed class DiffRowViewModel : ObservableObject
         _ => "修改"
     };
 
+    /// <summary>按变更类型着色的画刷，列表标签据此显示绿 / 红 / 灰。</summary>
     public IBrush KindBrush => AppBrushes.ForDiffKind(Source.Kind);
 
+    /// <summary>是否采集到 unified diff 正文，为假时右侧不展示行内容。</summary>
     public bool HasContent => !string.IsNullOrWhiteSpace(Source.UnifiedDiff);
 }
 
@@ -194,19 +210,29 @@ public sealed class DiffLineViewModel
 {
     private DiffLineViewModel(string text, IBrush brush) => (Text, Foreground) = (text, brush);
 
+    /// <summary>该行的原始文本（含 +/-/空 前缀）。</summary>
     public string Text { get; }
 
+    /// <summary>该行的前景画刷，由行前缀在构造时决定。</summary>
     public IBrush Foreground { get; }
 
+    /// <summary>把新增行包装成绿色样式的行对象。</summary>
+    /// <param name="text">原始行文本。</param>
     public static DiffLineViewModel Added(string text) =>
         new(text, AppBrushes.ForDiffKind(DiffKind.Added));
 
+    /// <summary>把删除行包装成红色样式的行对象。</summary>
+    /// <param name="text">原始行文本。</param>
     public static DiffLineViewModel Removed(string text) =>
         new(text, AppBrushes.ForDiffKind(DiffKind.Deleted));
 
+    /// <summary>把 @@ 块头包装成灰色样式的行对象。</summary>
+    /// <param name="text">原始行文本。</param>
     public static DiffLineViewModel Hunk(string text) =>
         new(text, AppBrushes.DiffText(true));
 
+    /// <summary>把上下文行包装成常规文字颜色的行对象。</summary>
+    /// <param name="text">原始行文本。</param>
     public static DiffLineViewModel Context(string text) =>
         new(text, AppBrushes.DiffText(false));
 }

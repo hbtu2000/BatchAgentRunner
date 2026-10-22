@@ -20,6 +20,7 @@ sealed class Program
     private static string TodayLogPath =>
         Path.Combine(AppLogDirectory, $"app-{DateTime.Now:yyyyMMdd}.log");
 
+    /// <summary>进程入口：安装异常兜底、启动桌面生命周期并记录日志。</summary>
     [STAThread]
     public static int Main(string[] args)
     {
@@ -100,6 +101,7 @@ sealed class Program
     private static extern int MessageBoxW(IntPtr hWnd, string text, string caption, uint type);
 
     // Avalonia configuration, don't remove; also used by visual designer.
+    /// <summary>构造 Avalonia 应用构建器（平台检测、字体与日志配置）。</summary>
     public static AppBuilder BuildAvaloniaApp()
         => AppBuilder.Configure<App>()
             .UsePlatformDetect()

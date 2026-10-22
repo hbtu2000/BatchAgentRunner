@@ -41,14 +41,17 @@ public sealed class EngineHost : ObservableObject, IEngineHost
     private BatchStatus _status = BatchStatus.Idle;
     private bool _running;
 
+    /// <summary>创建宿主并装配自动关机协调器与出厂示例配置。</summary>
     public EngineHost()
     {
         _shutdownCoordinator = EngineFactory.CreateShutdownCoordinator();
         Options = EngineFactory.CreateSampleRunOptions();
     }
 
+    /// <summary>当前运行配置（初始化或保存后由宿主更新）。</summary>
     public RunOptions Options { get; private set; }
 
+    /// <summary>当前引擎实例；尚未初始化时为 null。</summary>
     public IBatchEngine? Engine => _engine;
 
     /// <summary>凭证 Vault 宿主（DESIGN-账号凭证切换-v1.0）。Vault 本体随引擎生命周期复用。</summary>
@@ -57,22 +60,27 @@ public sealed class EngineHost : ObservableObject, IEngineHost
     /// <summary>工作流模板库（P1-4/P1-5 收口：UI 只经接口访问，实现由组合根装配）。</summary>
     public IWorkflowTemplateStore TemplateStore => _factory.TemplateStore;
 
+    /// <summary>批次状态（随引擎事件更新，供界面绑定）。</summary>
     public BatchStatus Status
     {
         get => _status;
         private set => SetProperty(ref _status, value);
     }
 
+    /// <summary>批次是否处于运行 / 等待状态（控制按钮可用性）。</summary>
     public bool IsRunning
     {
         get => _running;
         private set => SetProperty(ref _running, value);
     }
 
+    /// <summary>本次运行日志文件路径；未创建日志时为 null。</summary>
     public string? LogFilePath => _logger?.LogFilePath;
 
+    /// <summary>最近一次批处理报告对象。</summary>
     public BatchReport? LastReport { get; private set; }
 
+    /// <summary>最近一次批处理报告的落盘路径。</summary>
     public string? LastReportPath { get; private set; }
 
     /// <summary>最近一次批次的运行级指标文件路径（ARCH P-10 / A-8，给运维采集）。</summary>
@@ -93,8 +101,10 @@ public sealed class EngineHost : ObservableObject, IEngineHost
     /// <summary>唯一的事件广播出口（P0-7）：保证订阅方永远在 UI 线程被调用。</summary>
     private void Raise(BatchEvent ev) => UiThread.Post(() => EventRaised?.Invoke(this, ev));
 
+    /// <summary>配置目录（配置文件、台账与报告默认落盘位置）。</summary>
     public string ConfigDirectory => _factory.ConfigStore.ConfigDirectory;
 
+    /// <summary>加载配置并创建、初始化引擎（应用启动时调用一次）。</summary>
     public async Task InitializeAsync()
     {
         Options = await _factory.ConfigStore.LoadAsync().ConfigureAwait(false);
@@ -145,6 +155,7 @@ public sealed class EngineHost : ObservableObject, IEngineHost
         UiThread.Post(() => TasksChanged?.Invoke(this, EventArgs.Empty));
     }
 
+    /// <summary>把当前配置写回配置存储（配置页保存时调用）。</summary>
     public async Task SaveConfigAsync()
     {
         await _factory.ConfigStore.SaveAsync(Options).ConfigureAwait(false);
@@ -162,6 +173,7 @@ public sealed class EngineHost : ObservableObject, IEngineHost
         return await adapter.ListModelCatalogAsync(account ?? new AccountConfig(), cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>从任务文件加载任务列表，失败时写运行日志并抛出。</summary>
     public async Task<IReadOnlyList<TaskItem>> LoadTasksAsync()
     {
         var engine = _engine ??= CreateEngine();
@@ -220,12 +232,14 @@ public sealed class EngineHost : ObservableObject, IEngineHost
         return summary;
     }
 
+    /// <summary>执行批前预检（环境 / 账号 / 时段等）并返回预检报告。</summary>
     public async Task<PreflightReport> PreflightAsync()
     {
         var engine = _engine ??= CreateEngine();
         return await engine.PreflightAsync().ConfigureAwait(false);
     }
 
+    /// <summary>启动批处理，落盘报告与指标，并按需触发自动关机。</summary>
     public async Task<BatchReport> StartAsync(bool waitIfUnavailable, CancellationToken cancellationToken = default)
     {
         var engine = _engine ??= CreateEngine();
@@ -288,16 +302,21 @@ public sealed class EngineHost : ObservableObject, IEngineHost
         }
     }
 
+    /// <summary>请求终止批处理，可选择等待当前任务跑完。</summary>
+    /// <param name="waitCurrentTask">true 表示等当前任务结束后再停，false 立即中断。</param>
     public Task TerminateAsync(bool waitCurrentTask = false)
     {
         _engine?.TerminateAsync(waitCurrentTask);
         return Task.CompletedTask;
     }
 
+    /// <summary>取消等待中的批次（等待恢复或时段窗口时生效）。</summary>
     public void CancelWaiting() => _engine?.CancelWaiting();
 
+    /// <summary>通知引擎配置已变更，使其重新读取账号与时段设置。</summary>
     public void NotifyConfigurationChanged() => _engine?.NotifyConfigurationChanged();
 
+    /// <summary>清空全部账号的冷却记录，使模型可立即再次使用。</summary>
     public void ResetAllCooldowns() => _engine?.ResetAllCooldowns();
 
     /// <summary>

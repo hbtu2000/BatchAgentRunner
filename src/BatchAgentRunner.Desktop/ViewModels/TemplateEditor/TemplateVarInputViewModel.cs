@@ -9,6 +9,7 @@ public sealed class TemplateVarInputViewModel : ObservableObject
     private string _value;
     private string _valuesText;
 
+    /// <summary>以变量定义初始化输入行，并预填默认值与多值。</summary>
     public TemplateVarInputViewModel(TemplateVarDef def)
     {
         Def = def;
@@ -16,10 +17,13 @@ public sealed class TemplateVarInputViewModel : ObservableObject
         _valuesText = def.Values is { Count: > 0 } ? string.Join(",", def.Values) : string.Empty;
     }
 
+    /// <summary>变量定义实体。</summary>
     public TemplateVarDef Def { get; }
 
+    /// <summary>变量名。</summary>
     public string Name => Def.Name;
 
+    /// <summary>变量取值来源的可读文案（字面量/文件清单/CSV 列）。</summary>
     public string SourceText => Def.Source switch
     {
         VarSource.Literal => "字面量",

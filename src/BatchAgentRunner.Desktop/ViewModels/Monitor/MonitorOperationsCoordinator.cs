@@ -17,6 +17,7 @@ internal sealed class MonitorOperationsCoordinator
 {
     private readonly MonitorOperationsContext _context;
 
+    /// <summary>注入宿主、提示板与回写回调，构造阶段不发起任何 IO。</summary>
     public MonitorOperationsCoordinator(MonitorOperationsContext context)
     {
         _context = context;
@@ -144,8 +145,10 @@ internal sealed class MonitorOperationsCoordinator
 /// </summary>
 internal sealed class MonitorOperationsContext
 {
+    /// <summary>引擎宿主，操作编排据此读配置、加载任务并启动批处理。</summary>
     public required IEngineHost Host { get; init; }
 
+    /// <summary>事件提示板，失败信息在这里与状态栏同步展示。</summary>
     public required EventToastBoard Toasts { get; init; }
 
     /// <summary>直接写回 facade 的 StatusMessage 绑定属性（线程收敛由调用方经 <see cref="UiThread"/> 负责，P0-6/P0-7）。</summary>

@@ -26,6 +26,7 @@ internal sealed class ConfigSaveCoordinator
     private readonly WorkflowSectionViewModel _workflow;
     private readonly MiscSectionViewModel _misc;
 
+    /// <summary>初始化协调器，接收共享状态槽与各配置域子编辑器。</summary>
     public ConfigSaveCoordinator(
         ConfigStatus status,
         ModelsAccountSectionViewModel models,
@@ -55,6 +56,7 @@ internal sealed class ConfigSaveCoordinator
     }
 
     /// <summary>把运行配置分发到各子编辑器（Reload / 取消时调用）。</summary>
+    /// <param name="o">待分发到各子编辑器的运行配置对象。</param>
     public void Load(RunOptions o)
     {
         _task.LoadFrom(o);
@@ -71,8 +73,9 @@ internal sealed class ConfigSaveCoordinator
     }
 
     /// <summary>
-    /// 把各子编辑器状态收集回运行配置。<returns>true=已改写（调用方应落盘+重建）；false=被工作空间上限拦截（不改写）。</returns>
-    /// </summary>
+    /// 把各子编辑器状态收集回运行配置。</summary>
+    /// <param name="o">各子编辑器状态回写的目标运行配置对象。</param>
+    /// <returns>true=已改写（调用方应落盘+重建）；false=被工作空间上限拦截（不改写）。</returns>
     public bool Apply(RunOptions o)
     {
         _task.ApplyTo(o);

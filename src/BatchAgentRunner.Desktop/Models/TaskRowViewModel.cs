@@ -18,6 +18,7 @@ public sealed class TaskRowViewModel : ObservableObject, IDisposable
     private readonly PropertyChangedEventHandler _itemChangedHandler;
     private bool _disposed;
 
+    /// <summary>绑定领域任务项并订阅其属性变更以驱动行刷新。</summary>
     public TaskRowViewModel(TaskItem item)
     {
         Item = item;
@@ -40,13 +41,16 @@ public sealed class TaskRowViewModel : ObservableObject, IDisposable
         Item.PropertyChanged -= _itemChangedHandler;
     }
 
+    /// <summary>本行对应的领域任务项。</summary>
     public TaskItem Item { get; }
 
+    /// <summary>任务标识。</summary>
     public string Id => Item.Id;
 
     /// <summary>任务指令（P2-7：详情面板经行 VM 读取，XAML 不得直绑领域对象 <see cref="Item"/>）。</summary>
     public string Instruction => Item.Instruction;
 
+    /// <summary>任务状态的中文文案（待命任务标注等依赖）。</summary>
     public string StatusText => Item.Status switch
     {
         TaskStatus.Pending => Item.DependsOn is { Count: > 0 } ? "待命（等依赖）" : "待处理",
@@ -73,11 +77,13 @@ public sealed class TaskRowViewModel : ObservableObject, IDisposable
         ? "依赖：" + string.Join("、", Item.DependsOn)
         : string.Empty;
 
+    /// <summary>任务是否声明了上游依赖（控制依赖徽标可见性）。</summary>
     public bool HasDepends => Item.DependsOn is { Count: > 0 };
 
     /// <summary>工作流阶段数徽标（非工作流任务为空串）。</summary>
     public string StageBadge => Item.IsWorkflow ? $"{Item.Workflow!.Stages.Count} 阶段" : string.Empty;
 
+    /// <summary>执行信息摘要：账号 / 模型 / 兜底标记 / 工作空间。</summary>
     public string ExecutionInfo =>
         string.Join(" · ", new[]
         {
@@ -90,12 +96,16 @@ public sealed class TaskRowViewModel : ObservableObject, IDisposable
     /// <summary>所属工作空间（REQ-020 监控：每行展示工作空间，便于校验「同空间未并行」）。</summary>
     public string Workspace => string.IsNullOrEmpty(Item.Workspace) ? "(默认)" : Item.Workspace;
 
+    /// <summary>执行耗时文案；未记录耗时显示「-」。</summary>
     public string DurationText => Item.DurationSeconds > 0 ? $"{Item.DurationSeconds:0.#}s" : "-";
 
+    /// <summary>重试次数文案；未重试时为空串。</summary>
     public string RetryText => Item.RetryCount > 0 ? $"重试 {Item.RetryCount}" : "";
 
+    /// <summary>任务是否记录了错误信息（控制错误提示可见性）。</summary>
     public bool HasError => !string.IsNullOrEmpty(Item.Error);
 
+    /// <summary>通知界面本行全部派生属性已变化（领域对象变更时调用）。</summary>
     public void Refresh()
     {
         OnPropertyChanged(nameof(Id));
@@ -119,6 +129,7 @@ public sealed class TaskRowViewModel : ObservableObject, IDisposable
 /// <summary>界面提示（切换 / 兜底 / 时段 / 冷却 / 危险操作）。</summary>
 public sealed class ToastItem
 {
+    /// <summary>以级别、正文与时间创建一条界面轻提示。</summary>
     public ToastItem(string level, string message, DateTimeOffset at)
     {
         Level = level;
@@ -126,13 +137,18 @@ public sealed class ToastItem
         At = at;
     }
 
+    /// <summary>提示级别（danger / warning，其余按 info 着色）。</summary>
     public string Level { get; }
 
+    /// <summary>提示正文。</summary>
     public string Message { get; }
 
+    /// <summary>提示产生的时间。</summary>
     public DateTimeOffset At { get; }
 
+    /// <summary>时间的 HH:mm:ss 文本。</summary>
     public string TimeText => At.ToString("HH:mm:ss");
 
+    /// <summary>按提示级别取主题色（双主题自动切换）。</summary>
     public IBrush LevelBrush => AppBrushes.ForLevel(Level);
 }

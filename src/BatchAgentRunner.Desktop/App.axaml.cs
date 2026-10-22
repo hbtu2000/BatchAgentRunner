@@ -8,8 +8,10 @@ using BatchAgentRunner.Desktop.Views;
 
 namespace BatchAgentRunner.Desktop;
 
+/// <summary>应用入口类型：加载 XAML 资源并建立主窗口与主机生命周期。</summary>
 public partial class App : Application
 {
+    /// <summary>加载应用 XAML 资源（DEBUG 下同时挂载开发者工具）。</summary>
     public override void Initialize()
     {
         AvaloniaXamlLoader.Load(this);
@@ -21,6 +23,7 @@ public partial class App : Application
 #endif
     }
 
+    /// <summary>桌面生命周期就绪后同步登记主窗口，并在后台初始化主视图。</summary>
     public override void OnFrameworkInitializationCompleted()
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)

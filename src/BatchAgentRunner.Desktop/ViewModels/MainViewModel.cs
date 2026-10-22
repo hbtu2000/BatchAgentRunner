@@ -14,6 +14,7 @@ public sealed class MainViewModel : ViewModelBase
     private string _activePage = "monitor";
     private bool _isDark;
 
+    /// <summary>仅装配引擎宿主，页面与命令延迟到 InitializeAsync 中构建。</summary>
     public MainViewModel()
     {
         Host = new EngineHost();
@@ -93,14 +94,19 @@ public sealed class MainViewModel : ViewModelBase
         CurrentPage = Monitor;
     }
 
+    /// <summary>引擎宿主，提供批状态、配置目录与初始化入口。</summary>
     public IEngineHost Host { get; }
 
+    /// <summary>高级配置页视图模型，在页面装配时创建。</summary>
     public ConfigViewModel? Config { get; private set; }
 
+    /// <summary>监控页视图模型，同时作为启动后的默认页面。</summary>
     public MonitorViewModel? Monitor { get; private set; }
 
+    /// <summary>报告页视图模型，每次导航进入时调用 Refresh 重算汇总。</summary>
     public ReportViewModel? Report { get; private set; }
 
+    /// <summary>配置向导视图模型，由配置中心「快速开始」区段复用。</summary>
     public SetupWizardViewModel? Wizard { get; private set; }
 
     /// <summary>傻瓜式登录页：一键登录 / 一键切换账号。</summary>
@@ -115,20 +121,24 @@ public sealed class MainViewModel : ViewModelBase
     /// <summary>模板库（二期 REQ-016 模板展开与任务生成）。</summary>
     public TemplateEditorViewModel? Templates { get; private set; }
 
+    /// <summary>内容区当前显示的页面视图模型，导航时随 ActivePage 一起切换。</summary>
     public ViewModelBase? CurrentPage
     {
         get => _currentPage;
         private set => SetProperty(ref _currentPage, value);
     }
 
+    /// <summary>当前导航键（monitor / confighub / report / diff / templates），驱动侧边栏选中态。</summary>
     public string ActivePage
     {
         get => _activePage;
         private set => SetProperty(ref _activePage, value);
     }
 
+    /// <summary>侧边栏导航命令，点击后按页面键切换内容区并刷新目标页数据。</summary>
     public IRelayCommand<string>? NavigateCommand { get; private set; }
 
+    /// <summary>顶部状态条的中文文案，随宿主批状态变化实时更新。</summary>
     public string StatusText => Host.Status switch
     {
         BatchAgentRunner.Core.Domain.BatchStatus.Idle => "空闲",
@@ -146,8 +156,10 @@ public sealed class MainViewModel : ViewModelBase
     /// <summary>当前主题名（浅色 / 深色），供框架按钮显示。</summary>
     public string Theme => _isDark ? "深色" : "浅色";
 
+    /// <summary>主题切换命令，点击后在浅色与深色之间往返切换。</summary>
     public IRelayCommand? ToggleThemeCommand { get; private set; }
 
+    /// <summary>用户配置目录的绝对路径，界面底部展示并供用户定位配置文件。</summary>
     public string ConfigDirectory => Host.ConfigDirectory;
 
     private void Navigate(string? page)

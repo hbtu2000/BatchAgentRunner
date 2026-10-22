@@ -27,6 +27,7 @@ internal static class BatchStatistics
         string CurrentComboText,
         string CurrentWorkspaceText);
 
+    /// <summary>按任务清单汇总各状态计数、预计剩余时间与当前任务三栏文案。</summary>
     public static Snapshot Compute(IReadOnlyList<TaskItem> tasks, string? defaultWorkspace)
     {
         var current = tasks.FirstOrDefault(t => t.Status == TaskStatus.Running);

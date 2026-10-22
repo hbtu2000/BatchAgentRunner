@@ -17,30 +17,35 @@ public sealed class ExpertDegradationSectionViewModel : ViewModelBase
     private string _expertId = string.Empty;
     private string _expertDisplayName = string.Empty;
 
+    /// <summary>降级策略：模型优先或账号优先，决定额度不足时的让位顺序。</summary>
     public DegradationStrategy DegradationStrategy
     {
         get => _degradationStrategy;
         set => SetProperty(ref _degradationStrategy, value);
     }
 
+    /// <summary>专家模式类型（无 / 单专家 / 专家团）。</summary>
     public ExpertKind ExpertKind
     {
         get => _expertKind;
         set => SetProperty(ref _expertKind, value);
     }
 
+    /// <summary>所选专家的标识，未配置时为空串。</summary>
     public string ExpertId
     {
         get => _expertId;
         set => SetProperty(ref _expertId, value);
     }
 
+    /// <summary>专家显示名；空白写回时归一为 null。</summary>
     public string ExpertDisplayName
     {
         get => _expertDisplayName;
         set => SetProperty(ref _expertDisplayName, value);
     }
 
+    /// <summary>降级策略下拉的可选值列表。</summary>
     public IReadOnlyList<DegradationStrategy> Strategies { get; } =
         new[]
         {
@@ -48,6 +53,7 @@ public sealed class ExpertDegradationSectionViewModel : ViewModelBase
             global::BatchAgentRunner.Core.Domain.DegradationStrategy.AccountFirst
         };
 
+    /// <summary>专家模式下拉的可选值列表。</summary>
     public IReadOnlyList<ExpertKind> ExpertKinds { get; } =
         new[]
         {

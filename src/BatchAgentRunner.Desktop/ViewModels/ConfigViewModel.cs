@@ -54,6 +54,7 @@ public sealed class ConfigViewModel : ViewModelBase
     private bool _saved;
     private string _readinessSummary = string.Empty;
 
+    /// <summary>创建配置页 facade，装配各子编辑器与保存协调者，并读取一次当前配置。</summary>
     public ConfigViewModel(IEngineHost host)
     {
         _host = host;
@@ -114,6 +115,7 @@ public sealed class ConfigViewModel : ViewModelBase
         set => SetProperty(ref _activeSection, value);
     }
 
+    /// <summary>区段导航命令，参数为区段 key，点击后切换 rail 激活项。</summary>
     public IRelayCommand<string> SectionNavigateCommand { get; }
 
     /// <summary>rail 区段导航：切换激活区段并刷新准备度。</summary>
@@ -153,18 +155,31 @@ public sealed class ConfigViewModel : ViewModelBase
 
     // ---------------- 命令 ----------------
 
+    /// <summary>保存命令，点击后把各子编辑器的值写回配置、落盘并重建引擎。</summary>
     public IAsyncRelayCommand SaveCommand { get; }
+    /// <summary>取消命令，点击后丢弃未保存改动并重新读取配置。</summary>
     public IRelayCommand CancelCommand { get; }
+    /// <summary>浏览命令，点击后弹出文件对话框选择任务文件。</summary>
     public IAsyncRelayCommand BrowseTaskFileCommand => _task.BrowseTaskFileCommand;
+    /// <summary>新增命令，向候选模型池追加一条空模型。</summary>
     public IRelayCommand AddModelCommand => _models.AddModelCommand;
+    /// <summary>删除命令，从候选模型池移除指定模型。</summary>
     public IRelayCommand<ModelEditor> RemoveModelCommand => _models.RemoveModelCommand;
+    /// <summary>上移命令，把指定模型在候选池中提前一位。</summary>
     public IRelayCommand<ModelEditor> MoveModelUpCommand => _models.MoveModelUpCommand;
+    /// <summary>下移命令，把指定模型在候选池中推后一位。</summary>
     public IRelayCommand<ModelEditor> MoveModelDownCommand => _models.MoveModelDownCommand;
+    /// <summary>新增命令，向工作空间列表追加一条空路径。</summary>
     public IRelayCommand AddWorkspaceCommand => _task.AddWorkspaceCommand;
+    /// <summary>删除命令，从工作空间列表移除指定项。</summary>
     public IRelayCommand<WorkspaceConfig> RemoveWorkspaceCommand => _task.RemoveWorkspaceCommand;
+    /// <summary>拉取命令，点击后从服务端获取可用模型列表。</summary>
     public IAsyncRelayCommand FetchModelsCommand => _models.FetchModelsCommand;
+    /// <summary>拉取命令，点击后只为指定账号获取可用模型列表。</summary>
     public IAsyncRelayCommand<AccountEditor> FetchModelsForAccountCommand => _models.FetchModelsForAccountCommand;
+    /// <summary>新增命令，向通知规则列表追加一条空规则。</summary>
     public IRelayCommand AddNotificationRuleCommand => _notif.AddNotificationRuleCommand;
+    /// <summary>删除命令，移除指定的通知规则。</summary>
     public IRelayCommand<NotificationRuleEditor> RemoveNotificationRuleCommand => _notif.RemoveNotificationRuleCommand;
 
     /// <summary>由视图注入的文件选择回调（避免 ViewModel 直接依赖窗口）。</summary>
@@ -174,6 +189,7 @@ public sealed class ConfigViewModel : ViewModelBase
         set => _task.PickTaskFile = value;
     }
 
+    /// <summary>状态提示文案，保存成功或被工作空间上限拦截时写入。</summary>
     public string StatusMessage
     {
         get => _status.Message;
@@ -263,107 +279,174 @@ public sealed class ConfigViewModel : ViewModelBase
 
     // ---------------- 模型池模式（单一数据源） ----------------
 
+    /// <summary>模型池维护方式：所有账号共享一份，或每账号各维护一份。</summary>
     public ModelPoolMode ModelPoolMode
     {
         get => _models.ModelPoolMode;
         set => _models.ModelPoolMode = value;
     }
 
+    /// <summary>当前是否为共享模型池模式，供单选按钮绑定。</summary>
     public bool IsSharedMode => _models.IsSharedMode;
+    /// <summary>当前是否为每账号独立模型池模式。</summary>
     public bool IsPerAccountMode => _models.IsPerAccountMode;
+    /// <summary>共享模式开关，置真时把维护方式切为共享。</summary>
     public bool SharedMode { get => _models.SharedMode; set => _models.SharedMode = value; }
+    /// <summary>独立模式开关，置真时把维护方式切为每账号独立。</summary>
     public bool PerAccountMode { get => _models.PerAccountMode; set => _models.PerAccountMode = value; }
 
+    /// <summary>共享模式下的候选模型列表。</summary>
     public ObservableCollection<ModelEditor> Models => _models.Models;
+    /// <summary>账号列表，每项含该账号自己的模型池与凭据状态。</summary>
     public ObservableCollection<AccountEditor> Accounts => _models.Accounts;
+    /// <summary>从服务端拉取到的可选模型，供下拉框挑选。</summary>
     public ObservableCollection<ModelOption> AvailableModels => _models.AvailableModels;
+    /// <summary>模型列表是否正在拉取，期间禁用拉取按钮。</summary>
     public bool IsFetchingModels => _models.IsFetchingModels;
 
     // ---------------- 任务与执行工具 ----------------
 
+    /// <summary>任务文件（JSON 或 Markdown）的路径。</summary>
     public string TaskFilePath { get => _task.TaskFilePath; set => _task.TaskFilePath = value; }
+    /// <summary>执行任务所用的智能体内核。</summary>
     public AgentKind AgentKind { get => _task.AgentKind; set => _task.AgentKind = value; }
+    /// <summary>CLI 可执行文件路径，留空则按 PATH 查找。</summary>
     public string CliPath { get => _task.CliPath; set => _task.CliPath = value; }
+    /// <summary>拼装 CLI 参数的命令行模板，支持 {prompt} {model} 等占位符。</summary>
     public string CliArgumentsTemplate { get => _task.CliArgumentsTemplate; set => _task.CliArgumentsTemplate = value; }
+    /// <summary>推理强度档位（low / medium / high），留空则走 CLI 默认。</summary>
     public string ReasoningEffort { get => _task.ReasoningEffort; set => _task.ReasoningEffort = value; }
+    /// <summary>推理强度的可选档位，供下拉框绑定。</summary>
     public IReadOnlyList<string> ReasoningEffortLevels => _task.ReasoningEffortLevels;
+    /// <summary>任务默认工作空间，任务未单独指定时使用。</summary>
     public string DefaultWorkspace { get => _task.DefaultWorkspace; set => _task.DefaultWorkspace = value; }
+    /// <summary>执行时是否弹出 CLI 控制台窗口，仅便于人工排查。</summary>
     public bool ShowCliWindow { get => _task.ShowCliWindow; set => _task.ShowCliWindow = value; }
+    /// <summary>工作空间数量上限，超出时新增会被拦截。</summary>
     public int MaxWorkspaces { get => _task.MaxWorkspaces; set => _task.MaxWorkspaces = value; }
+    /// <summary>已配置的工作空间列表。</summary>
     public ObservableCollection<WorkspaceConfig> Workspaces => _task.Workspaces;
+    /// <summary>是否已配置任务文件，为假时无法开始批处理。</summary>
     public bool HasTaskFile => _task.HasTaskFile;
+    /// <summary>是否已达工作空间上限，为真时禁用新增入口。</summary>
     public bool WorkspaceLimitReached => _task.WorkspaceLimitReached;
+    /// <summary>达到上限时展示的提示文案。</summary>
     public string WorkspaceLimitHint => _task.WorkspaceLimitHint;
+    /// <summary>可选的智能体内核，供下拉框绑定。</summary>
     public IReadOnlyList<AgentKind> AgentKinds => _task.AgentKinds;
 
     // ---------------- 降级与专家 ----------------
 
+    /// <summary>模型与账号的降级顺序策略：先换模型，或先换账号。</summary>
     public DegradationStrategy DegradationStrategy { get => _expert.DegradationStrategy; set => _expert.DegradationStrategy = value; }
+    /// <summary>专家类型：未指定 / 单专家 / 多专家。</summary>
     public ExpertKind ExpertKind { get => _expert.ExpertKind; set => _expert.ExpertKind = value; }
+    /// <summary>专家标识，执行时作为 --expert 参数传给 CLI。</summary>
     public string ExpertId { get => _expert.ExpertId; set => _expert.ExpertId = value; }
+    /// <summary>专家显示名，仅用于界面展示。</summary>
     public string ExpertDisplayName { get => _expert.ExpertDisplayName; set => _expert.ExpertDisplayName = value; }
+    /// <summary>可选降级策略列表，供下拉框绑定。</summary>
     public IReadOnlyList<DegradationStrategy> Strategies => _expert.Strategies;
+    /// <summary>可选专家类型列表。</summary>
     public IReadOnlyList<ExpertKind> ExpertKinds => _expert.ExpertKinds;
 
     // ---------------- 兜底 ----------------
 
+    /// <summary>是否启用兜底模型：主模型不可用时自动切换。</summary>
     public bool FallbackEnabled { get => _fallback.FallbackEnabled; set => _fallback.FallbackEnabled = value; }
+    /// <summary>单任务兜底成本上限（元），超出即停止该任务的兜底。</summary>
     public decimal FallbackMaxPerTask { get => _fallback.FallbackMaxPerTask; set => _fallback.FallbackMaxPerTask = value; }
+    /// <summary>整批兜底成本上限（元），超出即停用兜底。</summary>
     public decimal FallbackMaxPerBatch { get => _fallback.FallbackMaxPerBatch; set => _fallback.FallbackMaxPerBatch = value; }
 
     // ---------------- 自动关机 ----------------
 
+    /// <summary>批处理结束后是否自动关机。</summary>
     public bool ShutdownEnabled { get => _shutdown.ShutdownEnabled; set => _shutdown.ShutdownEnabled = value; }
+    /// <summary>勾选后仅当没有任何失败任务时才关机。</summary>
     public bool ShutdownOnlyZeroFailure { get => _shutdown.ShutdownOnlyZeroFailure; set => _shutdown.ShutdownOnlyZeroFailure = value; }
+    /// <summary>关机前倒计时秒数，倒计时期间可取消。</summary>
     public int ShutdownCountdown { get => _shutdown.ShutdownCountdown; set => _shutdown.ShutdownCountdown = value; }
 
     // ---------------- 调度与重试 ----------------
 
+    /// <summary>并发执行的任务数，默认 1 即串行。</summary>
     public int Concurrency { get => _schedule.Concurrency; set => _schedule.Concurrency = value; }
+    /// <summary>普通失败后的重试次数。</summary>
     public int MaxRetries { get => _schedule.MaxRetries; set => _schedule.MaxRetries = value; }
+    /// <summary>命中临时限流后的退避重试次数。</summary>
     public int RateLimitRetries { get => _schedule.RateLimitRetries; set => _schedule.RateLimitRetries = value; }
+    /// <summary>单个任务的超时时间（分钟）。</summary>
     public int TaskTimeoutMinutes { get => _schedule.TaskTimeoutMinutes; set => _schedule.TaskTimeoutMinutes = value; }
+    /// <summary>单任务总尝试次数上限，含各类重试。</summary>
     public int MaxAttempts { get => _schedule.MaxAttempts; set => _schedule.MaxAttempts = value; }
+    /// <summary>单任务累计执行时长上限（分钟）。</summary>
     public int MaxTotalMinutes { get => _schedule.MaxTotalMinutes; set => _schedule.MaxTotalMinutes = value; }
+    /// <summary>时段外等待的最长分钟数，超出转为阻塞。</summary>
     public int MaxWaitMinutes { get => _schedule.MaxWaitMinutes; set => _schedule.MaxWaitMinutes = value; }
+    /// <summary>账号默认冷却分钟数，额度耗尽后按此等待。</summary>
     public int DefaultCooldownMinutes { get => _schedule.DefaultCooldownMinutes; set => _schedule.DefaultCooldownMinutes = value; }
+    /// <summary>额度耗尽时是否无限等待重置，不受最长等待时长限制。</summary>
     public bool WaitForQuotaReset { get => _schedule.WaitForQuotaReset; set => _schedule.WaitForQuotaReset = value; }
+    /// <summary>是否忽略续跑台账，已完成的任务也重新执行。</summary>
     public bool ForceRerun { get => _schedule.ForceRerun; set => _schedule.ForceRerun = value; }
+    /// <summary>首个任务失败后是否立即停止整批。</summary>
     public bool StopOnFailure { get => _schedule.StopOnFailure; set => _schedule.StopOnFailure = value; }
 
     // ---------------- 安全与交互 ----------------
 
+    /// <summary>自动应答白名单，每行一条匹配文本。</summary>
     public string WhitelistText { get => _safety.WhitelistText; set => _safety.WhitelistText = value; }
+    /// <summary>危险操作黑名单，每行一条，命中即中断该任务。</summary>
     public string BlacklistText { get => _safety.BlacklistText; set => _safety.BlacklistText = value; }
+    /// <summary>检测到等待输入时注入的默认应答内容。</summary>
     public string DefaultAnswerText { get => _safety.DefaultAnswerText; set => _safety.DefaultAnswerText = value; }
+    /// <summary>无输出超过该秒数即判定为等待输入。</summary>
     public int SilenceSeconds { get => _safety.SilenceSeconds; set => _safety.SilenceSeconds = value; }
+    /// <summary>选择型交互默认选中的选项序号（从 0 起）。</summary>
     public int ChoiceDefaultIndex { get => _safety.ChoiceDefaultIndex; set => _safety.ChoiceDefaultIndex = value; }
 
     // ---------------- 二期：工作流与模板域 ----------------
 
+    /// <summary>质量门禁修订循环的默认上限，可被阶段配置覆盖。</summary>
     public int DefaultMaxGateLoops { get => _workflow.DefaultMaxGateLoops; set => _workflow.DefaultMaxGateLoops = value; }
+    /// <summary>断点续跑时是否恢复会话，关闭则重发完整指令。</summary>
     public bool EnableSessionResume { get => _workflow.EnableSessionResume; set => _workflow.EnableSessionResume = value; }
+    /// <summary>是否把结果原地回写 Markdown 任务文件，关闭则写 sidecar。</summary>
     public bool MarkdownInPlaceWriteback { get => _workflow.MarkdownInPlaceWriteback; set => _workflow.MarkdownInPlaceWriteback = value; }
+    /// <summary>依赖任务失败时的处理策略，如阻塞下游任务。</summary>
     public DependencyFailurePolicy DependencyFailurePolicy { get => _workflow.DependencyFailurePolicy; set => _workflow.DependencyFailurePolicy = value; }
+    /// <summary>可选的依赖失败策略列表。</summary>
     public IReadOnlyList<DependencyFailurePolicy> DependencyPolicies => _workflow.DependencyPolicies;
+    /// <summary>单批模板展开的任务数上限，超出需人工确认。</summary>
     public int TemplateBatchExpansionLimit { get => _workflow.TemplateBatchExpansionLimit; set => _workflow.TemplateBatchExpansionLimit = value; }
+    /// <summary>是否采集任务前后的文件 diff。</summary>
     public bool CollectDiffs { get => _workflow.CollectDiffs; set => _workflow.CollectDiffs = value; }
+    /// <summary>diff 采集关注的 glob 列表，每行一条。</summary>
     public string DiffGlobsText { get => _workflow.DiffGlobsText; set => _workflow.DiffGlobsText = value; }
 
     // ---------------- 二期：通知域 ----------------
 
+    /// <summary>通知规则列表，批处理状态变化时按规则推送。</summary>
     public ObservableCollection<NotificationRuleEditor> NotificationRules => _notif.NotificationRules;
 
     // ---------------- 二期：版本控制域 ----------------
 
+    /// <summary>Git 仓库根目录，为空表示未启用 Git 集成。</summary>
     public string GitRepoPath { get => _git.GitRepoPath; set => _git.GitRepoPath = value; }
+    /// <summary>创建任务分支的基线分支。</summary>
     public string GitBaseBranch { get => _git.GitBaseBranch; set => _git.GitBaseBranch = value; }
+    /// <summary>任务分支命名规则，支持 {task_id} {timestamp} 等占位符。</summary>
     public string GitBranchNaming { get => _git.GitBranchNaming; set => _git.GitBranchNaming = value; }
+    /// <summary>PR 的目标分支，留空时回退基线分支。</summary>
     public string GitPrTargetBranch { get => _git.GitPrTargetBranch; set => _git.GitPrTargetBranch = value; }
+    /// <summary>任务完成后是否自动创建 PR（需 gh CLI）。</summary>
     public bool GitAutoOpenPr { get => _git.GitAutoOpenPr; set => _git.GitAutoOpenPr = value; }
 
     // ---------------- 二期：结果大小与备份 ----------------
 
+    /// <summary>单任务结果的大小上限（KB），超出即截断并提示全量日志位置。</summary>
     public int MaxResultKb { get => _misc.MaxResultKb; set => _misc.MaxResultKb = value; }
+    /// <summary>自动备份快照的保留份数，超出后滚动删除最旧的。</summary>
     public int BackupRetentionCount { get => _misc.BackupRetentionCount; set => _misc.BackupRetentionCount = value; }
 }

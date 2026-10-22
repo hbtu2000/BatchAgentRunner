@@ -14,8 +14,9 @@ public static class UiThread
 {
     /// <summary>
     /// 在 UI 线程执行 <paramref name="action"/>：已在 UI 线程则同步执行（保持调用处的顺序语义），
-    /// 否则投递到 UI 线程队列后立即返回。
-    /// </summary>
+    /// 
+    /// 否则投递到 UI 线程队列后立即返回。</summary>
+    /// <param name="action">要在 UI 线程执行的委托。</param>
     public static void Post(Action action)
     {
         ArgumentNullException.ThrowIfNull(action);
@@ -38,6 +39,7 @@ public static class UiThread
     }
 
     /// <summary>切到 UI 线程执行异步操作（如模态对话框），等待其内部 Task 完成。</summary>
+    /// <param name="asyncAction">要切到 UI 线程执行的异步操作。</param>
     public static Task<TResult> InvokeAsync<TResult>(Func<Task<TResult>> asyncAction)
     {
         ArgumentNullException.ThrowIfNull(asyncAction);

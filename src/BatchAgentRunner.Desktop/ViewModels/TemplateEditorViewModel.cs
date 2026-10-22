@@ -28,6 +28,8 @@ public sealed class TemplateEditorViewModel : ViewModelBase
     private string _flowSummary = string.Empty;
     private bool _isFlowExpanded = true;
 
+    /// <summary>创建模板库页，装配展开 / 加载协调者并初始化输出路径与各集合。</summary>
+    /// <param name="host">引擎宿主，提供模板存储、配置目录与默认工作空间。</param>
     public TemplateEditorViewModel(IEngineHost host)
     {
         // P1-4/P1-5：模板库实现由组合根装配，UI 只持接口（不再自行 new Infrastructure 具体类型）
@@ -47,10 +49,13 @@ public sealed class TemplateEditorViewModel : ViewModelBase
         ToggleFlowCommand = new RelayCommand(() => IsFlowExpanded = !IsFlowExpanded);
     }
 
+    /// <summary>刷新模板清单命令，导航进入页面时调用并回报加载结果。</summary>
     public IAsyncRelayCommand LoadCommand { get; }
 
+    /// <summary>预览命令，按当前变量取值展开模板并在列表中展示，不写文件。</summary>
     public IRelayCommand PreviewCommand { get; }
 
+    /// <summary>生成命令，展开模板并把任务写入输出路径；未选模板时不可用。</summary>
     public IAsyncRelayCommand GenerateCommand { get; }
 
     /// <summary>展开 / 收起流程示意。</summary>
@@ -63,13 +68,16 @@ public sealed class TemplateEditorViewModel : ViewModelBase
         private set => SetProperty(ref _templates, value);
     }
 
+    /// <summary>当前模板的可填变量行，切换模板时按变量定义重建。</summary>
     public ObservableCollection<TemplateVarInputViewModel> VarInputs { get; }
 
+    /// <summary>最近一次预览展开出的任务行，切换模板时清空。</summary>
     public ObservableCollection<PreviewTaskRowViewModel> PreviewTasks { get; }
 
     /// <summary>流程示意节点（自上而下 = 执行顺序；单指令模板为单节点）。</summary>
     public ObservableCollection<TemplateFlowNodeViewModel> FlowNodes { get; }
 
+    /// <summary>是否已构建出流程节点，为假时空态提示占位。</summary>
     public bool HasFlow => FlowNodes.Count > 0;
 
     /// <summary>是否已有展开预览结果（用于空态提示）。</summary>
@@ -100,8 +108,10 @@ public sealed class TemplateEditorViewModel : ViewModelBase
         }
     }
 
+    /// <summary>流程示意折叠按钮的文案，展开时为「收起」，收起时为「展开」。</summary>
     public string FlowToggleText => _isFlowExpanded ? "收起" : "展开";
 
+    /// <summary>模板列表当前选中项，变更后重建变量行与流程示意并清空预览。</summary>
     public TemplateRowViewModel? SelectedTemplate
     {
         get => _selectedTemplate;
@@ -123,12 +133,15 @@ public sealed class TemplateEditorViewModel : ViewModelBase
         }
     }
 
+    /// <summary>选中模板的指令模板正文，作为说明展示在详情区。</summary>
     public string SelectedDescription => _selectedTemplate?.Spec.InstructionTemplate ?? string.Empty;
 
+    /// <summary>选中模板的形态说明：工作流模板显示阶段数，单指令模板固定文案。</summary>
     public string SelectedWorkflowText => _selectedTemplate?.Spec.Workflow is { } wf
         ? $"工作流模板：{wf.Stages.Count} 个阶段"
         : "单指令模板";
 
+    /// <summary>选中模板的链式依赖开关说明，开启时任务依次挂前一个任务。</summary>
     public string SelectedChainText => _selectedTemplate?.Spec.ChainDependency == true
         ? "链式依赖：开启（任务依次 depends_on 前一个）"
         : "链式依赖：关闭";
@@ -150,6 +163,7 @@ public sealed class TemplateEditorViewModel : ViewModelBase
         set => SetProperty(ref _outputPath, value);
     }
 
+    /// <summary>操作结果提示行，加载 / 预览 / 生成结束后写入供界面展示。</summary>
     public string StatusMessage
     {
         get => _statusMessage;

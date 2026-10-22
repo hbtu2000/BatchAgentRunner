@@ -15,6 +15,7 @@ public sealed class ConfigHubViewModel : ViewModelBase
     private readonly ConfigViewModel _config;
     private string _activeSubview = "config";
 
+    /// <summary>注入登录、向导与配置三个子视图，并把前两者挂到配置页统一驱动。</summary>
     public ConfigHubViewModel(LoginViewModel login, SetupWizardViewModel wizard, ConfigViewModel config)
     {
         _login = login;
@@ -27,10 +28,13 @@ public sealed class ConfigHubViewModel : ViewModelBase
         _config.RefreshReadiness();
     }
 
+    /// <summary>内嵌在「账号与凭据」区段中的登录视图模型。</summary>
     public LoginViewModel Login => _login;
 
+    /// <summary>「快速开始」区段使用的配置向导视图模型。</summary>
     public SetupWizardViewModel Wizard => _wizard;
 
+    /// <summary>内嵌的高级配置视图模型，按当前区段显隐渲染。</summary>
     public ConfigViewModel Config => _config;
 
     /// <summary>当前激活的子视图 key（保留以兼容主窗口导航调用）。</summary>

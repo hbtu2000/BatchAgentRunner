@@ -20,5 +20,6 @@ public sealed class ConfigStatus : ObservableObject
     }
 
     /// <summary>写入一条状态消息（调用方须已在 UI 线程，与各编辑器命令的执行线程一致）。</summary>
+    /// <param name="message">要显示在配置页底部保存条的状态文案。</param>
     public void Show(string message) => Message = message;
 }

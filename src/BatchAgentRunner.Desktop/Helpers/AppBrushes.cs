@@ -29,6 +29,7 @@ public static class AppBrushes
     }
 
     /// <summary>任务级状态色（状态点 / 行徽标）。</summary>
+    /// <param name="status">任务状态枚举（决定取哪个状态色 token）。</param>
     public static IBrush ForTaskStatus(TaskStatus status) => Token(status switch
     {
         TaskStatus.Running => "StatusRunningBrush",
@@ -50,6 +51,7 @@ public static class AppBrushes
     });
 
     /// <summary>批级状态色（监控页状态徽标）。</summary>
+    /// <param name="status">批次状态枚举（决定取哪个批次色 token）。</param>
     public static IBrush ForBatchStatus(BatchStatus status) => Token(status switch
     {
         BatchStatus.Running => "BatchRunningBrush",
@@ -69,6 +71,7 @@ public static class AppBrushes
     });
 
     /// <summary>提示条级别色（danger / warning / 其余 info）。</summary>
+    /// <param name="level">提示级别（danger / warning，其他按 info）。</param>
     public static IBrush ForLevel(string? level) => level switch
     {
         "danger" => Token("ErrorBrush", "#DC2626"),
@@ -77,6 +80,7 @@ public static class AppBrushes
     };
 
     /// <summary>diff 行类型色（新增 / 删除 / 修改）。</summary>
+    /// <param name="kind">diff 行类型（新增 / 删除 / 修改）。</param>
     public static IBrush ForDiffKind(DiffKind kind) => Token(kind switch
     {
         DiffKind.Added => "SuccessBrush",
@@ -90,6 +94,7 @@ public static class AppBrushes
     });
 
     /// <summary>diff 正文色（主 / 次 / 弱）。</summary>
+    /// <param name="muted">true 表示弱化文本（取更浅的次要色）。</param>
     public static IBrush DiffText(bool muted) => muted
         ? Token("TextMutedBrush", "#8A95A3")
         : Token("TextSecondaryBrush", "#5A6675");
@@ -100,7 +105,9 @@ public static class AppBrushes
     /// <summary>配置中心激活态反白文字（主色背景上的白字，双主题）。</summary>
     public static IBrush NavActiveText() => Token("OnPrimaryBrush", "#FFFFFF");
 
+    /// <summary>配置中心未激活导航项的文字色（正文色）。</summary>
     public static IBrush NavInactiveText() => Token("TextPrimaryBrush", "#1B2430");
 
+    /// <summary>配置中心未激活导航项的背景色（浅边框色）。</summary>
     public static IBrush NavInactiveTrack() => Token("BorderSubtleBrush", "#E3E8EF");
 }

@@ -21,48 +21,56 @@ public sealed class ScheduleSectionViewModel : ViewModelBase
     private bool _forceRerun;
     private bool _stopOnFailure;
 
+    /// <summary>最大并发任务数（保存时下限钳制为 1）。</summary>
     public int Concurrency
     {
         get => _concurrency;
         set => SetProperty(ref _concurrency, value);
     }
 
+    /// <summary>单个任务的普通失败重试次数（下限 0）。</summary>
     public int MaxRetries
     {
         get => _maxRetries;
         set => SetProperty(ref _maxRetries, value);
     }
 
+    /// <summary>命中限流后的退避重试次数（下限 0）。</summary>
     public int RateLimitRetries
     {
         get => _rateLimitRetries;
         set => SetProperty(ref _rateLimitRetries, value);
     }
 
+    /// <summary>单次任务执行的超时分钟数（下限 1）。</summary>
     public int TaskTimeoutMinutes
     {
         get => _taskTimeoutMinutes;
         set => SetProperty(ref _taskTimeoutMinutes, value);
     }
 
+    /// <summary>单个任务的最大尝试次数（下限 1）。</summary>
     public int MaxAttempts
     {
         get => _maxAttempts;
         set => SetProperty(ref _maxAttempts, value);
     }
 
+    /// <summary>单个任务累计可用的总时长分钟数（下限 1）。</summary>
     public int MaxTotalMinutes
     {
         get => _maxTotalMinutes;
         set => SetProperty(ref _maxTotalMinutes, value);
     }
 
+    /// <summary>等待额度或依赖的最长分钟数（下限 0）。</summary>
     public int MaxWaitMinutes
     {
         get => _maxWaitMinutes;
         set => SetProperty(ref _maxWaitMinutes, value);
     }
 
+    /// <summary>失败后默认冷却分钟数（下限 1）。</summary>
     public int DefaultCooldownMinutes
     {
         get => _defaultCooldownMinutes;
@@ -76,12 +84,14 @@ public sealed class ScheduleSectionViewModel : ViewModelBase
         set => SetProperty(ref _waitForQuotaReset, value);
     }
 
+    /// <summary>是否忽略已有结果强制重跑全部任务。</summary>
     public bool ForceRerun
     {
         get => _forceRerun;
         set => SetProperty(ref _forceRerun, value);
     }
 
+    /// <summary>是否在首个任务失败后立即停止整批。</summary>
     public bool StopOnFailure
     {
         get => _stopOnFailure;

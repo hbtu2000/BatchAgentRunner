@@ -21,6 +21,8 @@ public sealed class TemplateExpansionCoordinator
 
     private readonly IEngineHost _host;
 
+    /// <summary>注入引擎宿主，用于解析命名工作空间。</summary>
+    /// <param name="host">引擎宿主，提供全局配置与工作空间列表。</param>
     public TemplateExpansionCoordinator(IEngineHost host) => _host = host;
 
     /// <summary>把界面变量输入写回模板副本（不改动仓库里的模板定义）。</summary>
@@ -88,6 +90,9 @@ public sealed class TemplateExpansionCoordinator
     }
 
     /// <summary>把界面变量写回模板副本，并基于当前工作空间展开为任务列表（不落盘）。</summary>
+    /// <param name="baseSpec">待展开的模板定义，会被克隆后改写变量。</param>
+    /// <param name="varInputs">界面上各模板变量的输入项。</param>
+    /// <param name="workspace">工作空间键；null/空表示未指定。</param>
     public List<TaskItem> ExpandFromInputs(
         TemplateSpec baseSpec,
         IReadOnlyList<TemplateVarInputViewModel> varInputs,
@@ -101,6 +106,8 @@ public sealed class TemplateExpansionCoordinator
     }
 
     /// <summary>把展开得到的任务列表序列化为 JSON 并原子写入输出路径。</summary>
+    /// <param name="tasks">待写入的任务清单（展开产物）。</param>
+    /// <param name="outputPath">输出文件路径（原子写入）。</param>
     public static async System.Threading.Tasks.Task WriteTasksAsync(
         IReadOnlyList<TaskItem> tasks,
         string outputPath)

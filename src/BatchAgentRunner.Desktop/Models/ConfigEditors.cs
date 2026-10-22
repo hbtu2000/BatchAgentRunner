@@ -18,6 +18,7 @@ public sealed class ModelEditor : ObservableObject
     private bool _sat = true;
     private bool _sun = true;
 
+    /// <summary>以领域候选模型初始化编辑包装，并解析其免费时段与折扣。</summary>
     public ModelEditor(ModelCandidate model)
     {
         Model = model;
@@ -50,6 +51,7 @@ public sealed class ModelEditor : ObservableObject
         EndTime = new FieldEditor<TimeOnly?>("结束时刻", endText, FieldParsers.TimeOnlyOrNull, RefreshPreview);
     }
 
+    /// <summary>被编辑的领域候选模型（名称 / 折扣 / 时段最终写回此对象）。</summary>
     public ModelCandidate Model { get; }
 
     /// <summary>预估单价（元/次）编辑字段（P2-15）。</summary>
@@ -64,12 +66,14 @@ public sealed class ModelEditor : ObservableObject
     /// <summary>免费时段结束编辑字段（P-09；非法输入不再静默丢弃已配置时段）。</summary>
     public FieldEditor<TimeOnly?> EndTime { get; }
 
+    /// <summary>候选模型名称（写回 Model.Name）。</summary>
     public string Name
     {
         get => _name;
         set => SetProperty(ref _name, value);
     }
 
+    /// <summary>是否启用免费时段限制；关闭表示全天可用。</summary>
     public bool WindowEnabled
     {
         get => _windowEnabled;
@@ -82,12 +86,19 @@ public sealed class ModelEditor : ObservableObject
         }
     }
 
+    /// <summary>免费时段是否包含周一（仅在启用时段限制时生效）。</summary>
     public bool Mon { get => _mon; set => SetProperty(ref _mon, value); }
+    /// <summary>免费时段是否包含周二（仅在启用时段限制时生效）。</summary>
     public bool Tue { get => _tue; set => SetProperty(ref _tue, value); }
+    /// <summary>免费时段是否包含周三（仅在启用时段限制时生效）。</summary>
     public bool Wed { get => _wed; set => SetProperty(ref _wed, value); }
+    /// <summary>免费时段是否包含周四（仅在启用时段限制时生效）。</summary>
     public bool Thu { get => _thu; set => SetProperty(ref _thu, value); }
+    /// <summary>免费时段是否包含周五（仅在启用时段限制时生效）。</summary>
     public bool Fri { get => _fri; set => SetProperty(ref _fri, value); }
+    /// <summary>免费时段是否包含周六（仅在启用时段限制时生效）。</summary>
     public bool Sat { get => _sat; set => SetProperty(ref _sat, value); }
+    /// <summary>免费时段是否包含周日（仅在启用时段限制时生效）。</summary>
     public bool Sun { get => _sun; set => SetProperty(ref _sun, value); }
 
     /// <summary>折扣的展示形态（如「0.65x」），未配置折扣时为空串（对齐模型选择器的折扣列样式）。</summary>
@@ -109,6 +120,7 @@ public sealed class ModelEditor : ObservableObject
         }
     }
 
+    /// <summary>按当前开关与起止时刻构造免费时段；未启用或时刻非法时返回 null。</summary>
     public FreeTimeWindow? BuildWindow()
     {
         if (!WindowEnabled)
@@ -166,12 +178,14 @@ public sealed class ModelEditor : ObservableObject
 /// </summary>
 public sealed class ModelOption
 {
+    /// <summary>用模型名与折扣展示文本创建下拉项。</summary>
     public ModelOption(string name, string discountDisplay)
     {
         Name = name;
         DiscountDisplay = discountDisplay;
     }
 
+    /// <summary>下拉项显示的模型名称（同时作为可编辑下拉的回填文本）。</summary>
     public string Name { get; }
 
     /// <summary>折扣展示（如「0.65x」），空串 = 未配置折扣（下拉里不显示）。</summary>
@@ -186,6 +200,7 @@ public sealed class FallbackModelEditor : ObservableObject
 {
     private string _name;
 
+    /// <summary>以领域兜底模型初始化包装（仅名称与预估单价可编辑）。</summary>
     public FallbackModelEditor(FallbackModel model)
     {
         Model = model;
@@ -195,17 +210,20 @@ public sealed class FallbackModelEditor : ObservableObject
             model.EstimatedUnitPrice?.ToString() ?? string.Empty, FieldParsers.DecimalOrNull);
     }
 
+    /// <summary>被编辑的领域兜底模型。</summary>
     public FallbackModel Model { get; }
 
     /// <summary>预估单价（元/次）编辑字段（P2-15）。</summary>
     public FieldEditor<decimal?> UnitPrice { get; }
 
+    /// <summary>兜底模型名称（写回 Model.Name）。</summary>
     public string Name
     {
         get => _name;
         set => SetProperty(ref _name, value);
     }
 
+    /// <summary>把名称与预估单价写回兜底模型；解析失败时保留原值。</summary>
     public void Apply()
     {
         Model.Name = Name;
@@ -239,6 +257,7 @@ public sealed class AccountEditor : ObservableObject
         set => SetProperty(ref _isFetchingModels, value);
     }
 
+    /// <summary>以账号配置初始化编辑器，并包装其候选模型池与兜底模型池。</summary>
     public AccountEditor(AccountConfig account)
     {
         Account = account;
@@ -275,14 +294,17 @@ public sealed class AccountEditor : ObservableObject
         });
     }
 
+    /// <summary>被编辑的领域账号配置。</summary>
     public AccountConfig Account { get; }
 
+    /// <summary>账号唯一标识（写回 Account.Id，供凭据与台账关联）。</summary>
     public string Id
     {
         get => _id;
         set => SetProperty(ref _id, value);
     }
 
+    /// <summary>账号显示名（界面列表与报告中展示）。</summary>
     public string DisplayName
     {
         get => _displayName;
@@ -296,6 +318,7 @@ public sealed class AccountEditor : ObservableObject
         set => SetProperty(ref _credentialRef, value);
     }
 
+    /// <summary>账号是否参与批处理与积分领取。</summary>
     public bool Enabled
     {
         get => _enabled;
@@ -318,18 +341,25 @@ public sealed class AccountEditor : ObservableObject
     /// <summary>该账号自有的有序兜底模型池。</summary>
     public ObservableCollection<FallbackModelEditor> FallbackModels { get; }
 
+    /// <summary>向候选模型池追加一条默认名为 model-new 的条目。</summary>
     public IRelayCommand AddModelCommand { get; }
 
+    /// <summary>从候选模型池移除指定模型条目。</summary>
     public IRelayCommand<ModelEditor> RemoveModelCommand { get; }
 
+    /// <summary>把指定模型条目在候选池中上移一位。</summary>
     public IRelayCommand<ModelEditor> MoveModelUpCommand { get; }
 
+    /// <summary>把指定模型条目在候选池中下移一位。</summary>
     public IRelayCommand<ModelEditor> MoveModelDownCommand { get; }
 
+    /// <summary>向兜底模型池追加一条默认名为 paid-model 的条目。</summary>
     public IRelayCommand AddFallbackModelCommand { get; }
 
+    /// <summary>从兜底模型池移除指定条目。</summary>
     public IRelayCommand<FallbackModelEditor> RemoveFallbackModelCommand { get; }
 
+    /// <summary>把各字段与两个模型池写回账号配置；空池置 null 表示回退全局列表。</summary>
     public void Apply()
     {
         Account.Id = Id;
@@ -380,6 +410,7 @@ public sealed class NotificationRuleEditor : ObservableObject
     private string _smtpCredentialRef = string.Empty;
     private string _quietHours = string.Empty;
 
+    /// <summary>以结构化通知规则初始化编辑器，展开通道、触发事件与 SMTP 字段。</summary>
     public NotificationRuleEditor(NotificationRule rule)
     {
         _channel = rule.Channel;
@@ -402,6 +433,7 @@ public sealed class NotificationRuleEditor : ObservableObject
         }
     }
 
+    /// <summary>通知通道（桌面 / Webhook / SMTP），决定下方参数字段的可见性。</summary>
     public NotificationChannel Channel
     {
         get => _channel;
@@ -415,30 +447,41 @@ public sealed class NotificationRuleEditor : ObservableObject
         }
     }
 
+    /// <summary>可选通知通道列表（供通道下拉绑定）。</summary>
     public IReadOnlyList<NotificationChannel> Channels { get; } =
         new[] { NotificationChannel.Desktop, NotificationChannel.Webhook, NotificationChannel.Smtp };
 
+    /// <summary>当前是否选择 Webhook 通道（控制 Webhook 地址栏可见性）。</summary>
     public bool IsWebhook => _channel == NotificationChannel.Webhook;
 
+    /// <summary>当前是否选择 SMTP 通道（控制邮件参数区可见性）。</summary>
     public bool IsSmtp => _channel == NotificationChannel.Smtp;
 
+    /// <summary>整批正常完成时是否推送通知。</summary>
     public bool BatchCompleted { get => _batchCompleted; set => SetProperty(ref _batchCompleted, value); }
 
+    /// <summary>批次被阻塞时是否推送通知。</summary>
     public bool BatchBlocked { get => _batchBlocked; set => SetProperty(ref _batchBlocked, value); }
 
+    /// <summary>批次被终止时是否推送通知。</summary>
     public bool BatchTerminated { get => _batchTerminated; set => SetProperty(ref _batchTerminated, value); }
 
+    /// <summary>单个任务失败时是否推送通知。</summary>
     public bool TaskFailed { get => _taskFailed; set => SetProperty(ref _taskFailed, value); }
 
+    /// <summary>任务需要人工介入时是否推送通知。</summary>
     public bool NeedsAttention { get => _needsAttention; set => SetProperty(ref _needsAttention, value); }
 
+    /// <summary>Webhook 推送地址（仅 Webhook 通道生效）。</summary>
     public string WebhookUrl { get => _webhookUrl; set => SetProperty(ref _webhookUrl, value); }
 
+    /// <summary>SMTP 服务器地址（留空则视为不配置邮件通道）。</summary>
     public string SmtpHost { get => _smtpHost; set => SetProperty(ref _smtpHost, value); }
 
     /// <summary>SMTP 端口编辑字段（P2-15；留空回落 587，非空且无法解析则显式报错）。</summary>
     public FieldEditor<int?> SmtpPort { get; }
 
+    /// <summary>发件人地址（可留空，由服务器补默认值）。</summary>
     public string SmtpFrom { get => _smtpFrom; set => SetProperty(ref _smtpFrom, value); }
 
     /// <summary>收件人（逗号或换行分隔多个）。</summary>

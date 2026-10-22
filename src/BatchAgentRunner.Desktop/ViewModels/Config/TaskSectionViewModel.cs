@@ -24,6 +24,7 @@ public sealed class TaskSectionViewModel : ViewModelBase
     private bool _showCliWindow;
     private int _maxWorkspaces = 10;
 
+    /// <summary>初始化任务文件选择与工作空间增删命令。</summary>
     public TaskSectionViewModel(ConfigStatus status)
     {
         _status = status;
@@ -35,20 +36,26 @@ public sealed class TaskSectionViewModel : ViewModelBase
     /// <summary>由视图注入的文件选择回调（避免 ViewModel 直接依赖窗口；facade 转发注入）。</summary>
     public Func<Task<string?>>? PickTaskFile { get; set; }
 
+    /// <summary>命名工作空间列表，保存时整体写回配置。</summary>
     public ObservableCollection<WorkspaceConfig> Workspaces { get; private set; } = new();
 
+    /// <summary>执行工具下拉的可选值列表。</summary>
     public IReadOnlyList<AgentKind> AgentKinds { get; } =
         new[]
         {
             AgentKind.WorkBuddy, AgentKind.CodeBuddy, AgentKind.Mock
         };
 
+    /// <summary>点击后弹出文件选择框并回填任务文件路径。</summary>
     public IAsyncRelayCommand BrowseTaskFileCommand { get; }
 
+    /// <summary>点击后追加一个命名工作空间（受上限拦截）。</summary>
     public IRelayCommand AddWorkspaceCommand { get; }
 
+    /// <summary>点击后从列表移除指定的命名工作空间。</summary>
     public IRelayCommand<WorkspaceConfig> RemoveWorkspaceCommand { get; }
 
+    /// <summary>任务文件（tasks.json）路径，变更时通知 HasTaskFile。</summary>
     public string TaskFilePath
     {
         get => _taskFilePath;
@@ -64,18 +71,21 @@ public sealed class TaskSectionViewModel : ViewModelBase
     /// <summary>是否已选择任务文件（准备度 / 快速开始提示用）。</summary>
     public bool HasTaskFile => !string.IsNullOrWhiteSpace(TaskFilePath);
 
+    /// <summary>当前选择的执行工具类型。</summary>
     public AgentKind AgentKind
     {
         get => _agentKind;
         set => SetProperty(ref _agentKind, value);
     }
 
+    /// <summary>CLI 可执行文件路径；空白写回为 null（用默认）。</summary>
     public string CliPath
     {
         get => _cliPath;
         set => SetProperty(ref _cliPath, value);
     }
 
+    /// <summary>传给 CLI 的参数模板；空白写回为 null。</summary>
     public string CliArgumentsTemplate
     {
         get => _cliArgumentsTemplate;
@@ -92,6 +102,7 @@ public sealed class TaskSectionViewModel : ViewModelBase
         set => SetProperty(ref _reasoningEffort, string.IsNullOrWhiteSpace(value) ? string.Empty : value.Trim());
     }
 
+    /// <summary>未显式指定工作空间的任务所使用的默认目录。</summary>
     public string DefaultWorkspace
     {
         get => _defaultWorkspace;

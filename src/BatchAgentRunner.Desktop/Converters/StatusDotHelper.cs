@@ -15,15 +15,19 @@ namespace BatchAgentRunner.Desktop.Converters;
 /// </summary>
 public class StatusDotHelper : AvaloniaObject
 {
+    /// <summary>附加属性：任务状态，变更时切换 Ellipse 的 st-* 类。</summary>
     public static readonly AttachedProperty<TaskStatus?> TaskStatusProperty =
         AvaloniaProperty.RegisterAttached<StatusDotHelper, Ellipse, TaskStatus?>("TaskStatus");
 
+    /// <summary>附加属性：批次状态，变更时切换 Ellipse 的 batch-* 类。</summary>
     public static readonly AttachedProperty<BatchStatus?> BatchStatusProperty =
         AvaloniaProperty.RegisterAttached<StatusDotHelper, Ellipse, BatchStatus?>("BatchStatus");
 
+    /// <summary>附加属性：当前激活页面 key，与 NavPage 相同则按钮加 primary 类。</summary>
     public static readonly AttachedProperty<string?> NavActivePageProperty =
         AvaloniaProperty.RegisterAttached<StatusDotHelper, Button, string?>("NavActivePage");
 
+    /// <summary>附加属性：按钮所属页面 key，用于判定导航项是否高亮。</summary>
     public static readonly AttachedProperty<string?> NavPageProperty =
         AvaloniaProperty.RegisterAttached<StatusDotHelper, Button, string?>("NavPage");
 
@@ -36,16 +40,36 @@ public class StatusDotHelper : AvaloniaObject
     }
 
     // CLR 访问器：XAML 编译器据此识别附加属性
+    /// <summary>读取 Ellipse 上的任务状态。</summary>
+    /// <param name="element">状态点 Ellipse。</param>
     public static TaskStatus? GetTaskStatus(Ellipse element) => element.GetValue(TaskStatusProperty);
+    /// <summary>设置任务状态，变更回调切换状态点着色类。</summary>
+    /// <param name="element">状态点 Ellipse。</param>
+    /// <param name="value">任务状态枚举，null 按待处理着色。</param>
     public static void SetTaskStatus(Ellipse element, TaskStatus? value) => element.SetValue(TaskStatusProperty, value);
 
+    /// <summary>读取 Ellipse 上的批次状态。</summary>
+    /// <param name="element">状态点 Ellipse。</param>
     public static BatchStatus? GetBatchStatus(Ellipse element) => element.GetValue(BatchStatusProperty);
+    /// <summary>设置批次状态，变更回调切换状态点着色类。</summary>
+    /// <param name="element">状态点 Ellipse。</param>
+    /// <param name="value">批次状态枚举，null 按空闲着色。</param>
     public static void SetBatchStatus(Ellipse element, BatchStatus? value) => element.SetValue(BatchStatusProperty, value);
 
+    /// <summary>读取按钮上的当前激活页面 key。</summary>
+    /// <param name="element">导航按钮 Button。</param>
     public static string? GetNavActivePage(Button element) => element.GetValue(NavActivePageProperty);
+    /// <summary>设置当前激活页面 key，变更回调刷新导航高亮。</summary>
+    /// <param name="element">导航按钮 Button。</param>
+    /// <param name="value">当前激活页面的 key 文本。</param>
     public static void SetNavActivePage(Button element, string? value) => element.SetValue(NavActivePageProperty, value);
 
+    /// <summary>读取按钮所属页面 key。</summary>
+    /// <param name="element">导航按钮 Button。</param>
     public static string? GetNavPage(Button element) => element.GetValue(NavPageProperty);
+    /// <summary>设置按钮所属页面 key，变更回调刷新导航高亮。</summary>
+    /// <param name="element">导航按钮 Button。</param>
+    /// <param name="value">按钮所属页面的 key 文本。</param>
     public static void SetNavPage(Button element, string? value) => element.SetValue(NavPageProperty, value);
 
     private static void OnTaskStatusChanged(Ellipse el, AvaloniaPropertyChangedEventArgs e)

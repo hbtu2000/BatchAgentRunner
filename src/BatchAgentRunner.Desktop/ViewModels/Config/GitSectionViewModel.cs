@@ -15,12 +15,14 @@ public sealed class GitSectionViewModel : ViewModelBase
     private string _gitPrTargetBranch = string.Empty;
     private bool _gitAutoOpenPr;
 
+    /// <summary>任务执行所用的 Git 仓库路径；空白写回为空串。</summary>
     public string GitRepoPath
     {
         get => _gitRepoPath;
         set => SetProperty(ref _gitRepoPath, value);
     }
 
+    /// <summary>分支创建所基于的基线分支名；空白写回为 null。</summary>
     public string GitBaseBranch
     {
         get => _gitBaseBranch;
@@ -34,6 +36,7 @@ public sealed class GitSectionViewModel : ViewModelBase
         set => SetProperty(ref _gitBranchNaming, value);
     }
 
+    /// <summary>自动开 PR 时的目标分支名；空白表示沿用默认。</summary>
     public string GitPrTargetBranch
     {
         get => _gitPrTargetBranch;

@@ -15,19 +15,25 @@ public sealed class StageRowViewModel : ObservableObject
 {
     private readonly StageResult _stage;
 
+    /// <summary>包装单个阶段结果，供工作流与门禁视图绑定。</summary>
     public StageRowViewModel(StageResult stage)
     {
         _stage = stage;
     }
 
+    /// <summary>被包装的领域阶段结果。</summary>
     public StageResult Stage => _stage;
 
+    /// <summary>阶段标识（如 build / review）。</summary>
     public string StageId => _stage.StageId;
 
+    /// <summary>阶段显示名；未命名时回退为阶段标识。</summary>
     public string DisplayName => string.IsNullOrWhiteSpace(_stage.Name) ? _stage.StageId : _stage.Name!;
 
+    /// <summary>阶段当前状态（驱动状态点着色）。</summary>
     public TaskStatus Status => _stage.Status;
 
+    /// <summary>阶段状态的中文文案。</summary>
     public string StatusText => _stage.Status switch
     {
         TaskStatus.Pending => "待执行",
@@ -48,17 +54,22 @@ public sealed class StageRowViewModel : ObservableObject
         ? "门禁未运行"
         : _stage.GatePassed ? "门禁通过" : "门禁未过";
 
+    /// <summary>门禁是否已运行且未通过（用于高亮失败行）。</summary>
     public bool GateFailed => _stage.Status != TaskStatus.Pending && !_stage.GatePassed;
 
+    /// <summary>修订循环次数文案；未发生修订时显示「无修订循环」。</summary>
     public string LoopText => _stage.LoopCount > 0 ? $"修订循环 {_stage.LoopCount} 次" : "无修订循环";
 
     /// <summary>门禁遗留问题清单（门禁未过时有值）。</summary>
     public string? Leftover => _stage.GateLeftover;
 
+    /// <summary>是否存在门禁遗留问题（控制遗留清单可见性）。</summary>
     public bool HasLeftover => !string.IsNullOrWhiteSpace(_stage.GateLeftover);
 
+    /// <summary>阶段输出摘要，可能为 null。</summary>
     public string? OutputSummary => _stage.OutputSummary;
 
+    /// <summary>执行该阶段所用的账号与模型，以「·」连接展示。</summary>
     public string? ExecutionText => string.Join(" · ", new[]
     {
         string.IsNullOrEmpty(_stage.AccountUsed) ? null : _stage.AccountUsed,
@@ -72,6 +83,7 @@ public sealed class StageRowViewModel : ObservableObject
 /// </summary>
 public sealed class DagRowViewModel : ObservableObject
 {
+    /// <summary>以任务项、拓扑层级与被阻塞依赖创建依赖看板行。</summary>
     public DagRowViewModel(TaskItem item, int level, IReadOnlyList<string> blockedBy)
     {
         Item = item;
@@ -79,6 +91,7 @@ public sealed class DagRowViewModel : ObservableObject
         BlockedBy = blockedBy;
     }
 
+    /// <summary>被展示的领域任务项。</summary>
     public TaskItem Item { get; }
 
     /// <summary>拓扑层级（0 = 无依赖；每多一层依赖 +1），用于看板缩进。</summary>
@@ -87,10 +100,13 @@ public sealed class DagRowViewModel : ObservableObject
     /// <summary>当前仍在阻断本任务的上游依赖 Id（依赖失败/阻塞/悬空）。</summary>
     public IReadOnlyList<string> BlockedBy { get; }
 
+    /// <summary>任务标识。</summary>
     public string Id => Item.Id;
 
+    /// <summary>任务当前状态。</summary>
     public TaskStatus Status => Item.Status;
 
+    /// <summary>任务状态的中文文案（待命任务标注等依赖）。</summary>
     public string StatusText => Item.Status switch
     {
         TaskStatus.Pending => Item.DependsOn is { Count: > 0 } ? "待命（等依赖）" : "待处理",
@@ -106,13 +122,17 @@ public sealed class DagRowViewModel : ObservableObject
     /// <summary>看板缩进（每层 20px）。</summary>
     public Thickness Indent => new(Level * 20, 0, 0, 0);
 
+    /// <summary>依赖列表文案；无依赖时显示「无依赖」。</summary>
     public string DependsText => Item.DependsOn is { Count: > 0 }
         ? "依赖：" + string.Join("、", Item.DependsOn)
         : "无依赖";
 
+    /// <summary>是否存在上游阻塞（控制阻塞提示可见性）。</summary>
     public bool IsBlockedByVisible => BlockedBy.Count > 0;
 
+    /// <summary>仍在阻断本任务的上游依赖 Id 文案。</summary>
     public string BlockedByText => "被阻塞：" + string.Join("、", BlockedBy);
 
+    /// <summary>工作流徽标文字；非工作流任务为空串。</summary>
     public string WorkflowBadge => Item.IsWorkflow ? "工作流" : string.Empty;
 }

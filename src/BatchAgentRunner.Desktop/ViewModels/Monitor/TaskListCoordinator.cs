@@ -20,7 +20,7 @@ internal sealed class TaskListCoordinator
     private readonly ObservableCollection<DagRowViewModel> _dagRows = new();
     private readonly ObservableCollection<StageRowViewModel> _selectedStages = new();
 
-    /// <summary>任务列表行（筛选 chip 的数据源经 <see cref="TaskFilterState"/> 过滤）。</summary>
+    /// <summary>任务列表行（筛选 chip 的数据源经 <c>TaskFilterState</c> 过滤）。</summary>
     public ObservableCollection<TaskRowViewModel> Tasks => _tasks;
 
     /// <summary>依赖看板行（DagBoardView 数据源；仅当批次含 DAG 依赖时有内容）。</summary>

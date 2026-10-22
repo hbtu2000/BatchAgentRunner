@@ -16,6 +16,7 @@ public sealed class LoginAccountRow : ObservableObject
     private string _snapshotStatus;
     private bool _isConfirmingDelete;
 
+    /// <summary>以账号配置、快照描述与 Live 标记初始化行及其命令。</summary>
     public LoginAccountRow(AccountConfig account, string snapshotStatus, bool isCurrentLive, LoginViewModel owner)
     {
         Account = account;
@@ -28,19 +29,24 @@ public sealed class LoginAccountRow : ObservableObject
         CancelDeleteCommand = new RelayCommand(() => owner.CancelDelete(this));
     }
 
+    /// <summary>账号配置实体（Id、显示名、凭据引用等）。</summary>
     public AccountConfig Account { get; }
 
+    /// <summary>账号显示名；空白时退回账号 Id。</summary>
     public string DisplayName =>
         string.IsNullOrWhiteSpace(Account.DisplayName) ? Account.Id : Account.DisplayName;
 
+    /// <summary>账号唯一标识（来自账号配置）。</summary>
     public string Id => Account.Id;
 
+    /// <summary>Vault 快照的可读描述，切换或重建后更新。</summary>
     public string SnapshotStatus
     {
         get => _snapshotStatus;
         set => SetProperty(ref _snapshotStatus, value);
     }
 
+    /// <summary>是否 CLI 当前正在使用的身份（构造时确定）。</summary>
     public bool IsCurrentLive { get; }
 
     /// <summary>两段式删除确认：第一次点只亮确认按钮，第二次点才真正删除。</summary>
@@ -56,6 +62,7 @@ public sealed class LoginAccountRow : ObservableObject
         }
     }
 
+    /// <summary>是否处于普通（非删除确认）状态，供按钮显隐绑定。</summary>
     public bool IsNotConfirmingDelete => !_isConfirmingDelete;
 
     /// <summary>一键切换：把该账号的 Vault 快照回填为 CLI 当前身份。</summary>

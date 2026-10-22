@@ -21,30 +21,35 @@ public sealed class WorkflowSectionViewModel : ViewModelBase
     private bool _collectDiffs;
     private string _diffGlobsText = string.Empty;
 
+    /// <summary>门禁不通过时的默认最大修订轮数（下限 1）。</summary>
     public int DefaultMaxGateLoops
     {
         get => _defaultMaxGateLoops;
         set => SetProperty(ref _defaultMaxGateLoops, value);
     }
 
+    /// <summary>是否允许阶段间复用会话继续执行。</summary>
     public bool EnableSessionResume
     {
         get => _enableSessionResume;
         set => SetProperty(ref _enableSessionResume, value);
     }
 
+    /// <summary>是否把阶段产出就地回写到源 Markdown 文件。</summary>
     public bool MarkdownInPlaceWriteback
     {
         get => _markdownInPlaceWriteback;
         set => SetProperty(ref _markdownInPlaceWriteback, value);
     }
 
+    /// <summary>依赖任务失败时的处理策略（阻断 / 中止 / 跳过）。</summary>
     public DependencyFailurePolicy DependencyFailurePolicy
     {
         get => _dependencyFailurePolicy;
         set => SetProperty(ref _dependencyFailurePolicy, value);
     }
 
+    /// <summary>依赖失败策略下拉的可选值列表。</summary>
     public IReadOnlyList<DependencyFailurePolicy> DependencyPolicies { get; } =
         new[]
         {

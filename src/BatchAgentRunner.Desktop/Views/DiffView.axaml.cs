@@ -5,6 +5,7 @@ namespace BatchAgentRunner.Desktop.Views;
 /// <summary>变更概览页（二期 diff 视图）。</summary>
 public partial class DiffView : UserControl
 {
+    /// <summary>初始化 XAML 组件。</summary>
     public DiffView()
     {
         InitializeComponent();

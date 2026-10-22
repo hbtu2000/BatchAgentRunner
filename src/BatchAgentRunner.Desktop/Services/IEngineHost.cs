@@ -64,16 +64,36 @@ public interface IEngineHost : IDisposable
     /// <summary>属性变更通知（EngineHost 继承 ObservableObject）。</summary>
     event PropertyChangedEventHandler? PropertyChanged;
 
+    /// <summary>加载配置并初始化引擎（应用启动时调用）。</summary>
     Task InitializeAsync();
+    /// <summary>配置变更后重建引擎，使账号 / 模型 / 时段即时生效。</summary>
+    /// <param name="cancellationToken">取消令牌。</param>
     Task RebuildEngineAsync(CancellationToken cancellationToken = default);
+    /// <summary>把当前配置写回配置存储。</summary>
     Task SaveConfigAsync();
+    /// <summary>按账号实时拉取可用模型列表，失败时返回空列表。</summary>
+    /// <param name="account">目标账号；null 表示按默认账号视角查询。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     Task<IReadOnlyList<ModelCatalogEntry>> FetchModelsAsync(AccountConfig? account = null, CancellationToken cancellationToken = default);
+    /// <summary>从任务文件加载任务列表。</summary>
     Task<IReadOnlyList<TaskItem>> LoadTasksAsync();
+    /// <summary>为全部启用账号领取每日积分，并写入台账与报告。</summary>
+    /// <param name="force">true 表示忽略当日已领取记录强制再领。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     Task<CreditsClaimSummary> ClaimDailyCreditsAsync(bool force = true, CancellationToken cancellationToken = default);
+    /// <summary>执行批前预检并返回预检报告。</summary>
     Task<PreflightReport> PreflightAsync();
+    /// <summary>启动批处理并返回批次报告。</summary>
+    /// <param name="waitIfUnavailable">当前不可运行时是否等待可用（false 则立即返回）。</param>
+    /// <param name="cancellationToken">取消令牌。</param>
     Task<BatchReport> StartAsync(bool waitIfUnavailable, CancellationToken cancellationToken = default);
+    /// <summary>请求终止批处理。</summary>
+    /// <param name="waitCurrentTask">true 表示等当前任务结束后再停。</param>
     Task TerminateAsync(bool waitCurrentTask = false);
+    /// <summary>取消等待中的批次。</summary>
     void CancelWaiting();
+    /// <summary>通知引擎配置已变更。</summary>
     void NotifyConfigurationChanged();
+    /// <summary>清空全部账号的冷却记录。</summary>
     void ResetAllCooldowns();
 }

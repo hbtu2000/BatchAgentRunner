@@ -22,6 +22,7 @@ public sealed class ModelsAccountSectionViewModel : ViewModelBase
     private ModelPoolMode _modelPoolMode = ModelPoolMode.Shared;
     private bool _isFetchingModels;
 
+    /// <summary>初始化命令并注入引擎宿主与配置页共享状态槽。</summary>
     public ModelsAccountSectionViewModel(IEngineHost host, ConfigStatus status)
     {
         _host = host;
@@ -47,25 +48,32 @@ public sealed class ModelsAccountSectionViewModel : ViewModelBase
         FetchModelsForAccountCommand = new AsyncRelayCommand<AccountEditor>(FetchModelsForAccountAsync);
     }
 
+    /// <summary>共享模式下的候选模型池（有序，可增删与上下移动）。</summary>
     public ObservableCollection<ModelEditor> Models { get; private set; } = new();
 
+    /// <summary>账号卡集合，每项持有账号配置与自有模型池。</summary>
     public ObservableCollection<AccountEditor> Accounts { get; private set; } = new();
 
     /// <summary>共享模式下，全局模型行下拉可选用的「可用模型名」（由「拉取可用模型」填充；含已配置折扣的展示）。</summary>
     public ObservableCollection<ModelOption> AvailableModels { get; } = new();
 
+    /// <summary>是否正在拉取共享模型清单（拉取期间禁用按钮）。</summary>
     public bool IsFetchingModels
     {
         get => _isFetchingModels;
         private set => SetProperty(ref _isFetchingModels, value);
     }
 
+    /// <summary>点击后在共享模型池追加一行空白模型。</summary>
     public IRelayCommand AddModelCommand { get; }
 
+    /// <summary>点击后从共享模型池移除指定模型行。</summary>
     public IRelayCommand<ModelEditor> RemoveModelCommand { get; }
 
+    /// <summary>点击后将指定模型行上移一位（已在首位则不动）。</summary>
     public IRelayCommand<ModelEditor> MoveModelUpCommand { get; }
 
+    /// <summary>点击后将指定模型行下移一位（已在末位则不动）。</summary>
     public IRelayCommand<ModelEditor> MoveModelDownCommand { get; }
 
     /// <summary>拉取当前执行工具支持的模型清单（共享模式用，填充全局下拉）。</summary>
@@ -93,7 +101,9 @@ public sealed class ModelsAccountSectionViewModel : ViewModelBase
         }
     }
 
+    /// <summary>当前是否为共享模型池模式（供单选按钮与显隐绑定）。</summary>
     public bool IsSharedMode => _modelPoolMode == ModelPoolMode.Shared;
+    /// <summary>当前是否为每账号独立模型池模式（供界面绑定）。</summary>
     public bool IsPerAccountMode => _modelPoolMode == ModelPoolMode.PerAccount;
 
     /// <summary>RadioButton 双向绑定用：选中 = 切到共享模式。</summary>

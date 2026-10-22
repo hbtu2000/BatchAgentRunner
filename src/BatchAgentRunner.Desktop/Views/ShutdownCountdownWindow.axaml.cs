@@ -13,6 +13,7 @@ public partial class ShutdownCountdownWindow : Window
     private readonly DispatcherTimer _timer;
     private int _remainingSeconds;
 
+    /// <summary>以给定秒数启动关机倒计时，关闭时返回是否执行关机。</summary>
     public ShutdownCountdownWindow(int countdownSeconds)
     {
         InitializeComponent();
@@ -46,6 +47,7 @@ public partial class ShutdownCountdownWindow : Window
         Close(proceed);
     }
 
+    /// <summary>窗口关闭时停止计时器，避免已关闭窗口继续倒计时。</summary>
     protected override void OnClosing(WindowClosingEventArgs e)
     {
         _timer.Stop();

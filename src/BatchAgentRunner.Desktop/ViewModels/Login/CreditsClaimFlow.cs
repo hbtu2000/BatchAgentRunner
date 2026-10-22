@@ -15,6 +15,7 @@ internal sealed class CreditsClaimFlow : IDisposable
     private readonly ILoginView _view;
     private CancellationTokenSource? _cts;
 
+    /// <summary>以登录页视图缝初始化每日积分领取流程。</summary>
     public CreditsClaimFlow(ILoginView view)
     {
         _view = view;

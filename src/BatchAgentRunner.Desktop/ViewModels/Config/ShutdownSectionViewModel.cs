@@ -12,12 +12,14 @@ public sealed class ShutdownSectionViewModel : ViewModelBase
     private bool _shutdownOnlyZeroFailure;
     private int _shutdownCountdown = 60;
 
+    /// <summary>是否在批次结束后自动关机（REQ-015）。</summary>
     public bool ShutdownEnabled
     {
         get => _shutdownEnabled;
         set => SetProperty(ref _shutdownEnabled, value);
     }
 
+    /// <summary>是否仅在失败率为零时才执行自动关机。</summary>
     public bool ShutdownOnlyZeroFailure
     {
         get => _shutdownOnlyZeroFailure;

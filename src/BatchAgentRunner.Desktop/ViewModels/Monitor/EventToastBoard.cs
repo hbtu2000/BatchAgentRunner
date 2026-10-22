@@ -7,7 +7,7 @@ namespace BatchAgentRunner.Desktop.ViewModels;
 
 /// <summary>
 /// 事件提示板（P-06 从 <see cref="MonitorViewModel"/> 抽离）。
-/// 独占 <see cref="Toasts"/> 集合与两级写入：引擎事件 <see cref="Add"/>（按事件级别映射 +
+/// 独占 <c>Toasts</c> 集合与两级写入：引擎事件 <see cref="Add"/>（按事件级别映射 +
 /// 二期关注类消息关键词升级告警）与操作失败 <see cref="AddIssue"/>（状态栏 + 提示板双写，
 /// 避免「点了按钮似乎没反应」——状态栏在窗口最底部极易被忽略，2026-10-18 现场）。
 /// 上限 100 条，超出从尾部淘汰。
@@ -41,6 +41,8 @@ internal sealed class EventToastBoard
     }
 
     /// <summary>需要用户注意的失败提示：与 <see cref="Add"/> 同一块提示板，调用方负责同步状态栏。</summary>
+    /// <param name="message">要展示的提示正文。</param>
+    /// <param name="level">提示级别（info / warning / danger），决定配色。</param>
     public void AddIssue(string message, string level)
     {
         Insert(level, message, DateTimeOffset.Now);

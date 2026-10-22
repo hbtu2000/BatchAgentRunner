@@ -21,10 +21,7 @@ public sealed class FieldEditor<TValue> : ObservableObject
     private readonly Action? _onTextChanged;
     private string _text;
 
-    /// <param name="displayName">字段人话名（校验反馈文案用）。</param>
-    /// <param name="text">初始编辑文本。</param>
-    /// <param name="tryParse">字段解析器（见 <see cref="FieldParsers"/>）。</param>
-    /// <param name="onTextChanged">文本变更回调（宿主据此刷新时段预览等派生态；可空）。</param>
+    /// <summary>以字段名、初始文本与解析函数创建可校验编辑字段。</summary>
     public FieldEditor(
         string displayName,
         string text,
