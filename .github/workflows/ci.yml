@@ -1,6 +1,12 @@
 name: CI
 
-# 阶段 -1 / P0-16：最小 CI，只报告不阻断。
+# ARCH P-11（2026-10-22 收口）：本工作流已从「只报告不阻断」转为**阻断门禁**。
+#
+# 阻断语义：
+#   · 任一步骤失败（构建 / 格式 / 单测 / 覆盖率）→ job `build-and-test` 失败；
+#   · 将 job 名 `build-and-test` 配为 master 分支保护（branch protection）的
+#     required status check 后，红 CI 即阻止 PR 合并——该配置属 GitHub 仓库
+#     管理设置（非仓库文件），由仓库管理员执行，操作步骤见 ARCH 方案 P-11 执行记录。
 #
 # 关键约束（对应 P0-12 的 0 警告假象）：
 #   build 必须 --no-incremental 全量重建，否则增量构建不重跑分析器，
@@ -11,14 +17,18 @@ name: CI
 #   已由阶段 1 逐项修复/登记（见治理方案 §5.4）。
 #
 # 阶段 1 / P2-20（测试分层）：测试按 [Trait("Category", ...)] 分层，
-#   - 快跑（单元）：默认 bucket（无 Category 标记） + Desktop.Tests，CI 主流程跑；
+#   - 快跑（单元）：默认 bucket（无 Category 标记） + Desktop.Tests，CI 主流程跑，
+#     并采集覆盖率（tests/coverlet.runsettings，coverlet.collector cobertura 格式）；
 #   - 慢跑（集成）：Category=E2E / Usability / Process（E2E 管线、可用性旅程、
-#     真实进程 CliProcessRunner）单独跑，便于在慢机器/长超时下隔离。
+#     真实进程 CliProcessRunner）单独跑，不采覆盖率，保证门禁可重复、不受慢机器影响。
 #
-# “只报告不阻断”指：本工作流尚未作为必需状态检查（branch protection /
-# required status check）接入合并门禁。门禁转阻断见技术债务治理方案
-# 阶段 1（§4.9，迭代 4）。当前即使测试失败，也不会自动阻止 push / PR 合并；
-# 但 TreatWarningsAsErrors 已让「新增警告」在构建期失败（本地与 CI 均生效）。
+# ARCH P-11 新增两道门禁：
+#   1. 格式门禁：scripts/ci/Assert-Format.ps1 = dotnet format --verify-no-changes
+#      （过滤 SDK 10.0.401 CHARSET 假阳性，见脚本头注释），真实格式漂移即失败；
+#   2. 覆盖率门禁：scripts/ci/Assert-Coverage.ps1 解析 cobertura 文件，按
+#      P-11 收口锁定基线（Core 44% / Infrastructure 39% / Agents 23% / Desktop 50%）
+#      逐生产程序集断言，低于阈值即失败；§7.3 长期目标（85/70/50）为爬升方向，
+#      阈值随覆盖率提升在脚本内显式上调。
 
 on:
   push:
@@ -42,14 +52,27 @@ jobs:
       - name: Build (full, no-incremental)
         run: dotnet build --no-incremental -c Debug
 
+      # 格式门禁（P-11）：dotnet format --verify-no-changes，CHARSET 假阳性按脚本头过滤
+      - name: Format gate (dotnet format --verify-no-changes)
+        run: pwsh -File scripts/ci/Assert-Format.ps1
+
       # 快跑（单元）：排除 E2E / Usability / Process 三个慢/集成 bucket。
       # Desktop.Tests 无 Category 标记，全部归入快跑。
-      - name: Test (fast, unit) - report only
-        run: |
-          dotnet test tests/BatchAgentRunner.Tests/BatchAgentRunner.Tests.csproj --no-build --filter "Category!=E2E&Category!=Usability&Category!=Process" --logger "console;verbosity=normal"
-          dotnet test tests/BatchAgentRunner.Desktop.Tests/BatchAgentRunner.Desktop.Tests.csproj --no-build --logger "console;verbosity=normal"
+      # 覆盖率采集经 --settings tests/coverlet.runsettings（coverlet.collector，
+      # cobertura 格式 + SkipAutoProps），产物 tests/*/TestResults/*/coverage.cobertura.xml
+      # 由下方覆盖率门禁消费。
+      - name: Test (fast, unit) + coverage
+        run: dotnet test tests/BatchAgentRunner.Tests/BatchAgentRunner.Tests.csproj --no-build --filter "Category!=E2E&Category!=Usability&Category!=Process" --settings tests/coverlet.runsettings --logger "console;verbosity=normal"
+
+      - name: Test (fast, unit, Desktop) + coverage
+        run: dotnet test tests/BatchAgentRunner.Desktop.Tests/BatchAgentRunner.Desktop.Tests.csproj --no-build --settings tests/coverlet.runsettings --logger "console;verbosity=normal"
 
       # 慢跑（集成）：仅 E2E / Usability / Process。
-      # 真实进程与文件落盘类测试耗时较长且环境敏感，单独隔离、不拖累单元反馈速度。
-      - name: Test (slow, E2E/Usability/Process) - report only
+      # 真实进程与文件落盘类测试耗时较长且环境敏感，单独隔离、不拖累单元反馈速度，
+      # 且不采覆盖率（采集范围锁定快跑 bucket，见 tests/coverlet.runsettings 头注释）。
+      - name: Test (slow, E2E/Usability/Process)
         run: dotnet test tests/BatchAgentRunner.Tests/BatchAgentRunner.Tests.csproj --no-build --filter "Category=E2E|Category=Usability|Category=Process" --logger "console;verbosity=normal"
+
+      # 覆盖率门禁（P-11）：低于锁定基线即失败（exit 1 → job 失败）
+      - name: Coverage gate (Assert-Coverage.ps1)
+        run: pwsh -File scripts/ci/Assert-Coverage.ps1
