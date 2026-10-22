@@ -48,11 +48,21 @@ dotnet build <受影响工程集或全量 sln>
 本仓库有活跃的技术债治理（见 `docs/TECH-DEBT-技术债务治理方案-v2.0.md`），并发会话常同时改仓。
 动手前先跑治理 / 健康检查脚本确认当前状态，避免在过期结论上反复返工。
 
-## 六、速查
+## 六、公共 API 文档与安全红线（ARCH P-12 起强制）
+
+- **新增/修改公共 API 必须写 XML 文档**：四个 `src` 生产工程已开 `GenerateDocumentationFile`，
+  缺文档（`CS1591`）在严格构建下直接是**错误**；占位式「成员名。」文档不算文档（`CommentHygieneTests` 会红）。
+- **命名规则**由格式门禁判定（`dotnet format` → `IDE1006`）：接口 `I` 前缀、类型与对外可见成员 PascalCase、
+  参数与局部变量 camelCase、私有实例字段 `_camelCase`、静态字段 PascalCase。命令行 `dotnet build` 不报命名，别当无事发生。
+- **安全红线**（`SecurityHygieneTests`）：命令参数只经 `CliCommandBuilder`（用户可控占位符必走
+  `Quote(NormalizeToSingleLine(…))`，引号实现唯一）；Vault 账号 ID 入口必先 `NormalizeAccountId`；
+  源码不得出现硬编码密钥。改这两处实现须同步改守卫，否则红灯即提醒。
+
+## 七、速查
 | 场景 | 命令 |
 |------|------|
 | 迭代验证（fast） | `dotnet build <改到的工程> -p:NEXYAW_FAST_BUILD=1 --no-restore` |
-| 末次过关（strict） | `dotnet build <受影响集/全量>`（不带 fast 参数）|
+| 末次过关（strict） | `dotnet build <受影响集/全量>`（不带 fast 参数；公共 API 缺文档=错误）|
 | 关键原则 | 不靠 `export`，把 `-p:NEXYAW_FAST_BUILD=1` 写进命令；范围越小越快 |
 
 > 权威跨项目手册：`NexYaw3D/docs/偿还技术债耗时优化_具体解决办法_跨项目手册.md`

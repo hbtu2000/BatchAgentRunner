@@ -138,6 +138,9 @@
 | H9 | 暂停等待时长从任务/批处理时长剔除 | 🟡 | 单测 `ApplyPausedExclusion` |
 | H10 | 库层 async 必须 `.ConfigureAwait(false)`（测试方法相反：一律省略，见 xUnit1030） | 🟡 | 分析器 `CA2007`（生产为 error；测试项目经 §4.7 台账豁免） |
 | H11 | 不新增分析器警告（存量已清零） | 🔴 | `TreatWarningsAsErrors=true`，构建期即失败 |
+| H22 | 公共 API（类型/成员/枚举值/参数）必须有 XML 文档注释 | 🔴 | `CS1591` + `TreatWarningsAsErrors`，构建期即失败（P-12） |
+| H23 | 命名：接口 `I` 前缀；类型与**对外可见**成员 PascalCase；参数与局部变量 camelCase；私有实例字段 `_camelCase`；静态字段（含 `const`/`static readonly`）PascalCase | 🟡 | `dotnet format`（`IDE1006`，格式门禁；构建期不报，别因此当成无需遵守） |
+| H24 | 安全不变量：命令参数只经 `CliCommandBuilder`（用户可控占位符必走 `Quote(NormalizeToSingleLine(…))`）；Vault 账号 ID 入口必先 `NormalizeAccountId`；源码不得出现硬编码密钥 | 🔴 | `SecurityHygieneTests`（7 项，P-12） |
 | H12 | 包版本只写在 `Directory.Packages.props` | 🔴 | CPM + NU1008 构建错误 |
 | H13 | 测试分层：E2E/Usability/Process 打 `[Trait("Category", …)]`；高危路径（凭证/进程/Git/安全拦截/二进制写回）须带测试 | 🟡 | CI 快慢两步 + 人工 |
 | H14 | 持 `IDisposable` 字段的类型自身须可释放（`SemaphoreSlim`/`CancellationTokenSource`/日志） | 🟡 | 分析器 `CA1001`（error） |
@@ -219,6 +222,8 @@
 ## 7. 工具与自动化基线
 
 ### 7.1 立刻补的 `.editorconfig`（复制到仓库根，零风险）
+
+> 2026-10-22 更新：本小节是治理起点的**初始片段留痕**。仓库根 `.editorconfig` 已在此之上扩充为团队级规则集（ARCH P-12：6 组命名规则 + 安全 CA 规则 `error` + `end_of_line=lf` 等），以仓库实际文件为准。
 ```ini
 root = true
 
