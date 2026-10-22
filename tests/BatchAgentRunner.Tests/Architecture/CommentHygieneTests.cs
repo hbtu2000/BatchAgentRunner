@@ -57,6 +57,51 @@ public class CommentHygieneTests
             "\n处置：与实现不符的改为如实描述；真实延期登记「TECH-DEBT-技术债务治理方案-v2.0.md §4.7 计划性延期台账」后在注释中引用台账 ID。");
     }
 
+    /// <summary>机械占位：`/// &lt;summary&gt;成员名。&lt;/summary&gt;`（正文只是标识符本身）。</summary>
+    private static readonly Regex PlaceholderSummary =
+        new(@"///\s*<summary>([A-Za-z_]\w*)。</summary>", RegexOptions.Compiled);
+
+    /// <summary>机械占位：`/// &lt;param name="x"&gt;x。&lt;/param&gt;`（正文只是参数名本身）。</summary>
+    private static readonly Regex PlaceholderParam =
+        new(@"///\s*<param name=""([A-Za-z_]\w*)"">([A-Za-z_]\w*)。</param>", RegexOptions.Compiled);
+
+    [Fact]
+    public void Src文档注释_不得以成员名作summary或参数名作param_占位不算文档()
+    {
+        // ARCH P-12 恢复 CS1591 后，「补文档」的捷径是给每个成员塞一行「成员名。」——
+        // 这能过编译却零信息量，且会掩盖真正缺文档的成员。CS1591 只保证「有文档」，
+        // 本守卫保证「文档有信息」：正文必须描述行为/时机/语义，而不是复述标识符。
+        var srcRoot = LocateSrcRoot();
+        var violations = new List<string>();
+        foreach (var file in Directory.GetFiles(srcRoot, "*.cs", SearchOption.AllDirectories)
+                     .Where(p => !p.Contains($"{Path.DirectorySeparatorChar}obj{Path.DirectorySeparatorChar}", StringComparison.Ordinal) &&
+                                 !p.Contains($"{Path.DirectorySeparatorChar}bin{Path.DirectorySeparatorChar}", StringComparison.Ordinal))
+                     .OrderBy(p => p, StringComparer.Ordinal))
+        {
+            var relative = Path.GetRelativePath(Directory.GetParent(srcRoot)!.FullName, file);
+            var lines = File.ReadAllLines(file);
+            for (var i = 0; i < lines.Length; i++)
+            {
+                var summary = PlaceholderSummary.Match(lines[i]);
+                if (summary.Success)
+                {
+                    violations.Add($"{relative}:{i + 1} summary 正文 = 成员名「{summary.Groups[1].Value}」");
+                }
+
+                var param = PlaceholderParam.Match(lines[i]);
+                if (param.Success && param.Groups[1].Value == param.Groups[2].Value)
+                {
+                    violations.Add($"{relative}:{i + 1} param 正文 = 参数名「{param.Groups[1].Value}」");
+                }
+            }
+        }
+
+        Assert.True(
+            violations.Count == 0,
+            "发现机械占位式 XML 文档（ARCH P-12）：\n" + string.Join('\n', violations) +
+            "\n处置：写清该成员做什么 / 何时被调用 / 参数的业务含义；只复述标识符不算文档。");
+    }
+
     /// <summary>返回违规原因；合规返回 null。</summary>
     private static string? Classify(string comment)
     {

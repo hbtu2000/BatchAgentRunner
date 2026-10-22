@@ -82,10 +82,14 @@ jobs:
       - name: Build (full, no-incremental)
         run: dotnet build --no-incremental -c Debug
 
-      # 仅跑 Desktop.Tests 中 *.Tests.Architecture 命名空间的 IL 扫描断言
-      # （LayeringRulesTests / DesktopBindingRulesTests：分层、防腐层、同步阻塞反模式）。
-      - name: Architecture IL-scan tests (isolated)
+      # Desktop.Tests 的架构断言（分层、防腐层、同步阻塞反模式、编辑器泛型化）。
+      - name: Architecture IL-scan tests (isolated, Desktop)
         run: dotnet test tests/BatchAgentRunner.Desktop.Tests/BatchAgentRunner.Desktop.Tests.csproj --no-build --filter "FullyQualifiedName~Architecture" --logger "console;verbosity=normal"
+
+      # 主测试工程的架构断言（ARCH P-12 起含安全守卫 SecurityHygieneTests：
+      # 命令注入唯一拼装点 / Vault 账号 ID 逐个方法净化 / 源码无硬编码密钥）。
+      - name: Architecture & security guards (isolated, main tests)
+        run: dotnet test tests/BatchAgentRunner.Tests/BatchAgentRunner.Tests.csproj --no-build --filter "FullyQualifiedName~Architecture" --logger "console;verbosity=normal"
 
 # ==================================================================
 # 升级为阻断（稳定后由仓库管理员执行，非仓库文件改动）：

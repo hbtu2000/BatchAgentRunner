@@ -128,7 +128,7 @@ public class ReportWriterPhase2Tests
     }
 
     [Fact]
-    public void diff记录_渲染变更概览按阶段分布()
+    public void Diff记录_渲染变更概览按阶段分布()
     {
         var report = BaseReport();
         report.Diffs.Add(new DiffRecord { TaskId = "t-1", StageId = "fix", FilePath = "src/A.cs", Kind = DiffKind.Modified });

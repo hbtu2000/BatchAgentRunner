@@ -66,7 +66,7 @@ public class CliPermissionSettingsTests : IDisposable
     }
 
     [Fact]
-    public async Task settings损坏时_重建为可用的bypass配置()
+    public async Task Settings损坏时_重建为可用的bypass配置()
     {
         File.WriteAllText(SettingsPath, "{not valid json");
 

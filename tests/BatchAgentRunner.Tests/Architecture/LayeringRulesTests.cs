@@ -101,19 +101,28 @@ public class LayeringRulesTests
 
     /// <summary>
     /// §3.4 第 5 条 + P-02 退出标准：<see cref="BatchEngine"/> facade 文件硬上限 400 行，防止上帝类回潮。
-    /// 扫描源文件物理行数（行为等价性由契约测试守护，此处只守「行数规模」这道量化的架构闸门）。
+    /// 扫描源文件**代码行数**（排除 XML 文档注释行；行为等价性由契约测试守护，此处只守「代码规模」这道量化的架构闸门）。
     /// </summary>
     [Fact]
     public void BatchEngine_facade文件不得超过400行_防上帝类回潮()
     {
-        const int FacadeLineCap = 400;
+        const int facadeLineCap = 400;
         var path = LocateEngineSource();
         Assert.True(File.Exists(path), $"未找到 BatchEngine.cs 源文件：{path}（守卫测试须在仓库检出内运行）");
 
-        var lines = File.ReadAllLines(path).Length;
-        Assert.True(lines <= FacadeLineCap,
-            $"BatchEngine.cs 共 {lines} 行，超过 P-02 上帝类收口上限 {FacadeLineCap} 行；请继续下沉编排到协作者而非在此膨胀。");
+        var lines = CountCodeLines(path);
+        Assert.True(lines <= facadeLineCap,
+            $"BatchEngine.cs 共 {lines} 行（不含 XML 文档注释），超过 P-02 上帝类收口上限 {facadeLineCap} 行；请继续下沉编排到协作者而非在此膨胀。");
     }
+
+    /// <summary>
+    /// 统计源码的**代码行数**（排除 `///` 的 XML 文档注释行）。
+    /// 口径说明（ARCH P-12）：CS1591 恢复后公共 API 文档是强制项，文档行数由「API 面大小」决定、
+    /// 与上帝类回潮无关；若计入闸门，等于用「文档写得全」惩罚架构约束。故本闸门只量代码行，
+    /// 空行与普通注释仍计入（它们不会因补文档而机械膨胀）。
+    /// </summary>
+    private static int CountCodeLines(string path) =>
+        File.ReadAllLines(path).Count(line => !line.TrimStart().StartsWith("///", StringComparison.Ordinal));
 
     private static string LocateEngineSource()
     {
@@ -136,13 +145,13 @@ public class LayeringRulesTests
     [Fact]
     public void TaskRunner_facade文件不得超过400行_防上帝类回潮()
     {
-        const int FacadeLineCap = 400;
+        const int facadeLineCap = 400;
         var path = LocateTaskRunnerSource();
         Assert.True(File.Exists(path), $"未找到 TaskRunner.cs 源文件：{path}（守卫测试须在仓库检出内运行）");
 
-        var lines = File.ReadAllLines(path).Length;
-        Assert.True(lines <= FacadeLineCap,
-            $"TaskRunner.cs 共 {lines} 行，超过 P-03 上帝类收口上限 {FacadeLineCap} 行；请继续下沉决策到策略对象而非在此膨胀。");
+        var lines = CountCodeLines(path);
+        Assert.True(lines <= facadeLineCap,
+            $"TaskRunner.cs 共 {lines} 行（不含 XML 文档注释），超过 P-03 上帝类收口上限 {facadeLineCap} 行；请继续下沉决策到策略对象而非在此膨胀。");
     }
 
     private static string LocateTaskRunnerSource()
@@ -166,13 +175,13 @@ public class LayeringRulesTests
     [Fact]
     public void ConfigViewModel_facade文件不得超过400行_防上帝类回潮()
     {
-        const int FacadeLineCap = 400;
+        const int facadeLineCap = 400;
         var path = LocateConfigViewModelSource();
         Assert.True(File.Exists(path), $"未找到 ConfigViewModel.cs 源文件：{path}（守卫测试须在仓库检出内运行）");
 
-        var lines = File.ReadAllLines(path).Length;
-        Assert.True(lines <= FacadeLineCap,
-            $"ConfigViewModel.cs 共 {lines} 行，超过 P-04 上帝类收口上限 {FacadeLineCap} 行；请继续下沉配置域到子编辑器而非在此膨胀。");
+        var lines = CountCodeLines(path);
+        Assert.True(lines <= facadeLineCap,
+            $"ConfigViewModel.cs 共 {lines} 行（不含 XML 文档注释），超过 P-04 上帝类收口上限 {facadeLineCap} 行；请继续下沉配置域到子编辑器而非在此膨胀。");
     }
 
     private static string LocateConfigViewModelSource()
@@ -197,13 +206,13 @@ public class LayeringRulesTests
     [Fact]
     public void TemplateEditorViewModel_facade文件不得超过400行_防上帝类回潮()
     {
-        const int FacadeLineCap = 400;
+        const int facadeLineCap = 400;
         var path = LocateTemplateEditorViewModelSource();
         Assert.True(File.Exists(path), $"未找到 TemplateEditorViewModel.cs 源文件：{path}（守卫测试须在仓库检出内运行）");
 
-        var lines = File.ReadAllLines(path).Length;
-        Assert.True(lines <= FacadeLineCap,
-            $"TemplateEditorViewModel.cs 共 {lines} 行，超过 P-05 上帝类收口上限 {FacadeLineCap} 行；请继续下沉交互逻辑到 Coordinator 而非在此膨胀。");
+        var lines = CountCodeLines(path);
+        Assert.True(lines <= facadeLineCap,
+            $"TemplateEditorViewModel.cs 共 {lines} 行（不含 XML 文档注释），超过 P-05 上帝类收口上限 {facadeLineCap} 行；请继续下沉交互逻辑到 Coordinator 而非在此膨胀。");
     }
 
     private static string LocateTemplateEditorViewModelSource()
@@ -227,13 +236,13 @@ public class LayeringRulesTests
     [Fact]
     public void MonitorViewModel_facade文件不得超过400行_防上帝类回潮()
     {
-        const int FacadeLineCap = 400;
+        const int facadeLineCap = 400;
         var path = LocateViewModelSource("MonitorViewModel.cs");
         Assert.True(File.Exists(path), $"未找到 MonitorViewModel.cs 源文件：{path}（守卫测试须在仓库检出内运行）");
 
-        var lines = File.ReadAllLines(path).Length;
-        Assert.True(lines <= FacadeLineCap,
-            $"MonitorViewModel.cs 共 {lines} 行，超过 P-06 上帝类收口上限 {FacadeLineCap} 行；请继续下沉交互逻辑到 Coordinator 而非在此膨胀。");
+        var lines = CountCodeLines(path);
+        Assert.True(lines <= facadeLineCap,
+            $"MonitorViewModel.cs 共 {lines} 行（不含 XML 文档注释），超过 P-06 上帝类收口上限 {facadeLineCap} 行；请继续下沉交互逻辑到 Coordinator 而非在此膨胀。");
     }
 
     /// <summary>
@@ -245,13 +254,13 @@ public class LayeringRulesTests
     [Fact]
     public void LoginViewModel_facade文件不得超过400行_防上帝类回潮()
     {
-        const int FacadeLineCap = 400;
+        const int facadeLineCap = 400;
         var path = LocateViewModelSource("LoginViewModel.cs");
         Assert.True(File.Exists(path), $"未找到 LoginViewModel.cs 源文件：{path}（守卫测试须在仓库检出内运行）");
 
-        var lines = File.ReadAllLines(path).Length;
-        Assert.True(lines <= FacadeLineCap,
-            $"LoginViewModel.cs 共 {lines} 行，超过 P-06 上帝类收口上限 {FacadeLineCap} 行；请继续下沉交互逻辑到 Coordinator 而非在此膨胀。");
+        var lines = CountCodeLines(path);
+        Assert.True(lines <= facadeLineCap,
+            $"LoginViewModel.cs 共 {lines} 行（不含 XML 文档注释），超过 P-06 上帝类收口上限 {facadeLineCap} 行；请继续下沉交互逻辑到 Coordinator 而非在此膨胀。");
     }
 
     private static string LocateViewModelSource(string fileName)
