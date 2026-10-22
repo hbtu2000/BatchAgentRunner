@@ -29,6 +29,11 @@ name: CI
 #      P-11 收口锁定基线（Core 44% / Infrastructure 39% / Agents 23% / Desktop 50%）
 #      逐生产程序集断言，低于阈值即失败；§7.3 长期目标（85/70/50）为爬升方向，
 #      阈值随覆盖率提升在脚本内显式上调。
+#
+# ARCH P-14（A-12）新增配置契约门禁：
+#   scripts/ci/Assert-ConfigSchema.ps1 —— 校验 docs/config.schema.json 与 RunOptions 契约
+#   逐字同步（键集合相等）、samples/config.example.json 通过 schema、畸形配置被拦截。
+#   校验实现只有一处（ConfigSchemaTests），脚本仅作 CI 显式入口，避免第二份校验器漂移。
 
 on:
   push:
@@ -72,6 +77,10 @@ jobs:
       # 且不采覆盖率（采集范围锁定快跑 bucket，见 tests/coverlet.runsettings 头注释）。
       - name: Test (slow, E2E/Usability/Process)
         run: dotnet test tests/BatchAgentRunner.Tests/BatchAgentRunner.Tests.csproj --no-build --filter "Category=E2E|Category=Usability|Category=Process" --logger "console;verbosity=normal"
+
+      # 配置 Schema 门禁（P-14）：schema 与 RunOptions 契约漂移 / 示例配置非法即失败
+      - name: Config schema gate (Assert-ConfigSchema.ps1)
+        run: pwsh -File scripts/ci/Assert-ConfigSchema.ps1
 
       # 覆盖率门禁（P-11）：低于锁定基线即失败（exit 1 → job 失败）
       - name: Coverage gate (Assert-Coverage.ps1)
