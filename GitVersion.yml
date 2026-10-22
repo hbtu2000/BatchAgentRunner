@@ -1,0 +1,25 @@
+# ARCH P-13（A-9 ②，2026-10-22）：版本策略单一事实来源。
+#
+# 模式选择 Mainline：本仓为单主干（master）+ 标签（v*）发布模型，无 develop 长分支，
+# Mainline 模式按「最近标签 + 自标签起的提交高度」派生 SemVer，与 Release 流水线
+# `push tags: v*` 配合即取标签本身为版本（无额外 + 高度后缀），干净可复现。
+#
+# 消费方：`.github/workflows/release.yml` 经 `gittools/actions`
+# （GitVersion/setup + GitVersion/execute）读取本文件，输出 `GitVersion.SemVer`
+# 注入 `dotnet publish -p:Version=...`，保证三平台自包含包版本号一致、可回退。
+#
+# 约定：手动打 `vMAJOR.MINOR.PATCH` 注释标签触发正式发布；未打标签时 Mainline 仍给出
+# 基于最近标签的高度版本，供日常 CI 标识用（Release 流水线仅在 tag / workflow_dispatch 时产出制品）。
+
+mode: Mainline
+
+branches: {}
+
+ignore:
+  sha: []
+  commits-before: 2000-01-01T00:00:00
+
+merge-message-formats: {}
+
+# 仅以 v* 标签作为正式版本锚点；非标签提交沿用 Mainline 高度派生。
+tag-prefix: v

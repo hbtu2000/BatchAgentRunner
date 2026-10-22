@@ -1,0 +1,99 @@
+name: CI Platforms
+
+# ARCH P-13（A-9 ②，2026-10-22）：多平台矩阵 + 架构测试独立桶。
+#
+# 定位（务必读）：
+#   · 本工作流是 `ci.yml`（required status check = `build-and-test` 阻断门禁）的**兄弟工作流**，
+#     不在分支保护的 required status checks 之列——即本工作流红/黄**不阻止 PR 合并**，
+#     只负责「把多平台与架构约束的问题暴露出来」。
+#   · 对应 R-6（多平台暴露隐蔽缺陷）→ **先非阻断跑**：`platform-matrix` 整体 `continue-on-error: true`，
+#     先让 win/mac/linux 三平台把隐蔽缺陷晒出来，稳定后再「去 continue-on-error + 加入 required checks」
+#     转阻断（升级路径见下方「升级为阻断」注释）。
+#   · 架构测试桶（治理方案 §5.4 第 4 点 / §3.4 IL 扫描断言）：此前随 `ci.yml` 快跑 bucket 执行，
+#     现于本工作流独立成 `architecture-tests` job 隔离跑，提升可见性、与快跑 bucket 解耦。
+#
+# 范围：
+#   · `platform-matrix`：三平台各原生 runner 上 `dotnet build --no-incremental` + 快跑单测
+#     （主测试工程排除 E2E/Usability/Process 三个慢/集成 bucket；Desktop.Tests 全量归入快跑）。
+#   · `architecture-tests`：仅跑 `BatchAgentRunner.Desktop.Tests` 中 `*.Tests.Architecture` 命名空间的
+#     IL 扫描断言（分层/防腐层/同步阻塞），与快跑 bucket 物理隔离。
+#
+# 跨平台前提（P-13 同期改造）：`src/BatchAgentRunner.Desktop/BatchAgentRunner.Desktop.csproj` 已按宿主 OS
+#   条件化 `OutputType`（Windows=WinExe，其余=Exe）并剔除 Windows 专有 `app.manifest` / `.ico`，
+#   Release 矩阵各 RID 均在原生 runner 发布，故宿主 OS 判定即对应目标平台，无需交叉发布。
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  # ------------------------------------------------------------------
+  # 多平台矩阵：win / mac / linux 原生 runner 构建 + 快跑单测。
+  # R-6 缓解：先非阻断（continue-on-error），晒缺陷不挡门禁。
+  # ------------------------------------------------------------------
+  platform-matrix:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ windows-latest, macos-latest, ubuntu-latest ]
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # 全量重建：与 ci.yml 一致用 --no-incremental，避免增量构建掩盖真实警告
+      # （非 Windows 平台若出现平台相关警告，TreatWarningsAsErrors 会在此红——属 R-6 待收敛项，
+      #  因本 job continue-on-error，不会阻断主干合并，但会在日志中显式暴露）。
+      - name: Build (full, no-incremental)
+        run: dotnet build --no-incremental -c Debug
+
+      # 快跑（单元）：排除 E2E / Usability / Process 三个慢/集成 bucket。
+      - name: Test (fast, unit)
+        run: dotnet test tests/BatchAgentRunner.Tests/BatchAgentRunner.Tests.csproj --no-build --filter "Category!=E2E&Category!=Usability&Category!=Process" --logger "console;verbosity=normal"
+
+      # 快跑（单元，Desktop headless）：无 Category 标记，全部归入快跑；Avalonia headless 跨平台无需显示器。
+      - name: Test (fast, unit, Desktop)
+        run: dotnet test tests/BatchAgentRunner.Desktop.Tests/BatchAgentRunner.Desktop.Tests.csproj --no-build --logger "console;verbosity=normal"
+
+  # ------------------------------------------------------------------
+  # 架构测试独立桶（§5.4 第 4 点）：IL 扫描断言与快跑 bucket 物理隔离。
+  # 跑在 Windows（与 ci.yml 快跑 bucket 同源宿主），仅过滤 Architecture 命名空间。
+  # 本 job 非 required check，失败不阻断合并；其断言与主门禁架构约束等价、独立暴露。
+  # ------------------------------------------------------------------
+  architecture-tests:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Build (full, no-incremental)
+        run: dotnet build --no-incremental -c Debug
+
+      # 仅跑 Desktop.Tests 中 *.Tests.Architecture 命名空间的 IL 扫描断言
+      # （LayeringRulesTests / DesktopBindingRulesTests：分层、防腐层、同步阻塞反模式）。
+      - name: Architecture IL-scan tests (isolated)
+        run: dotnet test tests/BatchAgentRunner.Desktop.Tests/BatchAgentRunner.Desktop.Tests.csproj --no-build --filter "FullyQualifiedName~Architecture" --logger "console;verbosity=normal"
+
+# ==================================================================
+# 升级为阻断（稳定后由仓库管理员执行，非仓库文件改动）：
+#   1. 观察若干轮 `platform-matrix` 三平台全绿、无 R-6 隐蔽缺陷后，
+#      去掉 `platform-matrix` 上的 `continue-on-error: true`；
+#   2. 在 master 分支保护中把本工作流的 job 名
+#      （`platform-matrix` / `architecture-tests`）加入 required status checks。
+#   注意：架构测试桶亦可不改名直接纳入——它与 ci.yml 快跑 bucket 的架构断言等价，
+#   纳入后 ci.yml 快跑 bucket 中 Desktop.Tests 仍含该断言（重复但无害），
+#   或可在 ci.yml 快跑 Desktop 步加 `--filter "FullyQualifiedName!~Architecture"` 去重。
+# ==================================================================

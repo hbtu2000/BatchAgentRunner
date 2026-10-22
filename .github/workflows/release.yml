@@ -1,0 +1,172 @@
+name: Release
+
+# ARCH P-13（A-9 ②，2026-10-22）：Release 流水线。
+#
+# 触发：
+#   · 打 `vMAJOR.MINOR.PATCH` 注释标签推送到 master → 正式发布（建 GitHub Release + 上传制品）。
+#   · `workflow_dispatch`（可选填 version）→ 手动发布（仅产出 artifacts，不建 Release）。
+#
+# 产出（制品可发布且可回退）：
+#   · 三平台自包含单文件包（win-x64 / linux-x64 / osx-x64 / osx-arm64），版本号由 GitVersion
+#     （见仓库根 `GitVersion.yml`）从标签派生，确保跨平台版本一致、可追溯。
+#   · 每个包的 SHA256 校验和文件（`*.sha256`）随包发布，供下载方做完整性校验（校验）。
+#   · 每次发布都是带版本号的 GitHub Release —— 回退 = 下载上一版本 Release 制品（版本号 + 制品保留）。
+#
+# 关于「签名」：本流水线落地的是**完整性校验（SHA256）**。真正的代码签名
+#   （Windows Authenticode / macOS Apple Developer ID + 公证 / Linux GPG）需要平台证书与密钥，
+#   属机密资产，不在仓库内。接入路径（留待具备证书后）：在各 publish 步后加签名步，
+#   消费 `secrets.WIN_CODESIGN_PFX` / `secrets.APPLE_CERT` / `secrets.GPG_PRIVATE_KEY` 等，
+#   并在 release 步一并上传签名产物。当前以 SHA256 校验兜底「制品未被篡改」。
+#
+# 前置依赖：Release 构建走严格配置（TreatWarningsAsErrors 生效），故打标签前须保证全仓 0 警告
+#   （即 P-12 静态/文档治理收口后）——否则 publish 会因分析器错误失败。详见 ARCH 方案 P-13 执行记录。
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '显式版本号（覆盖 GitVersion；留空则按 GitVersion.yml 派生）'
+        required: false
+        default: ''
+
+permissions:
+  contents: write   # 建 GitHub Release / 上传制品
+
+jobs:
+  # ------------------------------------------------------------------
+  # 版本号派生（GitVersion，Mainline 模式，读 GitVersion.yml）
+  # ------------------------------------------------------------------
+  version:
+    runs-on: windows-latest
+    outputs:
+      semver: ${{ steps.export.outputs.semver }}
+    steps:
+      - name: Checkout (full history for GitVersion)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Install GitVersion
+        uses: gittools/actions/gitversion/setup@v3
+        with:
+          versionSpec: '6.x'
+
+      - name: Determine version
+        id: gitversion
+        uses: gittools/actions/gitversion/execute@v3
+        with:
+          useConfigFile: true
+          configFilePath: GitVersion.yml
+
+      - name: Export SemVer
+        id: export
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.version }}" ]; then
+            echo "semver=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "semver=${{ env.GitVersion_SemVer }}" >> "$GITHUB_OUTPUT"
+          fi
+
+  # ------------------------------------------------------------------
+  # 自包含单文件发布：各 RID 在原生 runner 上 `dotnet publish`
+  # （Desktop.csproj 已按宿主 OS 条件化 OutputType / 剔除 Windows 专有资源）。
+  # ------------------------------------------------------------------
+  publish:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - rid: win-x64
+            os: windows-latest
+          - rid: linux-x64
+            os: ubuntu-latest
+          - rid: osx-x64
+            os: macos-latest
+          - rid: osx-arm64
+            os: macos-latest
+    runs-on: ${{ matrix.os }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # 自包含 + 单文件：target rid 对应原生 runner；版本号由 version job 注入，三平台一致。
+      - name: Publish self-contained single-file
+        run: >
+          dotnet publish src/BatchAgentRunner.Desktop/BatchAgentRunner.Desktop.csproj
+          -c Release -r ${{ matrix.rid }}
+          -p:PublishSingleFile=true -p:SelfContained=true
+          -p:Version=${{ needs.version.outputs.semver }}
+          -p:PublishReadyToRun=false
+          -o publish/${{ matrix.rid }}
+
+      # 完整性校验（校验）：SHA256 of 单文件可执行，供下载方核对。
+      - name: Checksum (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $bin = Get-ChildItem "publish/${{ matrix.rid }}/BatchAgentRunner.Desktop*" | Select-Object -First 1
+          $hash = (Get-FileHash $bin -Algorithm SHA256).Hash
+          "$hash  $($bin.Name)" | Out-File -Encoding ascii "publish/${{ matrix.rid }}/BatchAgentRunner.Desktop.sha256"
+          Write-Host "Wrote checksum for $($bin.Name): $hash"
+
+      - name: Checksum (Linux/macOS)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          BIN=$(ls publish/${{ matrix.rid }}/BatchAgentRunner.Desktop*)
+          sha256sum "$BIN" > "publish/${{ matrix.rid }}/BatchAgentRunner.Desktop.sha256"
+          echo "Wrote checksum for $BIN"
+
+      - name: Upload artifact (${{ matrix.rid }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: batchagentrunner-${{ matrix.rid }}
+          path: publish/${{ matrix.rid }}
+          if-no-files-found: error
+
+  # ------------------------------------------------------------------
+  # 建 GitHub Release（仅打标签推送时）：聚合四平台制品 + 校验和。
+  # 回退方式：下载上一版本 Release 制品即可。
+  # ------------------------------------------------------------------
+  release:
+    needs: publish
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: false
+
+      - name: Stage release assets
+        shell: bash
+        run: |
+          mkdir -p release-assets
+          # 各 RID 目录内的单文件可执行 + *.sha256 一并收集
+          find artifacts -type f \( -name 'BatchAgentRunner.Desktop*' -o -name '*.sha256' \) -exec cp {} release-assets/ \;
+          ls -la release-assets
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-assets/*
+          generate_release_notes: true
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

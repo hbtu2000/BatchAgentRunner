@@ -1,10 +1,18 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <OutputType>WinExe</OutputType>
+    <!-- ARCH P-13（A-9 ②，2026-10-22）：Avalonia 跨平台——Desktop GUI 在 Windows 上为 WinExe（无控制台窗口），
+         在其余平台（macOS/Linux）上降为 Exe，使 `dotnet build` / `dotnet publish` 能在三平台原生 runner 上跑通
+         （关闭「只验 Windows 是缺口」）。本条件按**宿主 OS**判定：Release 矩阵各 RID 均在原生 runner 上发布
+         （win-x64→windows-latest / linux-x64→ubuntu-latest / osx-*→macos-latest），无需跨平台交叉发布，
+         故宿主 OS 判定即可一一对应目标平台。Windows 构建行为与改造前完全一致（WinExe + manifest + ico）。 -->
+    <OutputType Condition="'$([MSBuild]::IsOSPlatform(`Windows`))'">WinExe</OutputType>
+    <OutputType Condition="'$([MSBuild]::IsOSPlatform(`Windows`))' == 'false'">Exe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
-    <ApplicationIcon>Assets\app-icon.ico</ApplicationIcon>
+    <!-- app.manifest / .ico 均为 Windows 专有资源（manifest 注释明示「Windows only」），非 Windows 构建剔除，
+         否则非 Windows 平台会尝试嵌入 Win32 manifest / 图标而构建失败或产生无意义产物。 -->
+    <ApplicationIcon Condition="'$([MSBuild]::IsOSPlatform(`Windows`))'">Assets\app-icon.ico</ApplicationIcon>
     <Nullable>enable</Nullable>
-    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationManifest Condition="'$([MSBuild]::IsOSPlatform(`Windows`))'">app.manifest</ApplicationManifest>
     <!-- 使用反射绑定：避免为每处 XAML 声明 x:DataType，降低维护成本 -->
     <AvaloniaUseCompiledBindingsByDefault>false</AvaloniaUseCompiledBindingsByDefault>
     <!-- 逃逸阀台账 #10 / 到期日 2026-12-31 / 责任人 工程 —— AVLN3001（XAML 资源无公开无参构造、
